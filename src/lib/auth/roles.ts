@@ -57,9 +57,9 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/time-costs",
-    label: "Time & Costs",
+    label: "Work & Billing",
     icon: "Clock",
-    roles: ["administrator", "service_manager", "technician", "billing"],
+    roles: ["administrator", "service_manager", "account_manager", "billing"],
   },
   {
     href: "/billing",
