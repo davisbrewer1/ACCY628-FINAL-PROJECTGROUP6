@@ -24,6 +24,7 @@ export async function getProfile(userId: string): Promise<Profile | null> {
 export async function getAuthenticatedProfile(): Promise<{
   userId: string;
   profile: Profile;
+  email: string | null;
 } | null> {
   const supabase = await createClient();
 
@@ -40,5 +41,9 @@ export async function getAuthenticatedProfile(): Promise<{
     return null;
   }
 
-  return { userId: user.id, profile };
+  return {
+    userId: user.id,
+    profile,
+    email: user.email ?? profile.email ?? null,
+  };
 }

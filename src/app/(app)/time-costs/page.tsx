@@ -1,76 +1,65 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { EmptyState } from "@/components/EmptyState";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ExpenseTracker } from "@/components/ExpenseTracker";
 import { PageHeader } from "@/components/PageHeader";
-import { StatusBadge } from "@/components/StatusBadge";
-import { formatCurrency, formatDate, formatHours } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, ServiceTicket, Technician, WorkEntry } from "@/lib/types";
+import type { ServiceTicket, Technician } from "@/lib/types";
+import { isOpenTicket } from "@/lib/dashboard-stats";
 
-interface WorkEntryRow extends WorkEntry {
-  technicianName: string;
-  customerName: string;
-  contractName: string;
-  ticketNumber: string;
-  additionalBillable: number;
-}
-
-export default function TimeCostsPage() {
+export default function ExpenseTrackerPage() {
   const [loading, setLoading] = useState(true);
-  const [entries, setEntries] = useState<WorkEntry[]>([]);
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [contracts, setContracts] = useState<Contract[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [ticketId, setTicketId] = useState("");
+  const [technicianId, setTechnicianId] = useState("");
 
-  useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const [w, tech, c, co, t] = await Promise.all([
-        supabase.from("work_entries").select("*").order("work_date", { ascending: false }),
-        supabase.from("technicians").select("*"),
-        supabase.from("customers").select("*"),
-        supabase.from("contracts").select("*"),
-        supabase.from("service_tickets").select("*"),
-      ]);
-      setEntries(w.data ?? []);
-      setTechnicians(tech.data ?? []);
-      setCustomers(c.data ?? []);
-      setContracts(co.data ?? []);
-      setTickets(t.data ?? []);
-      setLoading(false);
+  const loadData = useCallback(async () => {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const [t, tech] = await Promise.all([
+      supabase
+        .from("service_tickets")
+        .select("*")
+        .order("opened_at", { ascending: false }),
+      supabase.from("technicians").select("*").order("technician_name"),
+    ]);
+
+    setTickets(t.data ?? []);
+    setTechnicians(tech.data ?? []);
+
+    if (user) {
+      const linked = (tech.data ?? []).find((row) => row.profile_id === user.id);
+      if (linked) {
+        setTechnicianId(linked.id);
+      } else if (tech.data?.[0]) {
+        setTechnicianId(tech.data[0].id);
+      }
+    } else if (tech.data?.[0]) {
+      setTechnicianId(tech.data[0].id);
     }
-    load();
+
+    const open = (t.data ?? []).filter((row) => isOpenTicket(row.status));
+    const first = open[0] ?? t.data?.[0];
+    if (first) setTicketId(first.id);
+
+    setLoading(false);
   }, []);
 
-  const rows: WorkEntryRow[] = useMemo(() => {
-    const techMap = new Map(technicians.map((t) => [t.id, t.technician_name]));
-    const customerMap = new Map(customers.map((c) => [c.id, c.customer_name]));
-    const contractMap = new Map(contracts.map((c) => [c.id, c]));
-    const ticketMap = new Map(tickets.map((t) => [t.id, t.ticket_number]));
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
-    return entries.map((entry) => {
-      const contract = entry.contract_id ? contractMap.get(entry.contract_id) : null;
-      const billableHours = entry.included_in_contract ? 0 : (entry.hours_worked ?? 0);
-      const additionalBillable =
-        billableHours * (contract?.additional_hourly_rate ?? 0) +
-        (entry.parts_cost ?? 0) +
-        (entry.software_cost ?? 0) +
-        (entry.equipment_cost ?? 0) +
-        (entry.travel_cost ?? 0) +
-        (entry.other_cost ?? 0);
+  const ticketOptions = useMemo(() => {
+    const open = tickets.filter((ticket) => isOpenTicket(ticket.status));
+    const closed = tickets.filter((ticket) => !isOpenTicket(ticket.status));
+    return [...open, ...closed];
+  }, [tickets]);
 
-      return {
-        ...entry,
-        technicianName: techMap.get(entry.technician_id) ?? "Unknown",
-        customerName: customerMap.get(entry.customer_id) ?? "Unknown",
-        contractName: contract?.contract_name ?? "—",
-        ticketNumber: ticketMap.get(entry.ticket_id) ?? "—",
-        additionalBillable,
-      };
-    });
-  }, [entries, technicians, customers, contracts, tickets]);
+  const selectedTicket = tickets.find((ticket) => ticket.id === ticketId);
 
   if (loading) {
     return (
@@ -83,69 +72,55 @@ export default function TimeCostsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Time & cost tracking"
-        description="Labor hours, direct costs, and billable work connected to tickets and contracts."
+        title="Expense Tracker"
+        description="Add travel, supplies, meals, and other ticket expenses in seconds."
       />
 
-      {rows.length === 0 ? (
-        <EmptyState
-          title="No work entries"
-          description="Time and cost records will appear once technicians log work on service tickets."
-        />
-      ) : (
-        <div className="card border bg-base-100 shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="table table-zebra table-sm">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Technician</th>
-                  <th>Customer</th>
-                  <th>Contract</th>
-                  <th>Ticket</th>
-                  <th>Hours</th>
-                  <th>Labor</th>
-                  <th>Parts</th>
-                  <th>Software</th>
-                  <th>Equipment</th>
-                  <th>Travel</th>
-                  <th>Other</th>
-                  <th>Total cost</th>
-                  <th>Billable</th>
-                  <th>Approval</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id}>
-                    <td>{formatDate(row.work_date)}</td>
-                    <td>{row.technicianName}</td>
-                    <td>{row.customerName}</td>
-                    <td>{row.contractName}</td>
-                    <td className="font-mono text-xs">{row.ticketNumber}</td>
-                    <td>{formatHours(row.hours_worked)}</td>
-                    <td>{formatCurrency(row.labor_cost)}</td>
-                    <td>{formatCurrency(row.parts_cost)}</td>
-                    <td>{formatCurrency(row.software_cost)}</td>
-                    <td>{formatCurrency(row.equipment_cost)}</td>
-                    <td>{formatCurrency(row.travel_cost)}</td>
-                    <td>{formatCurrency(row.other_cost)}</td>
-                    <td className="font-medium">{formatCurrency(row.total_direct_cost)}</td>
-                    <td>
-                      <StatusBadge
-                        status={row.included_in_contract ? "Included" : "Billable"}
-                      />
-                    </td>
-                    <td>
-                      <StatusBadge status={row.approval_status ?? "Pending"} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <div className="card border bg-base-100 shadow-sm">
+        <div className="card-body grid gap-3 py-4 sm:grid-cols-2">
+          <label className="form-control">
+            <span className="label-text mb-1 text-xs">Ticket / project</span>
+            <select
+              className="select select-bordered select-sm"
+              value={ticketId}
+              onChange={(e) => setTicketId(e.target.value)}
+            >
+              <option value="">Select ticket</option>
+              {ticketOptions.map((ticket) => (
+                <option key={ticket.id} value={ticket.id}>
+                  {ticket.ticket_number} — {ticket.title}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="form-control">
+            <span className="label-text mb-1 text-xs">Technician</span>
+            <select
+              className="select select-bordered select-sm"
+              value={technicianId}
+              onChange={(e) => setTechnicianId(e.target.value)}
+            >
+              <option value="">Select technician</option>
+              {technicians.map((tech) => (
+                <option key={tech.id} value={tech.id}>
+                  {tech.technician_name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-      )}
+      </div>
+
+      <ExpenseTracker
+        ticketId={ticketId}
+        technicianId={technicianId || null}
+        ticketLabel={
+          selectedTicket
+            ? `${selectedTicket.ticket_number} — ${selectedTicket.title}`
+            : undefined
+        }
+      />
     </div>
   );
 }

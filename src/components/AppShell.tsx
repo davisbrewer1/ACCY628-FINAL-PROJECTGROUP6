@@ -2,6 +2,8 @@ import type { UserRole } from "@/lib/types";
 import {
   Activity,
   BarChart3,
+  Bell,
+  BookOpen,
   Brain,
   Building2,
   Clock,
@@ -22,6 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { DemoRoleSwitcher } from "@/components/DemoRoleSwitcher";
@@ -32,6 +35,42 @@ import {
   type NavItem,
 } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
+
+const KnowledgeBasePanel = dynamic(
+  () =>
+    import("@/components/KnowledgeBasePanel").then(
+      (mod) => mod.KnowledgeBasePanel,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <button type="button" className="btn btn-ghost btn-sm gap-2" disabled>
+        <BookOpen className="size-4" aria-hidden="true" />
+        <span className="hidden sm:inline">Knowledge Base</span>
+      </button>
+    ),
+  },
+);
+
+const NotificationCenter = dynamic(
+  () =>
+    import("@/components/NotificationCenter").then(
+      (mod) => mod.NotificationCenter,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <button
+        type="button"
+        className="btn btn-ghost btn-square btn-sm"
+        disabled
+        aria-label="Notifications"
+      >
+        <Bell className="size-5" aria-hidden="true" />
+      </button>
+    ),
+  },
+);
 
 const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard,
@@ -106,7 +145,11 @@ function NavLinks({
 
 function BrandMark() {
   return (
-    <div className="flex items-center gap-3 px-4 py-4">
+    <Link
+      href="/"
+      className="flex items-center gap-3 px-4 py-4 transition-opacity hover:opacity-80"
+      aria-label="Nexus Technology Solutions home"
+    >
       <div className="flex size-10 items-center justify-center rounded-box bg-primary text-primary-content font-bold tracking-tight">
         NX
       </div>
@@ -114,7 +157,7 @@ function BrandMark() {
         <p className="text-sm font-semibold leading-tight">Nexus Technology Solutions</p>
         <p className="text-xs text-base-content/60">Technology Operations Platform</p>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -220,9 +263,41 @@ export function AppShell({
               <Menu className="size-5" />
             </label>
           </div>
-          <div className="flex-1">
-            <h1 className="text-lg font-semibold lg:text-xl">{pageTitle}</h1>
+          <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+            <Link
+              href="/"
+              className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-80"
+              aria-label="Nexus Technology Solutions home"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-box bg-primary text-xs font-bold text-primary-content">
+                NX
+              </span>
+              <span className="truncate text-sm font-semibold leading-tight sm:text-base">
+                Nexus Technology Solutions
+              </span>
+            </Link>
+            <span className="hidden h-5 w-px shrink-0 bg-base-300 sm:block" aria-hidden="true" />
+            <h1 className="hidden truncate text-base font-medium text-base-content/70 sm:block lg:text-lg">
+              {pageTitle}
+            </h1>
           </div>
+          {(activeRole === "technician" ||
+            activeRole === "administrator" ||
+            activeRole === "service_manager") ? (
+            <div className="flex flex-none items-center gap-1">
+              <KnowledgeBasePanel
+                canEdit={
+                  activeRole === "administrator" ||
+                  activeRole === "service_manager"
+                }
+              />
+              {(activeRole === "technician" ||
+                activeRole === "administrator" ||
+                activeRole === "service_manager") && (
+                <NotificationCenter />
+              )}
+            </div>
+          ) : null}
         </header>
 
         <main className="flex-1 space-y-4 p-4 lg:p-6">
