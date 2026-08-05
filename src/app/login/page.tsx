@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { FormField } from "@/components/FormField";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { getDefaultDashboard, normalizeRole } from "@/lib/auth/roles";
@@ -125,20 +127,24 @@ export default function LoginPage() {
       </div>
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 py-12">
-        <div className="mb-8 max-w-2xl text-center text-white">
-          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-cyan-600 text-2xl font-bold text-white shadow-lg shadow-cyan-900/40">
+        <div className="mb-6 w-full max-w-md">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm text-slate-300 transition hover:text-white"
+          >
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            Back to Nexus site
+          </Link>
+        </div>
+        <div className="mb-8 max-w-md text-center text-white">
+          <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-cyan-600 text-xl font-bold text-white shadow-lg shadow-cyan-900/40">
             NX
           </div>
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-            Nexus Technology Solutions
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Portal sign-in
           </h1>
-          <p className="mt-4 text-lg text-slate-200">
-            Technology operations, service delivery, AI governance, and
-            profitability in one connected platform.
-          </p>
-          <p className="mt-3 text-sm text-slate-300">
-            Plan, deploy, manage, protect, bill, and renew customer technology —
-            from hardware and software through managed support and AI oversight.
+          <p className="mt-3 text-base text-slate-200">
+            Sign in to the Nexus technology operations platform.
           </p>
         </div>
 
