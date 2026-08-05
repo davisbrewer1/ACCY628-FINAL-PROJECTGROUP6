@@ -1,26 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
+import {
+  coverageLabel,
+  deviceDisplayName,
+  getDeviceHealthScore,
+  healthTone,
+} from "@/lib/device-utils";
 import { formatDate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type { HardwareAsset, Profile } from "@/lib/types";
-
-function deviceName(asset: HardwareAsset): string {
-  const parts = [asset.manufacturer, asset.model].filter(Boolean);
-  return parts.length > 0 ? parts.join(" ") : asset.category;
-}
-
-function coverageLabel(asset: HardwareAsset): string {
-  if (asset.managed_coverage) return "Covered by managed IT";
-  if (asset.support_contract) return asset.support_contract;
-  return "Listed inventory";
-}
 
 export default function EndUserDevicesPage() {
   const { activeRole } = useDemoRole();
@@ -67,6 +63,12 @@ export default function EndUserDevicesPage() {
     [assets],
   );
 
+  const averageHealth = useMemo(() => {
+    if (assets.length === 0) return 0;
+    const total = assets.reduce((sum, asset) => sum + getDeviceHealthScore(asset), 0);
+    return Math.round(total / assets.length);
+  }, [assets]);
+
   if (activeRole !== "client_user" && activeRole !== "administrator") {
     return (
       <AlertBanner
@@ -98,10 +100,10 @@ export default function EndUserDevicesPage() {
     <div className="space-y-6">
       <PageHeader
         title="My devices"
-        description="Devices and equipment provided or covered by your IT management service."
+        description="Devices and equipment provided or covered by your IT management service. Open a device for warranty, software, support, and backup details."
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Total devices" value={assets.length} />
         <StatCard
           title="Managed coverage"
@@ -112,6 +114,11 @@ export default function EndUserDevicesPage() {
           title="Active / in use"
           value={assets.filter((a) => a.device_status !== "Retired" && a.device_status !== "Offline").length}
           tone="info"
+        />
+        <StatCard
+          title="Avg. health score"
+          value={`${averageHealth}/100`}
+          tone={healthTone(averageHealth)}
         />
       </div>
 
@@ -125,7 +132,7 @@ export default function EndUserDevicesPage() {
           <div className="card-body gap-3">
             <h2 className="card-title text-base">Organization devices ({assets.length})</h2>
             <p className="text-sm text-base-content/60">
-              Review asset details, assignment, coverage, and warranty information for items tied to your company.
+              Review purchase dates, replacement targets, and current health. Click a device for full detail.
             </p>
             <div className="overflow-x-auto">
               <table className="table table-zebra">
@@ -133,52 +140,66 @@ export default function EndUserDevicesPage() {
                   <tr>
                     <th>Asset #</th>
                     <th>Device</th>
-                    <th>Type</th>
                     <th>Assigned to</th>
-                    <th>Location</th>
                     <th>Status</th>
+                    <th>Purchase date</th>
+                    <th>Replacement date</th>
+                    <th>Health score</th>
                     <th>Coverage</th>
-                    <th>Warranty</th>
-                    <th>Serial</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {assets.map((asset) => (
-                    <tr key={asset.id}>
-                      <td className="font-mono text-sm">{asset.asset_number}</td>
-                      <td>
-                        <div className="font-medium">{deviceName(asset)}</div>
-                        <div className="text-xs text-base-content/60">
-                          {asset.operating_system ?? "OS not listed"}
-                        </div>
-                      </td>
-                      <td className="capitalize">{asset.category}</td>
-                      <td>{asset.assigned_employee ?? "Unassigned"}</td>
-                      <td>{asset.location ?? "—"}</td>
-                      <td>
-                        <StatusBadge status={asset.device_status} />
-                      </td>
-                      <td>
-                        <div className="text-sm">{coverageLabel(asset)}</div>
-                        {asset.lifecycle_stage ? (
-                          <div className="text-xs text-base-content/60">
-                            Lifecycle: {asset.lifecycle_stage}
+                  {assets.map((asset) => {
+                    const health = getDeviceHealthScore(asset);
+                    return (
+                      <tr key={asset.id}>
+                        <td className="font-mono text-sm">{asset.asset_number}</td>
+                        <td>
+                          <div className="font-medium">{deviceDisplayName(asset)}</div>
+                          <div className="text-xs capitalize text-base-content/60">
+                            {asset.category} · {asset.location ?? "No location"}
                           </div>
-                        ) : null}
-                      </td>
-                      <td>
-                        <div className="text-sm">
-                          {asset.warranty_expiration
-                            ? formatDate(asset.warranty_expiration)
-                            : "—"}
-                        </div>
-                        {asset.warranty_expiring_soon ? (
-                          <span className="badge badge-warning badge-xs mt-1">Expiring soon</span>
-                        ) : null}
-                      </td>
-                      <td className="font-mono text-xs">{asset.serial_number ?? "—"}</td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td>{asset.assigned_employee ?? "Unassigned"}</td>
+                        <td>
+                          <StatusBadge status={asset.device_status} />
+                        </td>
+                        <td>{formatDate(asset.purchase_date)}</td>
+                        <td>
+                          <div>{formatDate(asset.estimated_replacement_date)}</div>
+                          {asset.needs_replacement || asset.nearing_eol ? (
+                            <span className="badge badge-warning badge-xs mt-1">
+                              Replacement recommended
+                            </span>
+                          ) : null}
+                        </td>
+                        <td>
+                          <div className="font-semibold">{health}/100</div>
+                          <progress
+                            className={`progress mt-1 w-20 ${
+                              health >= 85
+                                ? "progress-success"
+                                : health >= 50
+                                  ? "progress-warning"
+                                  : "progress-error"
+                            }`}
+                            value={health}
+                            max={100}
+                          />
+                        </td>
+                        <td className="text-sm">{coverageLabel(asset)}</td>
+                        <td className="text-right">
+                          <Link
+                            href={`/end-user/devices/${asset.id}`}
+                            className="btn btn-ghost btn-xs"
+                          >
+                            View device
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -288,6 +288,63 @@ export interface HardwareAsset {
   missing_security_updates: boolean;
   notes: string | null;
   created_at: string;
+  health_score: number | null;
+  last_backup_at: string | null;
+  asset_tag?: string | null;
+  cpu?: string | null;
+  ram?: string | null;
+  storage?: string | null;
+  online_status?: string | null;
+  patch_status?: string | null;
+  antivirus_status?: string | null;
+  battery_health?: string | null;
+  smart_disk_status?: string | null;
+  last_check_in?: string | null;
+}
+
+export interface AssetSoftware {
+  id: string;
+  asset_id: string;
+  app_name: string;
+  version: string | null;
+  license_status: string | null;
+  update_available: boolean | null;
+  created_at: string;
+}
+
+export interface AssetMonitoring {
+  id: string;
+  asset_id: string;
+  checked_at: string | null;
+  online_status: string | null;
+  patch_status: string | null;
+  antivirus_status: string | null;
+  cpu_pct: number | null;
+  ram_pct: number | null;
+  disk_pct: number | null;
+  alert_summary: string | null;
+  created_at: string;
+}
+
+export interface AssetRepair {
+  id: string;
+  asset_id: string;
+  note: string | null;
+  repaired_by: string | null;
+  status: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface AssetIncident {
+  id: string;
+  asset_id: string;
+  title: string;
+  description: string | null;
+  severity: string | null;
+  status: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface SecurityScore {
@@ -426,6 +483,44 @@ export const TICKET_CATEGORIES = [
   "Device Replacement",
   "Project Work",
 ] as const;
+
+/** Top-level categories for the client Support Ticket form. */
+export const SUPPORT_ISSUE_CATEGORIES = [
+  "AI Issue",
+  "Security Concern",
+  "Software/Hardware Issue",
+] as const;
+
+export type SupportIssueCategory = (typeof SUPPORT_ISSUE_CATEGORIES)[number];
+
+export const SUPPORT_ISSUE_SUBCATEGORIES: Record<SupportIssueCategory, string[]> = {
+  "AI Issue": [
+    "General AI Assistance",
+    "Chatbot / Copilot not working",
+    "Incorrect or unsafe AI output",
+    "AI access or license issue",
+    "AI policy / governance question",
+    "Other AI issue",
+  ],
+  "Security Concern": [
+    "Suspected phishing",
+    "Malware or ransomware",
+    "Unauthorized access",
+    "Lost or stolen device",
+    "Data exposure / privacy concern",
+    "Other security concern",
+  ],
+  "Software/Hardware Issue": [
+    "Hardware Support",
+    "Software Support",
+    "Network",
+    "Cloud",
+    "Microsoft 365",
+    "Hardware Deployment",
+    "Device Replacement",
+    "Project Work",
+  ],
+};
 
 export const TICKET_STATUSES: TicketStatus[] = [
   "New",
