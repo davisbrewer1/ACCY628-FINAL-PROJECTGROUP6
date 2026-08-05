@@ -29,3 +29,48 @@ body {
   flex-direction: column;
   min-width: 0;
 }
+
+/* Technician console — match marketing homepage slate/cyan look */
+.tech-shell .menu :where(li > *:not(ul):not(.menu-title):not(details):not(.btn)) {
+  color: #cbd5e1;
+}
+
+.tech-shell .menu :where(li > *:not(ul):not(.menu-title):not(details):not(.btn)):hover,
+.tech-shell .menu :where(li > *:not(ul):not(.menu-title):not(details):not(.btn)).active {
+  background: rgba(6, 182, 212, 0.18);
+  color: #ecfeff;
+}
+
+.tech-shell h2 {
+  color: #f8fafc;
+}
+
+.tech-shell .card {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: #e2e8f0;
+}
+
+.tech-shell .table th {
+  color: #94a3b8;
+  background: transparent;
+}
+
+.tech-shell .table td {
+  color: #e2e8f0;
+  background: transparent;
+}
+
+.tech-shell .input,
+.tech-shell .select,
+.tech-shell .textarea {
+  background: #020617;
+  border-color: #475569;
+  color: #f1f5f9;
+}
+
+.tech-shell .btn-primary {
+  background: #06b6d4;
+  border-color: #06b6d4;
+  color: #020617;
+}

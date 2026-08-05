@@ -41,12 +41,14 @@ function resolvePageTitle(pathname: string): string {
 interface AppShellClientProps {
   profile: Profile;
   userEmail?: string | null;
+  technicianId?: string | null;
   children: ReactNode;
 }
 
 export function AppShellClient({
   profile,
   userEmail,
+  technicianId = null,
   children,
 }: AppShellClientProps) {
   const pathname = usePathname();
@@ -61,6 +63,7 @@ export function AppShellClient({
       realRole={realRole}
       activeRole={activeRole}
       onDemoRoleChange={setActiveRole}
+      technicianId={technicianId}
     >
       {children}
     </AppShell>

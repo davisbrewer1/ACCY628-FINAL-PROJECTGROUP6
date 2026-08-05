@@ -17,10 +17,24 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  let technicianId: string | null = null;
+  if (user) {
+    const { data: technician } = await supabase
+      .from("technicians")
+      .select("id")
+      .eq("profile_id", user.id)
+      .maybeSingle();
+    technicianId = technician?.id ?? null;
+  }
+
   return (
     <DemoRoleProvider realRole={auth.profile.role}>
       <ToastProvider>
-        <AppShellClient profile={auth.profile} userEmail={user?.email}>
+        <AppShellClient
+          profile={auth.profile}
+          userEmail={user?.email}
+          technicianId={technicianId}
+        >
           {children}
         </AppShellClient>
       </ToastProvider>

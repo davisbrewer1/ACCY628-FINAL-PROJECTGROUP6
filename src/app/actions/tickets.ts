@@ -88,6 +88,7 @@ export async function createPortalTicket(
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Portal/end-user requests stay unassigned and unscheduled until a manager assigns them.
   const { error } = await supabase.from("service_tickets").insert({
     ticket_number: ticketNumber,
     customer_id: customerId,
@@ -105,6 +106,9 @@ export async function createPortalTicket(
       requestType === "security" ||
       formData.get("cybersecurity_incident") === "true",
     status: "New",
+    assigned_technician_id: null,
+    scheduled_start: null,
+    scheduled_window: null,
     opened_at: new Date().toISOString(),
     notes: String(formData.get("availability_notes") ?? "").trim() || null,
     created_by: user?.id ?? null,
@@ -116,7 +120,14 @@ export async function createPortalTicket(
 
   revalidatePath("/portal");
   revalidatePath("/end-user");
-  return { success: true, message: "Support request submitted." };
+  revalidatePath("/technician");
+  revalidatePath("/operations");
+  revalidatePath("/service-tickets");
+  return {
+    success: true,
+    message:
+      "Support request submitted. A service manager will assign and schedule a technician.",
+  };
 }
 
 export async function updateTicketStatus(
@@ -142,4 +153,81 @@ export async function updateTicketStatus(
   revalidatePath("/technician");
   revalidatePath("/service-tickets");
   return { success: true, message: "Ticket status updated." };
+}
+
+export async function updateTicketSchedule(input: {
+  ticketId: string;
+  scheduledStart: string;
+  scheduledWindow: string;
+  swapTicketId?: string | null;
+  swapScheduledStart?: string | null;
+  swapScheduledWindow?: string | null;
+}): Promise<ActionResult> {
+  try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        success: false,
+        message: "Your session expired. Sign in again, then retry the move.",
+      };
+    }
+
+    const ticketId = String(input.ticketId ?? "").trim();
+    const scheduledStart = String(input.scheduledStart ?? "").trim();
+    const scheduledWindow = String(input.scheduledWindow ?? "").trim();
+
+    if (!ticketId || !scheduledStart || !scheduledWindow) {
+      return { success: false, message: "Missing schedule details for this move." };
+    }
+
+    const { error } = await supabase
+      .from("service_tickets")
+      .update({
+        scheduled_start: scheduledStart,
+        scheduled_window: scheduledWindow,
+        status: "Assigned",
+      })
+      .eq("id", ticketId);
+
+    if (error) {
+      return { success: false, message: error.message };
+    }
+
+    const swapTicketId = input.swapTicketId
+      ? String(input.swapTicketId).trim()
+      : "";
+
+    if (swapTicketId) {
+      const { error: swapError } = await supabase
+        .from("service_tickets")
+        .update({
+          scheduled_start: input.swapScheduledStart
+            ? String(input.swapScheduledStart)
+            : null,
+          scheduled_window: input.swapScheduledWindow
+            ? String(input.swapScheduledWindow)
+            : null,
+        })
+        .eq("id", swapTicketId);
+
+      if (swapError) {
+        return { success: false, message: swapError.message };
+      }
+    }
+
+    // Technician My Work refreshes client-side; skip aggressive revalidation that
+    // can trigger auth redirects mid-action and crash the page.
+    revalidatePath("/operations");
+    revalidatePath("/service-tickets");
+    return { success: true, message: "Schedule updated." };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not update the schedule.";
+    return { success: false, message };
+  }
 }
