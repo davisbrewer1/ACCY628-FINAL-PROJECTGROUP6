@@ -299,7 +299,7 @@ export default function HardwarePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="hardware-page space-y-6">
       <PageHeader
         title="Hardware assets"
         description="Track device inventory, lifecycle stages, and proactive replacement alerts."
