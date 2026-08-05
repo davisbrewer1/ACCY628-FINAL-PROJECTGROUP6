@@ -107,6 +107,7 @@ export async function createServiceTicket(
   revalidatePath("/portal");
   revalidatePath("/end-user");
   revalidatePath("/operations");
+  revalidatePath("/recommendations");
   return {
     success: true,
     message: `Ticket ${ticketNumber} created · ${priority} priority · SLA applied from contract.`,

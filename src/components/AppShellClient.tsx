@@ -21,7 +21,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/technician": "My Work",
   "/cybersecurity": "Cybersecurity",
   "/ai-governance": "AI Governance",
-  "/recommendations": "Recommendations & Risk",
+  "/recommendations": "Risk Management",
   "/portal": "Client Portal",
   "/end-user": "End User Portal",
 };

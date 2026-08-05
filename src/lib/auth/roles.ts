@@ -69,7 +69,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/recommendations",
-    label: "Recommendations & Risk",
+    label: "Risk Management",
     icon: "Lightbulb",
     roles: ["administrator", "executive", "service_manager", "account_manager", "client_admin"],
   },

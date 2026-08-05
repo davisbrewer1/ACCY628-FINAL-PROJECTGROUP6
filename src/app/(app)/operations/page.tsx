@@ -264,7 +264,7 @@ export default function OperationsPage() {
             href="/service-tickets?filter=unassigned"
           />
           <StatCard
-            title="Recs to approve"
+            title="Risk actions"
             value={newRecs.length}
             tone={newRecs.length > 0 ? "info" : "default"}
             href="/recommendations?filter=new"
@@ -365,7 +365,7 @@ export default function OperationsPage() {
         />
 
         <ActionQueue
-          title="Recommendations needing approve"
+          title="Manual risk ideas awaiting review"
           href="/recommendations?filter=new"
           emptyTitle="Queue clear"
           emptyDescription="No new recommendations waiting."

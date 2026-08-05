@@ -70,7 +70,7 @@ export async function updateRecommendationStatus(
   } = await supabase.auth.getUser();
 
   const updates: Record<string, string | null> = { status };
-  if (status === "Reviewed" || status === "Approved") {
+  if (status === "Reviewed" || status === "Approved" || status === "Dismissed") {
     updates.reviewed_by = user?.id ?? null;
   }
 
@@ -84,5 +84,6 @@ export async function updateRecommendationStatus(
   }
 
   revalidatePath("/recommendations");
+  revalidatePath("/operations");
   return { success: true, message: `Recommendation marked as ${status}.` };
 }

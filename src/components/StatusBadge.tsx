@@ -17,6 +17,8 @@ const STATUS_STYLES: Record<string, string> = {
   Disputed: "badge-error",
   Pending: "badge-warning",
   Approved: "badge-success",
+  Reviewed: "badge-info",
+  Dismissed: "badge-ghost",
   Included: "badge-ghost",
   Billable: "badge-info",
   "Not Billed": "badge-ghost",
