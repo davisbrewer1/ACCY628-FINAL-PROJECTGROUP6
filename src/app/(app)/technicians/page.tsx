@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Star, Trash2 } from "lucide-react";
 import {
   createTechnician,
   deleteTechnician,
@@ -16,6 +16,11 @@ import { isThisMonth } from "@/lib/dashboard-stats";
 import { formatCurrency, formatHours, formatPercent } from "@/lib/format";
 import { getOpenTickets } from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/client";
+import {
+  computeTechnicianPerformance,
+  formatResponseDuration,
+  formatStarRating,
+} from "@/lib/technician-metrics";
 import type { ServiceTicket, Technician, WorkEntry } from "@/lib/types";
 
 /** Standard available hours per month for utilization (8 hrs × 20 days). */
@@ -26,6 +31,10 @@ interface TechCard extends Technician {
   criticalLoad: number;
   monthHours: number;
   utilizationRate: number;
+  avgRating: number | null;
+  avgResponseHours: number | null;
+  responseSampleSize: number;
+  ratingSampleSize: number;
 }
 
 const MANAGER_ROLES = new Set([
@@ -76,6 +85,7 @@ export default function TechniciansPage() {
         100,
         (monthHours / MONTHLY_CAPACITY_HOURS) * 100,
       );
+      const performance = computeTechnicianPerformance(tech.id, tickets);
 
       return {
         ...tech,
@@ -83,6 +93,10 @@ export default function TechniciansPage() {
         criticalLoad: assigned.filter((t) => t.priority === "Critical").length,
         monthHours,
         utilizationRate,
+        avgRating: performance.avgRating,
+        avgResponseHours: performance.avgResponseHours,
+        responseSampleSize: performance.responseSampleSize,
+        ratingSampleSize: performance.ratingSampleSize,
       };
     });
   }, [technicians, tickets, workEntries]);
@@ -96,6 +110,21 @@ export default function TechniciansPage() {
     const active = cards.filter((c) => c.active);
     if (active.length === 0) return null;
     return active.reduce((sum, c) => sum + c.utilizationRate, 0) / active.length;
+  }, [cards]);
+
+  const teamAvgRating = useMemo(() => {
+    const rated = cards.filter((c) => c.active && c.avgRating != null);
+    if (rated.length === 0) return null;
+    return rated.reduce((sum, c) => sum + (c.avgRating ?? 0), 0) / rated.length;
+  }, [cards]);
+
+  const teamAvgResponse = useMemo(() => {
+    const withResp = cards.filter((c) => c.active && c.avgResponseHours != null);
+    if (withResp.length === 0) return null;
+    return (
+      withResp.reduce((sum, c) => sum + (c.avgResponseHours ?? 0), 0) /
+      withResp.length
+    );
   }, [cards]);
 
   function handleSubmit(formData: FormData) {
@@ -144,7 +173,7 @@ export default function TechniciansPage() {
     <div className="space-y-6">
       <PageHeader
         title="Technician capacity"
-        description={`Open load, specialty, and utilization vs ${MONTHLY_CAPACITY_HOURS} available hours this month.`}
+        description="Open load, utilization, average rating (from SLA quality), and average ticket response time."
         action={
           canManage ? (
             <button
@@ -162,24 +191,39 @@ export default function TechniciansPage() {
         }
       />
 
-      {teamUtilization != null ? (
-        <div className="rounded-box border border-base-300 bg-base-100 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-base-content/70">
-                Team utilization (active technicians)
-              </p>
-              <p className="text-2xl font-semibold">
-                {formatPercent(teamUtilization)}
-              </p>
-            </div>
-            <p className="max-w-md text-xs text-base-content/60">
-              Utilization = hours logged this month ÷ {MONTHLY_CAPACITY_HOURS} capacity hours.
-              Over {formatPercent(85)} usually means the team is stretched.
+      <div className="grid gap-3 sm:grid-cols-3">
+        {teamUtilization != null ? (
+          <div className="rounded-box border border-base-300 bg-base-100 p-4">
+            <p className="text-sm font-medium text-base-content/70">
+              Team utilization
+            </p>
+            <p className="text-2xl font-semibold">{formatPercent(teamUtilization)}</p>
+            <p className="mt-1 text-xs text-base-content/60">
+              Hours logged ÷ {MONTHLY_CAPACITY_HOURS} capacity hours
             </p>
           </div>
+        ) : null}
+        <div className="rounded-box border border-base-300 bg-base-100 p-4">
+          <p className="text-sm font-medium text-base-content/70">
+            Team avg rating
+          </p>
+          <p className="text-2xl font-semibold">{formatStarRating(teamAvgRating)}</p>
+          <p className="mt-1 text-xs text-base-content/60">
+            From on-time response + on-time resolution on assigned tickets
+          </p>
         </div>
-      ) : null}
+        <div className="rounded-box border border-base-300 bg-base-100 p-4">
+          <p className="text-sm font-medium text-base-content/70">
+            Team avg response
+          </p>
+          <p className="text-2xl font-semibold">
+            {formatResponseDuration(teamAvgResponse)}
+          </p>
+          <p className="mt-1 text-xs text-base-content/60">
+            Opened → first response (responded_at) on assigned tickets
+          </p>
+        </div>
+      </div>
 
       {unassignedCount > 0 ? (
         <div className="alert alert-warning text-sm">
@@ -220,6 +264,34 @@ export default function TechniciansPage() {
                 <p className="text-sm text-base-content/70">
                   Specialty: {tech.specialty ?? "General support"}
                 </p>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
+                    <div className="flex items-center gap-1 text-xs text-base-content/60">
+                      <Star className="size-3.5 fill-warning text-warning" />
+                      Avg rating
+                    </div>
+                    <p className="mt-1 text-xl font-semibold">
+                      {formatStarRating(tech.avgRating)}
+                    </p>
+                    <p className="text-[11px] text-base-content/50">
+                      {tech.ratingSampleSize > 0
+                        ? `Based on ${tech.ratingSampleSize} ticket outcome${tech.ratingSampleSize === 1 ? "" : "s"}`
+                        : "Needs ticket response/completion data"}
+                    </p>
+                  </div>
+                  <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
+                    <div className="text-xs text-base-content/60">Avg response</div>
+                    <p className="mt-1 text-xl font-semibold">
+                      {formatResponseDuration(tech.avgResponseHours)}
+                    </p>
+                    <p className="text-[11px] text-base-content/50">
+                      {tech.responseSampleSize > 0
+                        ? `Avg of ${tech.responseSampleSize} responded ticket${tech.responseSampleSize === 1 ? "" : "s"}`
+                        : "No responded_at timestamps yet"}
+                    </p>
+                  </div>
+                </div>
 
                 <div className="mt-2">
                   <div className="mb-1 flex items-center justify-between text-xs">
