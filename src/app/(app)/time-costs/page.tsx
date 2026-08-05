@@ -1,12 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useSearchParams } from "next/navigation";
-import {
-  markWorkEntriesReadyToInvoice,
-  updateWorkEntryApproval,
-} from "@/app/actions/work-entries";
+import { createInvoicesFromWorkEntries } from "@/app/actions/billing";
+import { updateWorkEntryApproval } from "@/app/actions/work-entries";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
@@ -50,6 +48,7 @@ const ENTRY_TYPE_HINTS = [
 
 export default function WorkBillingPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialFilter = searchParams.get("filter");
   const { activeRole } = useDemoRole();
   const { showToast } = useToast();
@@ -203,10 +202,12 @@ export default function WorkBillingPage() {
 
   function handlePushToInvoice() {
     startTransition(async () => {
-      const result = await markWorkEntriesReadyToInvoice(selectedIds);
+      const result = await createInvoicesFromWorkEntries(selectedIds);
       if (result.success) {
         showToast(result.message);
+        setSelectedIds([]);
         await loadData();
+        router.push("/billing");
       } else {
         showToast(result.message, "error");
       }
@@ -338,8 +339,17 @@ export default function WorkBillingPage() {
         </Link>
       </div>
 
+      {view === "ready" ? (
+        <div className="rounded-box border border-base-300 bg-base-200/40 px-4 py-3 text-sm text-base-content/70">
+          Select billable entries, then{" "}
+          <span className="font-medium text-base-content">Send to Billing</span>.
+          That creates <span className="font-medium text-base-content">Draft</span>{" "}
+          invoices (one per customer + contract) and moves the work out of this queue.
+        </div>
+      ) : null}
+
       {view === "ready" && selectedIds.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-box border border-primary/30 bg-primary/5 p-3">
+        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-3 rounded-box border border-primary/40 bg-primary/10 p-3 shadow-sm">
           <span className="text-sm font-medium">{selectedIds.length} selected</span>
           <button
             type="button"
@@ -347,11 +357,18 @@ export default function WorkBillingPage() {
             disabled={isPending}
             onClick={handlePushToInvoice}
           >
-            Mark ready to invoice
+            {isPending ? (
+              <span className="loading loading-spinner loading-sm" />
+            ) : (
+              "Send to Billing"
+            )}
           </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedIds([])}>
             Clear
           </button>
+          <span className="text-xs text-base-content/60">
+            Creates draft invoices and opens Billing
+          </span>
         </div>
       ) : null}
 

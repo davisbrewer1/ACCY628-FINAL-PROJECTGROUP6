@@ -157,3 +157,198 @@ export async function recordPayment(formData: FormData): Promise<ActionResult> {
   revalidatePath("/portal");
   return { success: true, message: "Payment recorded successfully." };
 }
+
+/**
+ * Create Draft invoices from selected billable work entries,
+ * grouped by customer + contract, and link those entries as Billed.
+ */
+export async function createInvoicesFromWorkEntries(
+  entryIds: string[],
+): Promise<ActionResult> {
+  if (entryIds.length === 0) {
+    return { success: false, message: "Select at least one work entry." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data: entries, error: loadError } = await supabase
+    .from("work_entries")
+    .select("*")
+    .in("id", entryIds);
+
+  if (loadError) {
+    return { success: false, message: loadError.message };
+  }
+  if (!entries?.length) {
+    return { success: false, message: "No matching work entries found." };
+  }
+
+  const ineligible = entries.filter(
+    (e) =>
+      e.included_in_contract ||
+      e.approval_status !== "Approved" ||
+      e.billing_status === "Billed" ||
+      !e.customer_id ||
+      !e.contract_id,
+  );
+
+  if (ineligible.length > 0) {
+    return {
+      success: false,
+      message:
+        "Every selected entry must be Approved, billable (not included), not already billed, and linked to a contract.",
+    };
+  }
+
+  const contractIds = Array.from(
+    new Set(entries.map((e) => e.contract_id).filter(Boolean)),
+  ) as string[];
+
+  const { data: contracts, error: contractError } = await supabase
+    .from("contracts")
+    .select("id, additional_hourly_rate, invoice_due_days, customer_id")
+    .in("id", contractIds);
+
+  if (contractError) {
+    return { success: false, message: contractError.message };
+  }
+
+  const contractMap = new Map((contracts ?? []).map((c) => [c.id, c]));
+
+  type Group = {
+    customerId: string;
+    contractId: string;
+    entryIds: string[];
+    additional: number;
+    software: number;
+    equipment: number;
+    other: number;
+    dueDays: number;
+  };
+
+  const groups = new Map<string, Group>();
+
+  for (const entry of entries) {
+    const contractId = entry.contract_id as string;
+    const customerId = entry.customer_id as string;
+    const contract = contractMap.get(contractId);
+    if (!contract) {
+      return {
+        success: false,
+        message: "One or more entries reference a missing contract.",
+      };
+    }
+
+    const key = `${customerId}::${contractId}`;
+    const existing = groups.get(key) ?? {
+      customerId,
+      contractId,
+      entryIds: [] as string[],
+      additional: 0,
+      software: 0,
+      equipment: 0,
+      other: 0,
+      dueDays: contract.invoice_due_days ?? 30,
+    };
+
+    const hours = Number(entry.hours_worked ?? 0);
+    const rate = Number(contract.additional_hourly_rate ?? 0);
+    existing.additional += hours * rate;
+    existing.software += Number(entry.software_cost ?? 0);
+    existing.equipment += Number(entry.equipment_cost ?? 0);
+    existing.other +=
+      Number(entry.parts_cost ?? 0) +
+      Number(entry.travel_cost ?? 0) +
+      Number(entry.other_cost ?? 0);
+    existing.entryIds.push(entry.id);
+    groups.set(key, existing);
+  }
+
+  const today = new Date();
+  const invoiceDate = today.toISOString().slice(0, 10);
+  let created = 0;
+
+  for (const group of groups.values()) {
+    const total =
+      group.additional + group.software + group.equipment + group.other;
+
+    if (total <= 0) {
+      return {
+        success: false,
+        message:
+          "Selected work does not produce a billable amount (check hours and contract overage rates).",
+      };
+    }
+
+    const due = new Date(today);
+    due.setDate(due.getDate() + (group.dueDays || 30));
+    const dueDate = due.toISOString().slice(0, 10);
+
+    const stamp = Date.now().toString(36).toUpperCase();
+    const suffix = Math.floor(Math.random() * 900 + 100);
+    const invoiceNumber = `INV-WB-${stamp}-${suffix}`;
+
+    const { data: invoice, error: insertError } = await supabase
+      .from("invoices")
+      .insert({
+        invoice_number: invoiceNumber,
+        customer_id: group.customerId,
+        contract_id: group.contractId,
+        invoice_date: invoiceDate,
+        due_date: dueDate,
+        recurring_service_fee: 0,
+        additional_support_charges: roundMoney(group.additional),
+        software_charges: roundMoney(group.software),
+        equipment_charges: roundMoney(group.equipment),
+        other_charges: roundMoney(group.other),
+        total_amount: roundMoney(total),
+        amount_paid: 0,
+        remaining_balance: roundMoney(total),
+        status: "Draft",
+        created_by: user?.id ?? null,
+      })
+      .select("id")
+      .single();
+
+    if (insertError || !invoice) {
+      return {
+        success: false,
+        message: insertError?.message ?? "Failed to create invoice.",
+      };
+    }
+
+    const { error: linkError } = await supabase
+      .from("work_entries")
+      .update({
+        approval_status: "Approved",
+        billing_status: "Billed",
+        invoice_id: invoice.id,
+      })
+      .in("id", group.entryIds);
+
+    if (linkError) {
+      return { success: false, message: linkError.message };
+    }
+
+    created += 1;
+  }
+
+  revalidatePath("/billing");
+  revalidatePath("/time-costs");
+  revalidatePath("/operations");
+  revalidatePath("/reports");
+  revalidatePath("/portal");
+  revalidatePath("/technician");
+
+  return {
+    success: true,
+    message: `Created ${created} draft invoice${created === 1 ? "" : "s"} in Billing from ${entryIds.length} work entr${entryIds.length === 1 ? "y" : "ies"}.`,
+  };
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
