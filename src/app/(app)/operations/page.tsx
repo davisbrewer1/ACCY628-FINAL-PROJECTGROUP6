@@ -16,7 +16,6 @@ import {
   cashCollectedMtd,
   computeContractHoursBurns,
   getAwaitingSendInvoices,
-  getNewRecommendations,
   getOpenArInvoices,
   getOpenTickets,
   getPastDueInvoices,
@@ -31,7 +30,6 @@ import type {
   Customer,
   Invoice,
   Payment,
-  Recommendation,
   ServiceTicket,
   WorkEntry,
 } from "@/lib/types";
@@ -45,7 +43,6 @@ export default function OperationsPage() {
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
 
   const isServiceManager = activeRole === "service_manager";
   const isAccountManager = activeRole === "account_manager";
@@ -54,7 +51,7 @@ export default function OperationsPage() {
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const [c, co, t, w, i, p, r] = await Promise.all([
+      const [c, co, t, w, i, p] = await Promise.all([
         supabase.from("customers").select("*"),
         supabase.from("contracts").select("*"),
         supabase
@@ -64,7 +61,6 @@ export default function OperationsPage() {
         supabase.from("work_entries").select("*"),
         supabase.from("invoices").select("*"),
         supabase.from("payments").select("*"),
-        supabase.from("recommendations").select("*"),
       ]);
       setCustomers(c.data ?? []);
       setContracts(co.data ?? []);
@@ -72,7 +68,6 @@ export default function OperationsPage() {
       setWorkEntries(w.data ?? []);
       setInvoices(i.data ?? []);
       setPayments(p.data ?? []);
-      setRecommendations(r.data ?? []);
       setLoading(false);
     }
     load();
@@ -137,10 +132,6 @@ export default function OperationsPage() {
     [pastDue],
   );
   const cashMtd = useMemo(() => cashCollectedMtd(payments), [payments]);
-  const newRecs = useMemo(
-    () => getNewRecommendations(recommendations),
-    [recommendations],
-  );
   const accountHealth = useMemo(
     () =>
       buildAccountHealthRows(
@@ -263,12 +254,6 @@ export default function OperationsPage() {
             tone={unassigned.length > 0 ? "danger" : "success"}
             href="/service-tickets?filter=unassigned"
           />
-          <StatCard
-            title="Recs to approve"
-            value={newRecs.length}
-            tone={newRecs.length > 0 ? "info" : "default"}
-            href="/recommendations?filter=new"
-          />
         </div>
       </section>
 
@@ -362,19 +347,6 @@ export default function OperationsPage() {
               ),
             };
           })}
-        />
-
-        <ActionQueue
-          title="Recommendations needing approve"
-          href="/recommendations?filter=new"
-          emptyTitle="Queue clear"
-          emptyDescription="No new recommendations waiting."
-          items={newRecs.slice(0, 6).map((rec) => ({
-            id: rec.id,
-            primary: rec.title,
-            secondary: `${rec.source_area} · ${rec.customer_id ? customerMap.get(rec.customer_id) ?? "Customer" : "All customers"}`,
-            meta: <PriorityBadge priority={rec.priority} />,
-          }))}
         />
       </section>
 

@@ -1,7 +1,11 @@
 "use client";
 
 import { createPtoRequest, cancelPtoRequest } from "@/app/actions/pto";
-import { createWorkEntry, updateWorkEntry } from "@/app/actions/work-entries";
+import {
+  createWorkEntry,
+  resubmitWorkEntry,
+  updateWorkEntry,
+} from "@/app/actions/work-entries";
 import { updateTicketSchedule, updateTicketStatus } from "@/app/actions/tickets";
 import { hoursBetween } from "@/lib/calculations";
 import { isOpenTicket } from "@/lib/dashboard-stats";
@@ -19,7 +23,7 @@ import {
   type WorkEntryModalPhase,
 } from "@/components/technician/WorkEntryModal";
 import { useToast } from "@/components/Toast";
-import { formatHours } from "@/lib/format";
+import { formatDate, formatHours } from "@/lib/format";
 import {
   DEFAULT_ANNUAL_PTO_HOURS,
   DEFAULT_TECH_HOURLY_RATE,
@@ -99,6 +103,7 @@ export default function TechnicianWorkspacePage() {
   const [ptoRequests, setPtoRequests] = useState<TechnicianPtoRequest[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState("");
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [resubmitId, setResubmitId] = useState<string | null>(null);
   const [workModalOpen, setWorkModalOpen] = useState(false);
   const [workModalPhase, setWorkModalPhase] =
     useState<WorkEntryModalPhase>("timer");
@@ -252,6 +257,19 @@ export default function TechnicianWorkspacePage() {
       endOfWeek(now, { weekStartsOn: 1 }),
     );
   }, [workEntries]);
+
+  const returnedEntries = useMemo(
+    () => workEntries.filter((e) => e.approval_status === "Disputed"),
+    [workEntries],
+  );
+
+  const pendingCount = useMemo(
+    () =>
+      workEntries.filter(
+        (e) => !e.approval_status || e.approval_status === "Pending",
+      ).length,
+    [workEntries],
+  );
 
   const hoursScheduledThisWeek = useMemo(() => {
     const now = new Date();
@@ -633,6 +651,20 @@ export default function TechnicianWorkspacePage() {
     });
   }
 
+  function handleResubmit(formData: FormData) {
+    setError(null);
+    startTransition(async () => {
+      const result = await resubmitWorkEntry(formData);
+      if (result.success) {
+        showToast(result.message);
+        setResubmitId(null);
+        await loadData();
+      } else {
+        setError(result.message);
+      }
+    });
+  }
+
   if (activeRole !== "technician" && activeRole !== "administrator") {
     return (
       <AlertBanner
@@ -694,6 +726,167 @@ export default function TechnicianWorkspacePage() {
           hint="Open tickets scheduled Mon–Fri this week"
         />
       </div>
+
+      {(returnedEntries.length > 0 || pendingCount > 0) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm">
+            <p className="font-medium text-amber-100">
+              {pendingCount} awaiting manager approval
+            </p>
+            <p className="mt-1 text-slate-400">
+              Logged in My Work — reviewed under Work &amp; Billing by managers.
+            </p>
+          </div>
+          {returnedEntries.length > 0 ? (
+            <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm">
+              <p className="font-medium text-rose-100">
+                {returnedEntries.length} returned for correction
+              </p>
+              <p className="mt-1 text-slate-400">
+                Fix the note from your manager and resubmit below.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-slate-500">
+              No entries currently returned.
+            </div>
+          )}
+        </div>
+      )}
+
+      {returnedEntries.length > 0 ? (
+        <section className="rounded-xl border border-rose-400/30 bg-slate-900/80 shadow-sm">
+          <div className="space-y-4 p-5">
+            <h2 className="text-base font-semibold text-white">
+              Returned work (fix &amp; resubmit)
+            </h2>
+            {error && resubmitId ? (
+              <div className="alert alert-error text-sm">
+                <span>{error}</span>
+              </div>
+            ) : null}
+            <div className="space-y-3">
+              {returnedEntries.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="rounded-xl border border-slate-700 bg-slate-950/60 p-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-white">
+                        {formatDate(entry.work_date)} · {formatHours(entry.hours_worked)}
+                      </p>
+                      <p className="text-sm text-slate-400">
+                        {entry.work_performed ?? "No work description"}
+                      </p>
+                    </div>
+                    <StatusBadge status="Disputed" />
+                  </div>
+                  {entry.approval_notes ? (
+                    <div className="mt-2 rounded-lg bg-amber-500/15 px-3 py-2 text-sm text-amber-100">
+                      <span className="font-medium">Manager note: </span>
+                      {entry.approval_notes}
+                    </div>
+                  ) : null}
+
+                  {resubmitId === entry.id ? (
+                    <form
+                      action={handleResubmit}
+                      className="mt-3 grid gap-3 sm:grid-cols-2"
+                    >
+                      <input type="hidden" name="entry_id" value={entry.id} />
+                      <FormField label="Work date" htmlFor={`rs-date-${entry.id}`}>
+                        <input
+                          id={`rs-date-${entry.id}`}
+                          name="work_date"
+                          type="date"
+                          className="input input-bordered w-full border-slate-600 bg-slate-950"
+                          defaultValue={entry.work_date ?? ""}
+                        />
+                      </FormField>
+                      <FormField label="Hours worked" htmlFor={`rs-hours-${entry.id}`}>
+                        <input
+                          id={`rs-hours-${entry.id}`}
+                          name="hours_worked"
+                          type="number"
+                          min="0"
+                          step="0.25"
+                          className="input input-bordered w-full border-slate-600 bg-slate-950"
+                          defaultValue={entry.hours_worked ?? ""}
+                          required
+                        />
+                      </FormField>
+                      <FormField
+                        label="Work performed"
+                        htmlFor={`rs-work-${entry.id}`}
+                        className="sm:col-span-2"
+                      >
+                        <textarea
+                          id={`rs-work-${entry.id}`}
+                          name="work_performed"
+                          className="textarea textarea-bordered w-full border-slate-600 bg-slate-950"
+                          rows={2}
+                          defaultValue={entry.work_performed ?? ""}
+                          required
+                        />
+                      </FormField>
+                      <FormField label="Billing type" htmlFor={`rs-inc-${entry.id}`}>
+                        <select
+                          id={`rs-inc-${entry.id}`}
+                          name="included_in_contract"
+                          className="select select-bordered w-full border-slate-600 bg-slate-950"
+                          defaultValue={entry.included_in_contract ? "true" : "false"}
+                        >
+                          <option value="true">Included / block hours</option>
+                          <option value="false">Billable T&amp;M / overage</option>
+                        </select>
+                      </FormField>
+                      <FormField label="Service method" htmlFor={`rs-method-${entry.id}`}>
+                        <select
+                          id={`rs-method-${entry.id}`}
+                          name="service_method"
+                          className="select select-bordered w-full border-slate-600 bg-slate-950"
+                          defaultValue={entry.service_method ?? "Remote"}
+                        >
+                          <option value="Remote">Remote</option>
+                          <option value="On-site">On-site</option>
+                        </select>
+                      </FormField>
+                      <div className="flex flex-wrap gap-2 sm:col-span-2">
+                        <button
+                          type="submit"
+                          className="btn btn-sm border-0 bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                          disabled={isPending}
+                        >
+                          Resubmit for approval
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm text-slate-300"
+                          onClick={() => setResubmitId(null)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm mt-3 border-slate-600 text-slate-200"
+                      onClick={() => {
+                        setError(null);
+                        setResubmitId(entry.id);
+                      }}
+                    >
+                      Fix &amp; resubmit
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="rounded-xl border border-cyan-500/20 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-4 shadow-lg sm:p-5">
         <TechnicianScheduleCalendar
@@ -900,7 +1093,17 @@ export default function TechnicianWorkspacePage() {
                       <td>{entry.work_performed ?? "—"}</td>
                       <td>
                         <StatusBadge
-                          status={entry.included_in_contract ? "Included" : "Billable"}
+                          status={
+                            entry.approval_status === "Disputed"
+                              ? "Disputed"
+                              : entry.approval_status === "Pending"
+                                ? "Pending"
+                                : entry.approval_status === "Approved"
+                                  ? "Approved"
+                                  : entry.included_in_contract
+                                    ? "Included"
+                                    : "Billable"
+                          }
                         />
                       </td>
                     </tr>

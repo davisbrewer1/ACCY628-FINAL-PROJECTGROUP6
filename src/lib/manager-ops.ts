@@ -125,13 +125,16 @@ export function getReadyToInvoiceEntries(workEntries: WorkEntry[]): WorkEntry[] 
   );
 }
 
+/** Entries waiting on a manager approve / dispute decision. */
 export function getPendingApprovalEntries(workEntries: WorkEntry[]): WorkEntry[] {
   return workEntries.filter(
-    (e) =>
-      !e.approval_status ||
-      e.approval_status === "Pending" ||
-      e.approval_status === "Disputed",
+    (e) => !e.approval_status || e.approval_status === "Pending",
   );
+}
+
+/** Entries returned to technicians for correction. */
+export function getDisputedWorkEntries(workEntries: WorkEntry[]): WorkEntry[] {
+  return workEntries.filter((e) => e.approval_status === "Disputed");
 }
 
 export function getOpenArInvoices(invoices: Invoice[]): Invoice[] {

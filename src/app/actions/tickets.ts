@@ -4,6 +4,12 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/actions/customers";
 import { insertNotification } from "@/lib/notifications";
+import {
+  composeCategoryLabel,
+  computeSlaTargets,
+  normalizePriority,
+} from "@/lib/ticket-ops";
+import type { Contract } from "@/lib/types";
 
 export async function createServiceTicket(
   formData: FormData,
@@ -22,33 +28,73 @@ export async function createServiceTicket(
   } = await supabase.auth.getUser();
 
   const ticketNumber = `TKT-${Date.now().toString().slice(-8)}`;
-  const assignedTechnicianId =
+  const priority = normalizePriority(String(formData.get("priority") ?? "Medium"));
+  const contractId = String(formData.get("contract_id") ?? "").trim() || null;
+  const ticketType = String(formData.get("ticket_type") ?? "").trim();
+  const categoryOnly = String(formData.get("category") ?? "").trim();
+  const category =
+    composeCategoryLabel(ticketType, categoryOnly) || categoryOnly || null;
+
+  let contract: Contract | null = null;
+  if (contractId) {
+    const { data } = await supabase
+      .from("contracts")
+      .select("*")
+      .eq("id", contractId)
+      .maybeSingle();
+    contract = data;
+  } else {
+    const { data } = await supabase
+      .from("contracts")
+      .select("*")
+      .eq("customer_id", customerId)
+      .eq("contract_status", "Active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    contract = data;
+  }
+
+  const openedAt =
+    String(formData.get("opened_at") ?? "").trim() || new Date().toISOString();
+  const openedDate = new Date(openedAt);
+  const autoSla = computeSlaTargets({
+    contract,
+    priority,
+    openedAt: Number.isNaN(openedDate.getTime()) ? new Date() : openedDate,
+  });
+
+  const manualResponse = String(formData.get("target_response_at") ?? "").trim();
+  const manualResolution = String(formData.get("target_resolution_at") ?? "").trim();
+  const assignedTech =
     String(formData.get("assigned_technician_id") ?? "").trim() || null;
-  const priority = String(formData.get("priority") ?? "Medium").trim();
 
   const { error } = await supabase.from("service_tickets").insert({
     ticket_number: ticketNumber,
     customer_id: customerId,
-    contract_id: String(formData.get("contract_id") ?? "").trim() || null,
+    contract_id: contractId ?? contract?.id ?? null,
     title,
     description: String(formData.get("description") ?? "").trim() || null,
-    category: String(formData.get("category") ?? "").trim() || null,
+    category,
     priority,
     service_method: String(formData.get("service_method") ?? "").trim() || null,
-    assigned_technician_id: assignedTechnicianId,
-    opened_at: String(formData.get("opened_at") ?? "").trim() || new Date().toISOString(),
-    target_response_at:
-      String(formData.get("target_response_at") ?? "").trim() || null,
-    target_resolution_at:
-      String(formData.get("target_resolution_at") ?? "").trim() || null,
-    status: String(formData.get("status") ?? "New").trim(),
+    assigned_technician_id: assignedTech,
+    opened_at: openedAt,
+    target_response_at: manualResponse || autoSla.targetResponseAt,
+    target_resolution_at: manualResolution || autoSla.targetResolutionAt,
+    status: assignedTech
+      ? "Assigned"
+      : String(formData.get("status") ?? "New").trim(),
     customer_approval_required: formData.get("customer_approval_required") === "true",
     additional_work_suspected: formData.get("additional_work_suspected") === "true",
+    additional_billable_work: formData.get("additional_billable_work") === "true",
     location: String(formData.get("location") ?? "").trim() || null,
     requester_name: String(formData.get("requester_name") ?? "").trim() || null,
-    severity: String(formData.get("severity") ?? "").trim() || null,
+    severity: priority,
     ai_involved: formData.get("ai_involved") === "true",
-    cybersecurity_incident: formData.get("cybersecurity_incident") === "true",
+    cybersecurity_incident:
+      formData.get("cybersecurity_incident") === "true" ||
+      categoryOnly === "Security",
     notes: String(formData.get("notes") ?? "").trim() || null,
     created_by: user?.id ?? null,
   });
@@ -57,10 +103,10 @@ export async function createServiceTicket(
     return { success: false, message: error.message };
   }
 
-  if (assignedTechnicianId) {
+  if (assignedTech) {
     try {
       await insertNotification(supabase, {
-        technicianId: assignedTechnicianId,
+        technicianId: assignedTech,
         type: priority === "Critical" ? "critical_ticket" : "ticket_assigned",
         message:
           priority === "Critical"
@@ -77,19 +123,11 @@ export async function createServiceTicket(
   revalidatePath("/portal");
   revalidatePath("/end-user");
   revalidatePath("/operations");
-  return { success: true, message: `Ticket ${ticketNumber} created.` };
-}
-
-function resolvePriorityFromUrgency(urgency: string): string {
-  switch (urgency) {
-    case "Critical":
-    case "High":
-    case "Medium":
-    case "Low":
-      return urgency;
-    default:
-      return "Medium";
-  }
+  revalidatePath("/recommendations");
+  return {
+    success: true,
+    message: `Ticket ${ticketNumber} created · ${priority} priority · SLA applied from contract.`,
+  };
 }
 
 export async function createPortalTicket(
@@ -98,37 +136,19 @@ export async function createPortalTicket(
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const title = String(formData.get("title") ?? "").trim();
-  const requesterName = String(formData.get("requester_name") ?? "").trim() || null;
-  const requesterEmail = String(formData.get("requester_email") ?? "").trim() || null;
 
   if (!title) {
     return { success: false, message: "Ticket title is required." };
   }
 
-  const requestCategory = String(formData.get("issue_category") ?? "").trim();
-  const requestTypeFromCategory =
-    requestCategory === "AI Issue"
-      ? "ai"
-      : requestCategory === "Security Concern"
-        ? "security"
-        : "support";
-  const requestType =
-    String(formData.get("request_type") ?? "").trim() || requestTypeFromCategory;
-
-  const subcategory = String(formData.get("category") ?? "").trim();
+  const requestType = String(formData.get("request_type") ?? "support").trim();
   const category =
-    subcategory ||
+    String(formData.get("category") ?? "").trim() ||
     (requestType === "ai"
       ? "AI Assistance"
       : requestType === "security"
         ? "Cybersecurity"
         : null);
-
-  const urgency = String(
-    formData.get("urgency") ?? formData.get("severity") ?? formData.get("priority") ?? "Medium",
-  ).trim();
-  const priority = resolvePriorityFromUrgency(urgency);
-  const hardwareAssetId = String(formData.get("hardware_asset_id") ?? "").trim() || null;
 
   const ticketNumber = `TKT-${Date.now().toString().slice(-8)}`;
 
@@ -136,30 +156,23 @@ export async function createPortalTicket(
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Portal/end-user requests stay unassigned and unscheduled until a manager assigns them.
   const { error } = await supabase.from("service_tickets").insert({
     ticket_number: ticketNumber,
     customer_id: customerId,
     title,
     description: String(formData.get("description") ?? "").trim() || null,
     category,
-    priority,
+    priority: String(formData.get("priority") ?? "Medium").trim(),
     service_method: String(formData.get("service_method") ?? "").trim() || null,
     location: String(formData.get("location") ?? "").trim() || null,
-    requester_name: requesterName,
-    requester_email: requesterEmail,
-    requester_phone: String(formData.get("requester_phone") ?? "").trim() || null,
-    hardware_asset_id: hardwareAssetId,
-    severity: priority,
+    requester_name: String(formData.get("requester_name") ?? "").trim() || null,
+    severity: String(formData.get("severity") ?? "").trim() || null,
     ai_involved:
       requestType === "ai" || formData.get("ai_involved") === "true",
     cybersecurity_incident:
       requestType === "security" ||
       formData.get("cybersecurity_incident") === "true",
     status: "New",
-    assigned_technician_id: null,
-    scheduled_start: null,
-    scheduled_window: null,
     opened_at: new Date().toISOString(),
     notes: String(formData.get("availability_notes") ?? "").trim() || null,
     created_by: user?.id ?? null,
@@ -171,15 +184,7 @@ export async function createPortalTicket(
 
   revalidatePath("/portal");
   revalidatePath("/end-user");
-  revalidatePath("/end-user/support");
-  revalidatePath("/technician");
-  revalidatePath("/operations");
-  revalidatePath("/service-tickets");
-  return {
-    success: true,
-    message:
-      "Support request submitted. A service manager will assign and schedule a technician.",
-  };
+  return { success: true, message: "Support request submitted." };
 }
 
 export async function updateTicketStatus(
@@ -239,6 +244,96 @@ export async function assignTickets(
     success: true,
     message: `Assigned ${ticketIds.length} ticket${ticketIds.length === 1 ? "" : "s"}.`,
   };
+}
+
+export async function updateTicketPriority(
+  ticketId: string,
+  priority: string,
+  options?: { refreshSla?: boolean },
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const normalized = normalizePriority(priority);
+
+  const { data: ticket, error: fetchError } = await supabase
+    .from("service_tickets")
+    .select("*")
+    .eq("id", ticketId)
+    .maybeSingle();
+
+  if (fetchError || !ticket) {
+    return { success: false, message: "Ticket not found." };
+  }
+
+  const updates: Record<string, string | null> = {
+    priority: normalized,
+    severity: normalized,
+  };
+
+  if (options?.refreshSla !== false && ticket.status !== "Completed" && ticket.status !== "Closed") {
+    let contract: Contract | null = null;
+    if (ticket.contract_id) {
+      const { data } = await supabase
+        .from("contracts")
+        .select("*")
+        .eq("id", ticket.contract_id)
+        .maybeSingle();
+      contract = data;
+    }
+
+    const opened = ticket.opened_at ? new Date(ticket.opened_at) : new Date();
+    const sla = computeSlaTargets({
+      contract,
+      priority: normalized,
+      openedAt: Number.isNaN(opened.getTime()) ? new Date() : opened,
+    });
+    updates.target_response_at = sla.targetResponseAt;
+    updates.target_resolution_at = sla.targetResolutionAt;
+  }
+
+  const { error } = await supabase
+    .from("service_tickets")
+    .update(updates)
+    .eq("id", ticketId);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidatePath("/service-tickets");
+  revalidatePath("/operations");
+  revalidatePath("/technician");
+  return {
+    success: true,
+    message: `Priority set to ${normalized}${options?.refreshSla === false ? "" : " · SLA updated"}.`,
+  };
+}
+
+export async function updateTicketBillingFlags(
+  ticketId: string,
+  flags: {
+    additional_billable_work?: boolean;
+    additional_work_suspected?: boolean;
+    invoice_status?: string | null;
+  },
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("service_tickets")
+    .update({
+      additional_billable_work: flags.additional_billable_work ?? false,
+      additional_work_suspected: flags.additional_work_suspected ?? false,
+      invoice_status: flags.invoice_status ?? null,
+    })
+    .eq("id", ticketId);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidatePath("/service-tickets");
+  revalidatePath("/time-costs");
+  revalidatePath("/operations");
+  return { success: true, message: "Billing status updated." };
 }
 
 /** Move or clear a ticket schedule (supports hour-grid swaps and weekly calendar). */

@@ -250,6 +250,7 @@ export interface WorkEntry {
   approval_status: string | null;
   billing_status: string | null;
   invoice_id: string | null;
+  approval_notes: string | null;
   created_at: string;
 }
 

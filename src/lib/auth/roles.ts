@@ -57,9 +57,9 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/time-costs",
-    label: "Time & costs",
+    label: "Work & Billing",
     icon: "Clock",
-    roles: ["administrator", "service_manager", "billing"],
+    roles: ["administrator", "service_manager", "account_manager", "billing"],
   },
   {
     href: "/time-costs",
@@ -72,12 +72,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Billing",
     icon: "Receipt",
     roles: ["administrator", "billing", "account_manager"],
-  },
-  {
-    href: "/recommendations",
-    label: "Recommendations & Risk",
-    icon: "Lightbulb",
-    roles: ["administrator", "executive", "service_manager", "account_manager", "client_admin"],
   },
   {
     href: "/reports",
