@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { AlertTriangle, ClipboardList, Plus, Search } from "lucide-react";
+import { AlertTriangle, ClipboardList, PackagePlus, Plus, Search } from "lucide-react";
 import {
   createAssetOrderTicket,
   createHardwareAsset,
-  requestInventoryReorder,
+  restockInventoryPart,
   reviewAssetOrderTicket,
   reviewInventoryReorderRequest,
 } from "@/app/actions/hardware";
@@ -205,13 +205,6 @@ export default function HardwarePage() {
   const pendingReorderRequests = reorderRequests.filter(
     (request) => request.status === "Pending",
   );
-  const pendingReorderPartIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const request of pendingReorderRequests) {
-      ids.add(request.part_id);
-    }
-    return ids;
-  }, [pendingReorderRequests]);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -261,11 +254,11 @@ export default function HardwarePage() {
     });
   }
 
-  function handleReorderRequest(part: InventoryPart) {
+  function handleOrder(part: InventoryPart) {
     const amount =
       reorderQuantities[part.id] ?? Math.min(5, 50 - part.quantity);
     startTransition(async () => {
-      const result = await requestInventoryReorder(part.id, amount);
+      const result = await restockInventoryPart(part.id, amount);
       showToast(result.message, result.success ? "success" : "error");
       if (result.success) {
         await loadData();
@@ -583,7 +576,7 @@ export default function HardwarePage() {
                       <th>Unit cost</th>
                       <th>On hand</th>
                       <th>Inventory status</th>
-                      {isTechnicianView ? <th>Request reorder</th> : null}
+                      {isTechnicianView ? <th>Order more</th> : null}
                     </tr>
                   </thead>
                   <tbody
@@ -596,11 +589,8 @@ export default function HardwarePage() {
                     {filteredParts.map((part) => {
                       const isLow = part.quantity <= part.low_stock_threshold;
                       const capacity = 50 - part.quantity;
-                      const requestAmount =
+                      const orderAmount =
                         reorderQuantities[part.id] ?? Math.min(5, capacity);
-                      const hasPendingRequest = pendingReorderPartIds.has(
-                        part.id,
-                      );
                       return (
                         <tr
                           key={part.id}
@@ -670,52 +660,41 @@ export default function HardwarePage() {
                           </td>
                           {isTechnicianView ? (
                             <td>
-                              {hasPendingRequest ? (
-                                <div className="space-y-1">
-                                  <StatusBadge status="Pending" />
-                                  <p className="text-xs text-slate-400">
-                                    Waiting on management
-                                  </p>
-                                </div>
-                              ) : (
-                                <div className="flex min-w-48 items-center gap-2">
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    max={capacity}
-                                    className="input input-bordered input-sm w-20 border-slate-600 bg-slate-950 text-slate-100"
-                                    value={requestAmount}
-                                    disabled={capacity === 0 || isPending}
-                                    onChange={(event) =>
-                                      setReorderQuantities((current) => ({
-                                        ...current,
-                                        [part.id]: Number(event.target.value),
-                                      }))
-                                    }
-                                    aria-label={`Reorder quantity for ${part.part_name}`}
-                                  />
-                                  <button
-                                    type="button"
-                                    className="btn btn-primary btn-sm gap-1"
-                                    disabled={
-                                      capacity === 0 ||
-                                      isPending ||
-                                      !Number.isInteger(requestAmount) ||
-                                      requestAmount < 1 ||
-                                      requestAmount > capacity
-                                    }
-                                    onClick={() => handleReorderRequest(part)}
-                                  >
-                                    <ClipboardList className="size-4" />
-                                    {capacity === 0 ? "Full" : "Request"}
-                                  </button>
-                                </div>
-                              )}
-                              {!hasPendingRequest ? (
-                                <div className="mt-1 text-xs text-slate-400">
-                                  Sends a reorder request to management
-                                </div>
-                              ) : null}
+                              <div className="flex min-w-48 items-center gap-2">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={capacity}
+                                  className="input input-bordered input-sm w-20 border-slate-600 bg-slate-950 text-slate-100"
+                                  value={orderAmount}
+                                  disabled={capacity === 0 || isPending}
+                                  onChange={(event) =>
+                                    setReorderQuantities((current) => ({
+                                      ...current,
+                                      [part.id]: Number(event.target.value),
+                                    }))
+                                  }
+                                  aria-label={`Order quantity for ${part.part_name}`}
+                                />
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm gap-1"
+                                  disabled={
+                                    capacity === 0 ||
+                                    isPending ||
+                                    !Number.isInteger(orderAmount) ||
+                                    orderAmount < 1 ||
+                                    orderAmount > capacity
+                                  }
+                                  onClick={() => handleOrder(part)}
+                                >
+                                  <PackagePlus className="size-4" />
+                                  {capacity === 0 ? "Full" : "Order"}
+                                </button>
+                              </div>
+                              <div className="mt-1 text-xs text-slate-400">
+                                No approval required
+                              </div>
                             </td>
                           ) : null}
                         </tr>

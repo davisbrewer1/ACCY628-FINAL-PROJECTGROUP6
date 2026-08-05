@@ -714,7 +714,7 @@ export async function reviewInventoryReorderRequest(
   };
 }
 
-/** Managers/admins only — direct restock without a technician request. */
+/** Direct restock — parts orders do not require management approval. */
 export async function restockInventoryPart(
   partId: string,
   amount: number,
@@ -723,11 +723,13 @@ export async function restockInventoryPart(
 
   if (
     !user ||
-    (role !== "administrator" && role !== "service_manager")
+    (role !== "technician" &&
+      role !== "administrator" &&
+      role !== "service_manager")
   ) {
     return {
       success: false,
-      message: "Only managers can restock inventory directly.",
+      message: "Only technicians can order inventory parts.",
     };
   }
   if (!Number.isInteger(amount) || amount < 1 || amount > 50) {
