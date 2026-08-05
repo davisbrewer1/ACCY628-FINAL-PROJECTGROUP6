@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { createHardwareAsset } from "@/app/actions/hardware";
+import { AssetDetailDrawer } from "@/components/AssetDetailDrawer";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
@@ -10,7 +11,7 @@ import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import { HARDWARE_CATEGORIES, type Customer, type HardwareAsset } from "@/lib/types";
 
@@ -45,9 +46,14 @@ export default function HardwarePage() {
   const [assets, setAssets] = useState<HardwareAsset[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const canAdd = CAN_ADD_ROLES.has(activeRole);
+
+  function onAssetClick(assetId: string) {
+    setSelectedAssetId(assetId);
+  }
 
   async function loadData() {
     const supabase = createClient();
@@ -203,7 +209,11 @@ export default function HardwarePage() {
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.id}>
+                  <tr
+                    key={row.id}
+                    className="cursor-pointer hover:bg-base-200/80"
+                    onClick={() => onAssetClick(row.id)}
+                  >
                     <td className="font-mono text-sm">{row.asset_number}</td>
                     <td>{row.customerName}</td>
                     <td>{row.category}</td>
@@ -327,6 +337,17 @@ export default function HardwarePage() {
         </div>
         <form method="dialog" className="modal-backdrop"><button type="submit">close</button></form>
       </dialog>
+
+      <AssetDetailDrawer
+        assetId={selectedAssetId}
+        customerName={
+          selectedAssetId
+            ? rows.find((r) => r.id === selectedAssetId)?.customerName
+            : undefined
+        }
+        onClose={() => setSelectedAssetId(null)}
+        onUpdated={loadData}
+      />
     </div>
   );
 }

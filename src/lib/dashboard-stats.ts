@@ -17,6 +17,7 @@ const OPEN_STATUSES = new Set([
   "New",
   "Assigned",
   "In Progress",
+  "On Hold",
   "Waiting on Customer",
   "Waiting on Vendor",
   "Waiting on Approval",

@@ -12,6 +12,7 @@ export type TicketStatus =
   | "New"
   | "Assigned"
   | "In Progress"
+  | "On Hold"
   | "Waiting on Customer"
   | "Waiting on Vendor"
   | "Waiting on Approval"
@@ -121,6 +122,7 @@ export interface Contract {
   contract_owner_id: string | null;
   approval_status: string | null;
   notes: string | null;
+  included_services?: string[] | null;
   created_at: string;
 }
 
@@ -130,6 +132,7 @@ export interface Technician {
   technician_name: string;
   specialty: string | null;
   internal_hourly_cost: number | null;
+  hourly_rate?: number | null;
   active: boolean;
   created_at: string;
 }
@@ -148,6 +151,8 @@ export interface ServiceTicket {
   opened_at: string | null;
   target_response_at: string | null;
   target_resolution_at: string | null;
+  scheduled_start?: string | null;
+  scheduled_window?: string | null;
   responded_at: string | null;
   completed_at: string | null;
   status: TicketStatus | string | null;
@@ -195,6 +200,173 @@ export interface WorkEntry {
   approval_status: string | null;
   billing_status: string | null;
   invoice_id: string | null;
+  created_at: string;
+}
+
+export interface WorkNote {
+  id: string;
+  ticket_id: string;
+  technician_id: string | null;
+  note: string;
+  created_at: string;
+}
+
+export interface TicketAttachment {
+  id: string;
+  ticket_id: string;
+  technician_id: string | null;
+  file_name: string;
+  file_path: string;
+  file_size: number | null;
+  mime_type: string | null;
+  created_at: string;
+}
+
+export interface TicketFlag {
+  id: string;
+  ticket_id: string;
+  technician_id: string | null;
+  flag_type: "security" | "ai" | string;
+  created_at: string;
+}
+
+export type NotificationType =
+  | "ticket_assigned"
+  | "ticket_status_changed"
+  | "sla_at_risk"
+  | "emergency_incident"
+  | "critical_ticket"
+  | "ai_monitoring"
+  | "hardware_offline"
+  | "customer_reply"
+  | "work_approval"
+  | "manager_message"
+  | "upcoming_task";
+
+export interface AppNotification {
+  id: string;
+  technician_id: string;
+  type: NotificationType | string;
+  message: string;
+  created_at: string;
+  read: boolean;
+}
+
+export type KnowledgeBaseCategory =
+  | "Hardware"
+  | "Software"
+  | "Networking"
+  | "Security"
+  | "SOPs"
+  | "Repairs";
+
+export interface KnowledgeBaseArticle {
+  id: string;
+  title: string;
+  content: string;
+  category: KnowledgeBaseCategory | string;
+  tags: string[];
+  updated_at: string;
+  created_by: string | null;
+  created_at?: string;
+}
+
+export interface InventoryPart {
+  id: string;
+  part_name: string;
+  sku: string | null;
+  unit_cost: number;
+  active: boolean;
+  created_at: string;
+}
+
+export interface SoftwareCatalogItem {
+  id: string;
+  software_name: string;
+  license_cost: number;
+  active: boolean;
+  created_at: string;
+}
+
+export interface CostEntry {
+  id: string;
+  work_entry_id: string | null;
+  ticket_id: string | null;
+  technician_id: string | null;
+  customer_id: string | null;
+  contract_id: string | null;
+  labor_hours: number;
+  miles: number;
+  other_category: string | null;
+  labor_cost: number;
+  travel_cost: number;
+  equipment_cost: number;
+  software_cost: number;
+  other_cost: number;
+  total_cost: number;
+  billing_status: "Included" | "Billable" | string;
+  approval_required: boolean;
+  approval_status: string;
+  service_key: string | null;
+  parts_used: unknown;
+  software_installed: unknown;
+  overrides: unknown;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ExpenseType =
+  | "Travel"
+  | "Supplies"
+  | "Meals"
+  | "Parking"
+  | "Miscellaneous";
+
+export interface TicketExpense {
+  id: string;
+  ticket_id: string;
+  technician_id: string | null;
+  type: ExpenseType | string;
+  amount: number;
+  description: string | null;
+  date: string;
+  receipt_url: string | null;
+  created_at: string;
+}
+
+export const EXPENSE_TYPES: ExpenseType[] = [
+  "Travel",
+  "Supplies",
+  "Meals",
+  "Parking",
+  "Miscellaneous",
+];
+
+export type ApprovalStatus = "Pending" | "Approved" | "Denied";
+
+export interface Approval {
+  id: string;
+  ticket_id: string | null;
+  technician_id: string | null;
+  manager_id: string | null;
+  cost_entry_id: string | null;
+  work_entry_id: string | null;
+  status: ApprovalStatus | string;
+  reason: string | null;
+  manager_notes: string | null;
+  total_cost: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApprovalAttachment {
+  id: string;
+  approval_id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number | null;
+  mime_type: string | null;
   created_at: string;
 }
 
@@ -287,6 +459,86 @@ export interface HardwareAsset {
   unsupported_os: boolean;
   missing_security_updates: boolean;
   notes: string | null;
+  created_at: string;
+  asset_tag?: string | null;
+  cpu?: string | null;
+  ram?: string | null;
+  storage?: string | null;
+  mac_address?: string | null;
+  ip_address?: string | null;
+  battery_health?: string | null;
+  smart_disk_status?: string | null;
+  last_check_in?: string | null;
+  online_status?: string | null;
+  patch_status?: string | null;
+  antivirus_status?: string | null;
+  cpu_pct?: number | null;
+  ram_pct?: number | null;
+  disk_pct?: number | null;
+}
+
+export interface AssetIncident {
+  id: string;
+  asset_id: string;
+  title: string;
+  description: string | null;
+  severity: string | null;
+  status: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface AssetRepair {
+  id: string;
+  asset_id: string;
+  note: string;
+  repaired_by: string | null;
+  status: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface AssetSoftware {
+  id: string;
+  asset_id: string;
+  app_name: string;
+  version: string | null;
+  license_status: string | null;
+  update_available: boolean | null;
+  created_at: string;
+}
+
+export interface AssetMonitoring {
+  id: string;
+  asset_id: string;
+  checked_at: string;
+  online_status: string | null;
+  patch_status: string | null;
+  antivirus_status: string | null;
+  cpu_pct: number | null;
+  ram_pct: number | null;
+  disk_pct: number | null;
+  alert_summary: string | null;
+  created_at: string;
+}
+
+export interface AssetAssignment {
+  id: string;
+  asset_id: string;
+  assigned_user: string | null;
+  assigned_location: string | null;
+  notes: string | null;
+  assigned_at: string;
+  created_by: string | null;
+}
+
+export interface AssetPhoto {
+  id: string;
+  asset_id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number | null;
+  mime_type: string | null;
   created_at: string;
 }
 
@@ -431,6 +683,7 @@ export const TICKET_STATUSES: TicketStatus[] = [
   "New",
   "Assigned",
   "In Progress",
+  "On Hold",
   "Waiting on Customer",
   "Waiting on Vendor",
   "Waiting on Approval",

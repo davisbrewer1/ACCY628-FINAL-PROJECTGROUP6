@@ -2,19 +2,21 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { createWorkEntry } from "@/app/actions/work-entries";
-import { updateTicketStatus } from "@/app/actions/tickets";
 import { calcSlaStatus, hoursBetween } from "@/lib/calculations";
 import { isOpenTicket } from "@/lib/dashboard-stats";
 import { AlertBanner } from "@/components/AlertBanner";
+import { AIWorkSummary } from "@/components/AIWorkSummary";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
-import { PriorityBadge } from "@/components/PriorityBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
-import { formatDateTime, formatHours } from "@/lib/format";
+import { WeeklyTicketCalendar } from "@/components/WeeklyTicketCalendar";
+import { ExpenseTracker } from "@/components/ExpenseTracker";
+import { WorkTimer, type WorkTimerResult } from "@/components/WorkTimer";
+import { formatHours } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile, ServiceTicket, Technician, WorkEntry } from "@/lib/types";
 import { endOfWeek, isWithinInterval, startOfWeek } from "date-fns";
@@ -31,6 +33,7 @@ export default function TechnicianWorkspacePage() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [hoursWorked, setHoursWorked] = useState("");
+  const [workPerformed, setWorkPerformed] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -92,6 +95,15 @@ export default function TechnicianWorkspacePage() {
     [tickets],
   );
 
+  // Keep completed tickets visible so Complete / flags can be toggled back off.
+  const assignedListed = useMemo(
+    () =>
+      tickets.filter(
+        (t) => isOpenTicket(t.status) || t.status === "Completed",
+      ),
+    [tickets],
+  );
+
   const criticalTickets = useMemo(
     () => assignedOpen.filter((t) => t.priority === "Critical"),
     [assignedOpen],
@@ -133,12 +145,27 @@ export default function TechnicianWorkspacePage() {
     }
   }, [startTime, endTime]);
 
+  function handleTimerComplete({ hours }: WorkTimerResult) {
+    setHoursWorked(hours.toFixed(2));
+  }
+
+  function handleInsertAiSummary(summary: string) {
+    setWorkPerformed((current) => {
+      const existing = current.trim();
+      if (!existing) {
+        return summary.trim();
+      }
+      return `${existing}\n\n${summary.trim()}`;
+    });
+  }
+
   function handleWorkEntry(formData: FormData) {
     if (!technician || !selectedTicket) return;
     formData.set("technician_id", technician.id);
     formData.set("customer_id", selectedTicket.customer_id);
     formData.set("contract_id", selectedTicket.contract_id ?? "");
     formData.set("ticket_id", selectedTicket.id);
+    formData.set("work_performed", workPerformed);
 
     setError(null);
     startTransition(async () => {
@@ -148,21 +175,10 @@ export default function TechnicianWorkspacePage() {
         setStartTime("");
         setEndTime("");
         setHoursWorked("");
+        setWorkPerformed("");
         await loadData();
       } else {
         setError(result.message);
-      }
-    });
-  }
-
-  function handleStatusChange(ticketId: string, status: string) {
-    startTransition(async () => {
-      const result = await updateTicketStatus(ticketId, status);
-      if (result.success) {
-        showToast(result.message);
-        await loadData();
-      } else {
-        showToast(result.message, "error");
       }
     });
   }
@@ -208,83 +224,42 @@ export default function TechnicianWorkspacePage() {
         <StatCard title="Hours this week" value={hoursThisWeek.toFixed(1)} tone="info" />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <div className="card border bg-base-100 shadow-sm">
-          <div className="card-body">
-            <h2 className="card-title text-base">Assigned tickets</h2>
-            {assignedOpen.length === 0 ? (
-              <EmptyState title="No open tickets" description="Assigned tickets will appear here." />
-            ) : (
-              <div className="space-y-3">
-                {assignedOpen.map((ticket) => (
-                  <div key={ticket.id} className="rounded-box border border-base-300 p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="font-medium">{ticket.title}</p>
-                        <p className="text-xs text-base-content/60">{ticket.ticket_number}</p>
-                      </div>
-                      <PriorityBadge priority={ticket.priority ?? "Medium"} />
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <StatusBadge status={ticket.status ?? "New"} />
-                      <StatusBadge
-                        status={calcSlaStatus({
-                          status: ticket.status,
-                          targetResolutionAt: ticket.target_resolution_at,
-                          completedAt: ticket.completed_at,
-                        })}
-                      />
-                    </div>
-                    <p className="mt-2 text-xs text-base-content/60">
-                      Due: {formatDateTime(ticket.target_resolution_at)}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <select
-                        className="select select-bordered select-xs"
-                        defaultValue={ticket.status ?? "New"}
-                        onChange={(e) => handleStatusChange(ticket.id, e.target.value)}
-                      >
-                        <option value="Assigned">Assigned</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Waiting on Customer">Waiting on Customer</option>
-                        <option value="Completed">Completed</option>
-                      </select>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-xs"
-                        onClick={() => setSelectedTicketId(ticket.id)}
-                      >
-                        Log work
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+      {assignedListed.length === 0 ? (
+        <EmptyState
+          title="No open tickets"
+          description="Assigned tickets will appear on your weekly calendar."
+        />
+      ) : (
+        <WeeklyTicketCalendar
+          tickets={assignedListed}
+          technicianId={technician.id}
+          onUpdated={loadData}
+          onLogWork={(ticketId) => setSelectedTicketId(ticketId)}
+        />
+      )}
 
-        <div className="card border bg-base-100 shadow-sm">
-          <div className="card-body">
-            <h2 className="card-title text-base">Record work entry</h2>
-            {error ? <div className="alert alert-error text-sm"><span>{error}</span></div> : null}
-            <form action={handleWorkEntry} className="form-grid grid gap-4">
-              <FormField label="Ticket" htmlFor="ticket_id" required>
-                <select
-                  id="ticket_id"
-                  className="select select-bordered w-full"
-                  required
-                  value={selectedTicketId}
-                  onChange={(e) => setSelectedTicketId(e.target.value)}
-                >
-                  <option value="" disabled>Select ticket</option>
-                  {assignedOpen.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.ticket_number} — {t.title}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
+      <div className="card border bg-base-100 shadow-sm">
+        <div className="card-body space-y-4">
+          <h2 className="card-title text-base">Record work entry</h2>
+          {error ? <div className="alert alert-error text-sm"><span>{error}</span></div> : null}
+          <WorkTimer onComplete={handleTimerComplete} />
+          <form action={handleWorkEntry} className="form-grid grid gap-4">
+            <FormField label="Ticket" htmlFor="ticket_id" required>
+              <select
+                id="ticket_id"
+                className="select select-bordered w-full"
+                required
+                value={selectedTicketId}
+                onChange={(e) => setSelectedTicketId(e.target.value)}
+              >
+                <option value="" disabled>Select ticket</option>
+                {assignedOpen.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.ticket_number} — {t.title}
+                  </option>
+                ))}
+              </select>
+            </FormField>
               <FormField label="Work date" htmlFor="work_date">
                 <input
                   id="work_date"
@@ -316,20 +291,36 @@ export default function TechnicianWorkspacePage() {
                   />
                 </FormField>
               </div>
-              <FormField label="Hours worked" htmlFor="hours_worked" hint="Auto-calculated from start/end times when available.">
+              <FormField
+                label="Hours worked"
+                htmlFor="hours_worked"
+                hint="Filled by the work timer or start/end times. You can edit this value manually."
+              >
                 <input
                   id="hours_worked"
                   name="hours_worked"
                   type="number"
                   min="0"
-                  step="0.25"
+                  step="0.01"
                   className="input input-bordered w-full"
                   value={hoursWorked}
                   onChange={(e) => setHoursWorked(e.target.value)}
                 />
               </FormField>
+              <AIWorkSummary
+                ticketId={selectedTicketId || undefined}
+                technicianId={technician.id}
+                onInsert={handleInsertAiSummary}
+              />
               <FormField label="Work performed" htmlFor="work_performed">
-                <textarea id="work_performed" name="work_performed" className="textarea textarea-bordered w-full" rows={2} />
+                <textarea
+                  id="work_performed"
+                  name="work_performed"
+                  className="textarea textarea-bordered w-full"
+                  rows={4}
+                  value={workPerformed}
+                  onChange={(e) => setWorkPerformed(e.target.value)}
+                />
               </FormField>
               <FormField label="Resolution notes" htmlFor="resolution_notes">
                 <textarea id="resolution_notes" name="resolution_notes" className="textarea textarea-bordered w-full" rows={2} />
@@ -374,7 +365,9 @@ export default function TechnicianWorkspacePage() {
               <FormField label="Update ticket status" htmlFor="ticket_status">
                 <select id="ticket_status" name="ticket_status" className="select select-bordered w-full" defaultValue="In Progress">
                   <option value="In Progress">In Progress</option>
+                  <option value="On Hold">On Hold</option>
                   <option value="Waiting on Customer">Waiting on Customer</option>
+                  <option value="Waiting on Vendor">Waiting on Vendor</option>
                   <option value="Completed">Completed</option>
                 </select>
               </FormField>
@@ -384,7 +377,18 @@ export default function TechnicianWorkspacePage() {
             </form>
           </div>
         </div>
-      </div>
+
+      {selectedTicketId ? (
+        <ExpenseTracker
+          ticketId={selectedTicketId}
+          technicianId={technician.id}
+          ticketLabel={
+            selectedTicket
+              ? `${selectedTicket.ticket_number} — ${selectedTicket.title}`
+              : undefined
+          }
+        />
+      ) : null}
 
       {workEntries.length > 0 ? (
         <div className="card border bg-base-100 shadow-sm">

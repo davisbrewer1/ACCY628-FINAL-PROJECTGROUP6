@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/actions/customers";
+import { insertNotification } from "@/lib/notifications";
 
 export async function createServiceTicket(
   formData: FormData,
@@ -21,6 +22,9 @@ export async function createServiceTicket(
   } = await supabase.auth.getUser();
 
   const ticketNumber = `TKT-${Date.now().toString().slice(-8)}`;
+  const assignedTechnicianId =
+    String(formData.get("assigned_technician_id") ?? "").trim() || null;
+  const priority = String(formData.get("priority") ?? "Medium").trim();
 
   const { error } = await supabase.from("service_tickets").insert({
     ticket_number: ticketNumber,
@@ -29,10 +33,9 @@ export async function createServiceTicket(
     title,
     description: String(formData.get("description") ?? "").trim() || null,
     category: String(formData.get("category") ?? "").trim() || null,
-    priority: String(formData.get("priority") ?? "Medium").trim(),
+    priority,
     service_method: String(formData.get("service_method") ?? "").trim() || null,
-    assigned_technician_id:
-      String(formData.get("assigned_technician_id") ?? "").trim() || null,
+    assigned_technician_id: assignedTechnicianId,
     opened_at: String(formData.get("opened_at") ?? "").trim() || new Date().toISOString(),
     target_response_at:
       String(formData.get("target_response_at") ?? "").trim() || null,
@@ -52,6 +55,21 @@ export async function createServiceTicket(
 
   if (error) {
     return { success: false, message: error.message };
+  }
+
+  if (assignedTechnicianId) {
+    try {
+      await insertNotification(supabase, {
+        technicianId: assignedTechnicianId,
+        type: priority === "Critical" ? "critical_ticket" : "ticket_assigned",
+        message:
+          priority === "Critical"
+            ? `Critical ticket assigned: ${ticketNumber} — ${title}`
+            : `New ticket assigned: ${ticketNumber} — ${title}`,
+      });
+    } catch (notifyError) {
+      console.warn("assignment notification skipped:", notifyError);
+    }
   }
 
   revalidatePath("/service-tickets");
@@ -202,4 +220,42 @@ export async function assignTickets(
     success: true,
     message: `Assigned ${ticketIds.length} ticket${ticketIds.length === 1 ? "" : "s"}.`,
   };
+}
+
+/** Move a ticket onto a calendar day (custom technician schedule). */
+export async function updateTicketSchedule(input: {
+  ticketId: string;
+  scheduledStart: string | null;
+  scheduledWindow?: string | null;
+}): Promise<ActionResult> {
+  const supabase = await createClient();
+
+  if (!input.ticketId) {
+    return { success: false, message: "Ticket is required." };
+  }
+
+  const updates: {
+    scheduled_start: string | null;
+    scheduled_window?: string | null;
+  } = {
+    scheduled_start: input.scheduledStart,
+  };
+
+  if (input.scheduledWindow !== undefined) {
+    updates.scheduled_window = input.scheduledWindow;
+  }
+
+  const { error } = await supabase
+    .from("service_tickets")
+    .update(updates)
+    .eq("id", input.ticketId);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidatePath("/technician");
+  revalidatePath("/service-tickets");
+  revalidatePath("/operations");
+  return { success: true, message: "Schedule updated." };
 }

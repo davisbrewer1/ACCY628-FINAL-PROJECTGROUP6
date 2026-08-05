@@ -4,7 +4,9 @@ const STATUS_STYLES: Record<string, string> = {
   New: "badge-info",
   Assigned: "badge-primary",
   "In Progress": "badge-primary",
+  "On Hold": "badge-warning",
   "Waiting on Customer": "badge-warning",
+  "Waiting on Vendor": "badge-warning",
   "Waiting on Approval": "badge-warning",
   Completed: "badge-success",
   Closed: "badge-ghost",
@@ -21,6 +23,13 @@ const STATUS_STYLES: Record<string, string> = {
   Overdue: "badge-error",
   "Completed on Time": "badge-success",
   "Completed Late": "badge-error",
+  Pending: "badge-warning",
+  Approved: "badge-success",
+  Denied: "badge-error",
+  "Approval Required": "badge-warning",
+  "No Approval Needed": "badge-ghost",
+  Included: "badge-success",
+  Billable: "badge-info",
 };
 
 interface StatusBadgeProps {
