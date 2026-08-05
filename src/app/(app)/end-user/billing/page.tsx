@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { syncLateFees } from "@/app/actions/billing";
 import Link from "next/link";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
@@ -50,6 +51,8 @@ export default function EndUserBillingPage() {
         setLoading(false);
         return;
       }
+
+      await syncLateFees();
 
       const customerId = profileData.customer_id;
       const [co, inv, work] = await Promise.all([
@@ -303,7 +306,8 @@ export default function EndUserBillingPage() {
                       (invoice.recurring_service_fee ?? 0) +
                       (invoice.additional_support_charges ?? 0) +
                       (invoice.software_charges ?? 0) +
-                      (invoice.other_charges ?? 0);
+                      (invoice.other_charges ?? 0) +
+                      (invoice.late_fee_amount ?? 0);
                     return (
                       <tr key={invoice.id}>
                         <td className="font-mono text-sm">{invoice.invoice_number}</td>

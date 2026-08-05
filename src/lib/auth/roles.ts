@@ -44,6 +44,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "service_manager", "account_manager", "billing"],
   },
   {
+    href: "/plans",
+    label: "Plans",
+    icon: "Layers",
+    roles: ["administrator", "service_manager", "account_manager"],
+  },
+  {
     href: "/service-tickets",
     label: "Service Tickets",
     icon: "Ticket",
@@ -189,6 +195,7 @@ export const PROTECTED_ROUTE_PREFIXES = [
   "/operations",
   "/customers",
   "/contracts",
+  "/plans",
   "/service-catalog",
   "/hardware",
   "/service-tickets",

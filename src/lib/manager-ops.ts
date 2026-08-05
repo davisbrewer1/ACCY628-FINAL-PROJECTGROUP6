@@ -3,6 +3,7 @@ import { isOpenTicket, isThisMonth } from "@/lib/dashboard-stats";
 import type {
   Contract,
   Customer,
+  HardwareAsset,
   Invoice,
   Payment,
   Recommendation,
@@ -26,6 +27,17 @@ export interface ContractHoursBurn {
   includedHours: number;
   burnPercent: number | null;
   overageHours: number;
+  overageEstimate: number;
+  isOver: boolean;
+}
+
+export interface ContractAssetBurn {
+  contractId: string;
+  customerId: string;
+  assetSpend: number;
+  includedBudget: number;
+  burnPercent: number | null;
+  overageAmount: number;
   overageEstimate: number;
   isOver: boolean;
 }
@@ -112,6 +124,60 @@ export function computeContractHoursBurns(
         overageEstimate:
           overageHours * (contract.additional_hourly_rate ?? 0),
         isOver: includedHours > 0 && hoursUsed > includedHours,
+      };
+    });
+}
+
+/**
+ * Asset dollars deployed against a contract-length budget.
+ * Counts hardware for the contract's customer when purchase_date falls in
+ * [start_date, end_date]. Assets with a null purchase_date still count when
+ * they are assigned to the customer (customer_id set) so demo inventory
+ * without purchase dates is not silently excluded.
+ */
+export function assetSpendForContract(
+  contract: Contract,
+  assets: HardwareAsset[],
+): number {
+  const start = safeParse(contract.start_date);
+  const end = safeParse(contract.end_date);
+
+  return assets
+    .filter((asset) => asset.customer_id === contract.customer_id)
+    .reduce((sum, asset) => {
+      const purchase = safeParse(asset.purchase_date);
+      if (purchase) {
+        if (start && purchase < start) return sum;
+        if (end && purchase > end) return sum;
+      } else if (!asset.customer_id) {
+        return sum;
+      }
+      return sum + (asset.purchase_cost ?? asset.current_value ?? 0);
+    }, 0);
+}
+
+export function computeContractAssetBurns(
+  contracts: Contract[],
+  assets: HardwareAsset[],
+): ContractAssetBurn[] {
+  return contracts
+    .filter((c) => c.contract_status === "Active")
+    .map((contract) => {
+      const assetSpend = assetSpendForContract(contract, assets);
+      const includedBudget = contract.included_asset_budget ?? 0;
+      const overageAmount = Math.max(0, assetSpend - includedBudget);
+      const burnPercent =
+        includedBudget > 0 ? (assetSpend / includedBudget) * 100 : null;
+      return {
+        contractId: contract.id,
+        customerId: contract.customer_id,
+        assetSpend,
+        includedBudget,
+        burnPercent,
+        overageAmount,
+        overageEstimate:
+          overageAmount * (contract.additional_asset_rate ?? 1),
+        isOver: includedBudget > 0 && assetSpend > includedBudget,
       };
     });
 }

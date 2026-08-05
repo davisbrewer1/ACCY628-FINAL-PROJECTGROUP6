@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, Wallet } from "lucide-react";
-import { createInvoice, recordPayment } from "@/app/actions/billing";
+import { createInvoice, recordPayment, syncLateFees } from "@/app/actions/billing";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
@@ -13,6 +13,7 @@ import { useToast } from "@/components/Toast";
 import { formatCurrency, formatDate, formatHours } from "@/lib/format";
 import {
   cashCollectedMtd,
+  computeContractAssetBurns,
   computeContractHoursBurns,
   getArAgingBucket,
   getOpenArInvoices,
@@ -20,7 +21,14 @@ import {
   summarizeArAging,
 } from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, Invoice, Payment, WorkEntry } from "@/lib/types";
+import type {
+  Contract,
+  Customer,
+  HardwareAsset,
+  Invoice,
+  Payment,
+  WorkEntry,
+} from "@/lib/types";
 
 interface InvoiceRow extends Invoice {
   customerName: string;
@@ -41,27 +49,32 @@ export default function BillingPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
+  const [assets, setAssets] = useState<HardwareAsset[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [prefillAdditional, setPrefillAdditional] = useState("");
+  const [prefillEquipment, setPrefillEquipment] = useState("");
   const [prefillContractId, setPrefillContractId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   async function loadData() {
+    await syncLateFees();
     const supabase = createClient();
-    const [c, co, i, p, w] = await Promise.all([
+    const [c, co, i, p, w, a] = await Promise.all([
       supabase.from("customers").select("*").order("customer_name"),
       supabase.from("contracts").select("*"),
       supabase.from("invoices").select("*").order("invoice_date", { ascending: false }),
       supabase.from("payments").select("*"),
       supabase.from("work_entries").select("*"),
+      supabase.from("hardware_assets").select("*"),
     ]);
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
     setInvoices(i.data ?? []);
     setPayments(p.data ?? []);
     setWorkEntries(w.data ?? []);
+    setAssets((a.data as HardwareAsset[]) ?? []);
     setLoading(false);
   }
 
@@ -92,6 +105,21 @@ export default function BillingPage() {
         };
       });
   }, [contracts, workEntries, customers]);
+
+  const assetOverageOpportunities = useMemo(() => {
+    return computeContractAssetBurns(contracts, assets)
+      .filter((b) => b.isOver && b.overageEstimate > 0)
+      .map((b) => {
+        const contract = contracts.find((c) => c.id === b.contractId);
+        const customer = customers.find((c) => c.id === b.customerId);
+        return {
+          ...b,
+          contractName: contract?.contract_name ?? "Contract",
+          customerName: customer?.customer_name ?? "Customer",
+          customerId: b.customerId,
+        };
+      });
+  }, [contracts, assets, customers]);
 
   const rows: InvoiceRow[] = useMemo(() => {
     const customerMap = new Map(customers.map((c) => [c.id, c.customer_name]));
@@ -134,6 +162,18 @@ export default function BillingPage() {
     setSelectedCustomer(item.customerId);
     setPrefillContractId(item.contractId);
     setPrefillAdditional(item.overageEstimate.toFixed(2));
+    setPrefillEquipment("");
+    setError(null);
+    invoiceDialogRef.current?.showModal();
+  }
+
+  function openAssetOverageInvoice(
+    item: (typeof assetOverageOpportunities)[number],
+  ) {
+    setSelectedCustomer(item.customerId);
+    setPrefillContractId(item.contractId);
+    setPrefillAdditional("");
+    setPrefillEquipment(item.overageEstimate.toFixed(2));
     setError(null);
     invoiceDialogRef.current?.showModal();
   }
@@ -146,6 +186,7 @@ export default function BillingPage() {
         showToast(result.message);
         invoiceDialogRef.current?.close();
         setPrefillAdditional("");
+        setPrefillEquipment("");
         setPrefillContractId("");
         await loadData();
       } else {
@@ -206,7 +247,7 @@ export default function BillingPage() {
       {overageOpportunities.length > 0 ? (
         <div className="card border border-warning/30 bg-warning/5 shadow-sm">
           <div className="card-body gap-3">
-            <h2 className="card-title text-base">Invoice from overages</h2>
+            <h2 className="card-title text-base">Invoice from hour overages</h2>
             <p className="text-sm text-base-content/70">
               Active contracts over included hours this month — create an invoice with estimated overage charges.
             </p>
@@ -237,6 +278,55 @@ export default function BillingPage() {
                           type="button"
                           className="btn btn-primary btn-xs"
                           onClick={() => openOverageInvoice(item)}
+                        >
+                          Create invoice
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {assetOverageOpportunities.length > 0 ? (
+        <div className="card border border-warning/30 bg-warning/5 shadow-sm">
+          <div className="card-body gap-3">
+            <h2 className="card-title text-base">Invoice from asset budget overages</h2>
+            <p className="text-sm text-base-content/70">
+              Deployed hardware purchase cost exceeds the plan asset budget for the contract term —
+              prefills equipment charges using the plan&apos;s additional asset rate.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Contract</th>
+                    <th>Asset spend</th>
+                    <th className="text-right">Est. overage</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {assetOverageOpportunities.map((item) => (
+                    <tr key={`asset-${item.contractId}`}>
+                      <td>{item.customerName}</td>
+                      <td>{item.contractName}</td>
+                      <td>
+                        {formatCurrency(item.assetSpend)} /{" "}
+                        {formatCurrency(item.includedBudget)}
+                      </td>
+                      <td className="text-right font-medium">
+                        {formatCurrency(item.overageEstimate)}
+                      </td>
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-xs"
+                          onClick={() => openAssetOverageInvoice(item)}
                         >
                           Create invoice
                         </button>
@@ -379,7 +469,16 @@ export default function BillingPage() {
               <input id="software_charges" name="software_charges" type="number" min="0" step="0.01" className="input input-bordered w-full" />
             </FormField>
             <FormField label="Equipment charges" htmlFor="equipment_charges">
-              <input id="equipment_charges" name="equipment_charges" type="number" min="0" step="0.01" className="input input-bordered w-full" />
+              <input
+                id="equipment_charges"
+                name="equipment_charges"
+                type="number"
+                min="0"
+                step="0.01"
+                className="input input-bordered w-full"
+                value={prefillEquipment}
+                onChange={(e) => setPrefillEquipment(e.target.value)}
+              />
             </FormField>
             <FormField label="Other charges" htmlFor="other_charges" className="sm:col-span-2">
               <input id="other_charges" name="other_charges" type="number" min="0" step="0.01" className="input input-bordered w-full" />

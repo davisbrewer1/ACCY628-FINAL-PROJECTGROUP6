@@ -121,9 +121,35 @@ export interface Customer {
   created_at: string;
 }
 
+export type PlanPricingModel = "Monthly" | "Yearly" | "Up-front";
+
+export interface ServicePlan {
+  id: string;
+  name: string;
+  description: string | null;
+  pricing_model: PlanPricingModel | string;
+  base_price: number;
+  included_support_hours: number;
+  included_asset_budget: number;
+  additional_hourly_rate: number;
+  additional_asset_rate: number;
+  billing_frequency: string;
+  payment_terms: string | null;
+  invoice_due_days: number | null;
+  setup_fee: number;
+  /** @deprecated Prefer late_fee_percent + late_fee_period_days */
+  late_fee_policy: string | null;
+  late_fee_percent: number;
+  late_fee_period_days: number;
+  revenue_recognition_method: string | null;
+  active: boolean;
+  created_at: string;
+}
+
 export interface Contract {
   id: string;
   customer_id: string;
+  plan_id?: string | null;
   contract_name: string;
   contract_status: string | null;
   start_date: string | null;
@@ -133,7 +159,9 @@ export interface Contract {
   service_plan_name: string | null;
   monthly_recurring_fee: number | null;
   included_support_hours: number | null;
+  included_asset_budget?: number | null;
   additional_hourly_rate: number | null;
+  additional_asset_rate?: number | null;
   emergency_support_rate: number | null;
   onsite_support_rate: number | null;
   remote_support_included: boolean | null;
@@ -148,7 +176,10 @@ export interface Contract {
   payment_terms: string | null;
   invoice_due_days: number | null;
   setup_fee: number | null;
+  /** @deprecated Prefer late_fee_percent + late_fee_period_days */
   late_fee_policy: string | null;
+  late_fee_percent?: number | null;
+  late_fee_period_days?: number | null;
   pass_through_charges_allowed: boolean | null;
   revenue_recognition_method: string | null;
   contract_owner_id: string | null;
@@ -439,6 +470,7 @@ export interface Invoice {
   software_charges: number | null;
   equipment_charges: number | null;
   other_charges: number | null;
+  late_fee_amount?: number | null;
   total_amount: number | null;
   amount_paid: number | null;
   remaining_balance: number | null;

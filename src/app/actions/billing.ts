@@ -3,11 +3,154 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/actions/customers";
+import {
+  computeLateFeeAmount,
+  invoiceSubtotal,
+} from "@/lib/plan-pricing";
 
 function parseNumber(value: FormDataEntryValue | null): number | null {
   if (value == null || value === "") return null;
   const num = Number(value);
   return Number.isNaN(num) || num < 0 ? null : num;
+}
+
+/**
+ * Recompute late fees on open invoices from their contract terms.
+ * Fee = subtotal × percent × floor(daysPastDue / periodDays).
+ */
+export async function syncLateFees(): Promise<
+  ActionResult & { updated?: number }
+> {
+  const supabase = await createClient();
+
+  const { data: invoices, error: invoiceError } = await supabase
+    .from("invoices")
+    .select("*")
+    .in("status", ["Issued", "Partially Paid", "Past Due", "Unpaid"]);
+
+  if (invoiceError) {
+    return { success: false, message: invoiceError.message };
+  }
+
+  const openInvoices = (invoices ?? []).filter(
+    (invoice) =>
+      (invoice.remaining_balance ?? 0) > 0 || (invoice.late_fee_amount ?? 0) > 0,
+  );
+
+  if (openInvoices.length === 0) {
+    return {
+      success: true,
+      message: "No invoices needed late-fee updates.",
+      updated: 0,
+    };
+  }
+
+  const contractIds = [
+    ...new Set(
+      openInvoices
+        .map((invoice) => invoice.contract_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  const { data: contracts, error: contractError } = await supabase
+    .from("contracts")
+    .select("id, late_fee_percent, late_fee_period_days")
+    .in("id", contractIds);
+
+  if (contractError) {
+    return { success: false, message: contractError.message };
+  }
+
+  const contractMap = new Map(
+    (contracts ?? []).map((contract) => [contract.id, contract]),
+  );
+
+  const now = new Date();
+  let updated = 0;
+
+  for (const invoice of openInvoices) {
+    if (!invoice.contract_id) continue;
+    const contract = contractMap.get(invoice.contract_id);
+    if (!contract) continue;
+
+    const subtotal = invoiceSubtotal(invoice);
+    const lateFee = computeLateFeeAmount({
+      dueDate: invoice.due_date,
+      subtotal,
+      percent: contract.late_fee_percent,
+      periodDays: contract.late_fee_period_days,
+      now,
+    });
+
+    const totalAmount = Math.round((subtotal + lateFee) * 100) / 100;
+    const amountPaid = Number(invoice.amount_paid ?? 0);
+    const remaining = Math.max(
+      0,
+      Math.round((totalAmount - amountPaid) * 100) / 100,
+    );
+
+    let status = String(invoice.status ?? "Issued");
+    if (remaining <= 0 && amountPaid > 0) {
+      status = "Paid";
+    } else if (
+      lateFee > 0 ||
+      (invoice.due_date && new Date(invoice.due_date) < now)
+    ) {
+      if (amountPaid > 0 && remaining > 0) {
+        status = "Partially Paid";
+      } else if (
+        invoice.due_date &&
+        new Date(invoice.due_date) < now &&
+        remaining > 0
+      ) {
+        status = "Past Due";
+      }
+    }
+
+    const currentLate = Number(invoice.late_fee_amount ?? 0);
+    const currentTotal = Number(invoice.total_amount ?? 0);
+    const currentRemaining = Number(invoice.remaining_balance ?? 0);
+    if (
+      Math.abs(currentLate - lateFee) < 0.005 &&
+      Math.abs(currentTotal - totalAmount) < 0.005 &&
+      Math.abs(currentRemaining - remaining) < 0.005 &&
+      status === invoice.status
+    ) {
+      continue;
+    }
+
+    const { error: updateError } = await supabase
+      .from("invoices")
+      .update({
+        late_fee_amount: lateFee,
+        total_amount: totalAmount,
+        remaining_balance: remaining,
+        status,
+      })
+      .eq("id", invoice.id);
+
+    if (!updateError) {
+      updated += 1;
+    }
+  }
+
+  if (updated > 0) {
+    revalidatePath("/billing");
+    revalidatePath("/portal");
+    revalidatePath("/end-user/billing");
+    revalidatePath("/operations");
+    revalidatePath("/reports");
+  }
+
+  return {
+    success: true,
+    message:
+      updated > 0
+        ? `Applied late fees on ${updated} invoice${updated === 1 ? "" : "s"}.`
+        : "Late fees already up to date.",
+    updated,
+  };
 }
 
 export async function createInvoice(formData: FormData): Promise<ActionResult> {
@@ -39,35 +182,63 @@ export async function createInvoice(formData: FormData): Promise<ActionResult> {
   }
 
   const recurring = parseNumber(formData.get("recurring_service_fee")) ?? 0;
-  const additional = parseNumber(formData.get("additional_support_charges")) ?? 0;
+  const additional =
+    parseNumber(formData.get("additional_support_charges")) ?? 0;
   const software = parseNumber(formData.get("software_charges")) ?? 0;
   const equipment = parseNumber(formData.get("equipment_charges")) ?? 0;
   const other = parseNumber(formData.get("other_charges")) ?? 0;
-  const totalAmount = recurring + additional + software + equipment + other;
+  const subtotal = recurring + additional + software + equipment + other;
 
-  if (totalAmount < 0) {
+  if (subtotal < 0) {
     return { success: false, message: "Invoice total cannot be negative." };
   }
+
+  const dueDate = String(formData.get("due_date") ?? "").trim() || null;
+  const { data: contract } = await supabase
+    .from("contracts")
+    .select("late_fee_percent, late_fee_period_days")
+    .eq("id", contractId)
+    .maybeSingle();
+
+  const lateFee = computeLateFeeAmount({
+    dueDate,
+    subtotal,
+    percent: contract?.late_fee_percent,
+    periodDays: contract?.late_fee_period_days,
+  });
+  const totalAmount = Math.round((subtotal + lateFee) * 100) / 100;
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  let status = String(formData.get("status") ?? "Draft").trim();
+  if (
+    status !== "Draft" &&
+    status !== "Pending Approval" &&
+    dueDate &&
+    new Date(dueDate) < new Date() &&
+    totalAmount > 0
+  ) {
+    status = "Past Due";
+  }
 
   const { error } = await supabase.from("invoices").insert({
     invoice_number: invoiceNumber,
     customer_id: customerId,
     contract_id: contractId,
     invoice_date: String(formData.get("invoice_date") ?? "").trim() || null,
-    due_date: String(formData.get("due_date") ?? "").trim() || null,
+    due_date: dueDate,
     recurring_service_fee: recurring,
     additional_support_charges: additional,
     software_charges: software,
     equipment_charges: equipment,
     other_charges: other,
+    late_fee_amount: lateFee,
     total_amount: totalAmount,
     amount_paid: 0,
     remaining_balance: totalAmount,
-    status: String(formData.get("status") ?? "Draft").trim(),
+    status,
     created_by: user?.id ?? null,
   });
 
@@ -89,8 +260,14 @@ export async function recordPayment(formData: FormData): Promise<ActionResult> {
   const paymentAmount = parseNumber(formData.get("payment_amount"));
 
   if (!invoiceId || paymentAmount == null || paymentAmount <= 0) {
-    return { success: false, message: "Invoice and a positive payment amount are required." };
+    return {
+      success: false,
+      message: "Invoice and a positive payment amount are required.",
+    };
   }
+
+  // Refresh late fees before accepting payment so balance is current.
+  await syncLateFees();
 
   const { data: invoice, error: fetchError } = await supabase
     .from("invoices")
@@ -137,7 +314,8 @@ export async function recordPayment(formData: FormData): Promise<ActionResult> {
   if (newRemaining <= 0) {
     status = "Paid";
   } else if (newPaid > 0) {
-    status = "Partially Paid";
+    const due = invoice.due_date ? new Date(invoice.due_date) : null;
+    status = due && due < new Date() ? "Past Due" : "Partially Paid";
   }
 
   const { error: updateError } = await supabase
@@ -155,6 +333,7 @@ export async function recordPayment(formData: FormData): Promise<ActionResult> {
 
   revalidatePath("/billing");
   revalidatePath("/portal");
+  revalidatePath("/end-user/billing");
   return { success: true, message: "Payment recorded successfully." };
 }
 
