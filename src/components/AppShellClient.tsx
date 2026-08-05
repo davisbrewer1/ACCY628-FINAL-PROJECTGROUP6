@@ -10,6 +10,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Executive Dashboard",
   "/operations": "Manager Command Center",
   "/customers": "Customers",
+  "/crm": "CRM / Accounts",
   "/contracts": "Contracts",
   "/service-catalog": "Service Catalog",
   "/hardware": "Hardware Assets",

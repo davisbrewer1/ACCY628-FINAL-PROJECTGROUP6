@@ -21,6 +21,9 @@ const STATUS_STYLES: Record<string, string> = {
   Overdue: "badge-error",
   "Completed on Time": "badge-success",
   "Completed Late": "badge-error",
+  Healthy: "badge-success",
+  Watch: "badge-warning",
+  "At risk": "badge-error",
 };
 
 interface StatusBadgeProps {
