@@ -14,11 +14,22 @@ function isAuthRoute(pathname: string): boolean {
   );
 }
 
+function isServerActionRequest(request: NextRequest): boolean {
+  return request.headers.has("next-action");
+}
+
 export async function middleware(request: NextRequest) {
   const { supabaseResponse, user, supabase } = await updateSession(request);
   const { pathname } = request.nextUrl;
 
   if (isProtectedRoute(pathname) && !user) {
+    // Never redirect Server Actions to an HTML login page — that breaks the
+    // action protocol and surfaces "An unexpected response was received from the server."
+    // Let the action run so it can return a normal { success: false } payload.
+    if (isServerActionRequest(request)) {
+      return supabaseResponse;
+    }
+
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("redirectTo", pathname);
@@ -26,6 +37,11 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isAuthRoute(pathname) && user) {
+    // Same rule: do not HTML-redirect an in-flight Server Action away from /login.
+    if (isServerActionRequest(request)) {
+      return supabaseResponse;
+    }
+
     let dashboardPath = "/dashboard";
 
     const { data: profile } = await supabase

@@ -127,6 +127,66 @@ export function hoursBetween(
   return Math.round((diffMinutes / 60) * 100) / 100;
 }
 
+/** Calendar days before an open ticket is considered past due by priority. */
+export const WORK_OUTSTANDING_DUE_DAYS: Record<string, number> = {
+  Critical: 0,
+  High: 1,
+  Medium: 3,
+  Low: 4,
+};
+
+export function getWorkOutstandingDueDays(
+  priority: string | null | undefined,
+): number {
+  return WORK_OUTSTANDING_DUE_DAYS[priority ?? "Medium"] ?? 3;
+}
+
+export interface WorkOutstandingInput {
+  status: TicketStatus | string | null | undefined;
+  priority: string | null | undefined;
+  openedAt: string | Date | null | undefined;
+  createdAt?: string | Date | null | undefined;
+  now?: Date;
+}
+
+/**
+ * True when an open ticket has remained incomplete past the priority due window.
+ * Critical (0 days) notifies immediately while still open.
+ */
+export function isWorkOutstandingPastDue({
+  status,
+  priority,
+  openedAt,
+  createdAt,
+  now = new Date(),
+}: WorkOutstandingInput): boolean {
+  const normalizedStatus = status ?? "";
+  if (COMPLETED_STATUSES.has(normalizedStatus)) {
+    return false;
+  }
+
+  const opened = openedAt ?? createdAt;
+  if (!opened) return false;
+
+  const openedDate = toDate(opened);
+  if (Number.isNaN(openedDate.getTime())) return false;
+
+  const dueDays = getWorkOutstandingDueDays(priority);
+  const dueAt = new Date(openedDate.getTime() + dueDays * 24 * 60 * 60 * 1000);
+  return now.getTime() >= dueAt.getTime();
+}
+
+export function daysOpen(
+  openedAt: string | Date | null | undefined,
+  now = new Date(),
+): number | null {
+  if (!openedAt) return null;
+  const opened = toDate(openedAt);
+  if (Number.isNaN(opened.getTime())) return null;
+  const ms = Math.max(0, now.getTime() - opened.getTime());
+  return Math.floor(ms / (24 * 60 * 60 * 1000));
+}
+
 function parseTimeToMinutes(time: string): number | null {
   const trimmed = time.trim();
   const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);

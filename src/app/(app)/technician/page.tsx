@@ -1,25 +1,90 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { createWorkEntry } from "@/app/actions/work-entries";
-import { calcSlaStatus, hoursBetween } from "@/lib/calculations";
+import { createPtoRequest, cancelPtoRequest } from "@/app/actions/pto";
+import { createWorkEntry, updateWorkEntry } from "@/app/actions/work-entries";
+import { updateTicketSchedule, updateTicketStatus } from "@/app/actions/tickets";
+import { hoursBetween } from "@/lib/calculations";
 import { isOpenTicket } from "@/lib/dashboard-stats";
 import { AlertBanner } from "@/components/AlertBanner";
-import { AIWorkSummary } from "@/components/AIWorkSummary";
-import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
-import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
+import {
+  TechnicianScheduleCalendar,
+  type CalendarMode,
+} from "@/components/technician/TechnicianScheduleCalendar";
+import {
+  WorkEntryModal,
+  type WorkEntryModalPhase,
+} from "@/components/technician/WorkEntryModal";
 import { useToast } from "@/components/Toast";
-import { WeeklyTicketCalendar } from "@/components/WeeklyTicketCalendar";
-import { ExpenseTracker } from "@/components/ExpenseTracker";
-import { WorkTimer, type WorkTimerResult } from "@/components/WorkTimer";
 import { formatHours } from "@/lib/format";
+import {
+  DEFAULT_ANNUAL_PTO_HOURS,
+  DEFAULT_TECH_HOURLY_RATE,
+  formatCurrency,
+  getCurrentPayPeriod,
+  sumHoursInRange,
+} from "@/lib/technician-payroll";
+import {
+  getWorkWeekDays,
+  parseScheduledSlot,
+} from "@/lib/technician-schedule";
 import { createClient } from "@/lib/supabase/client";
-import type { Profile, ServiceTicket, Technician, WorkEntry } from "@/lib/types";
-import { endOfWeek, isWithinInterval, startOfWeek } from "date-fns";
+import type {
+  Profile,
+  ServiceTicket,
+  Technician,
+  TechnicianPtoRequest,
+  WorkEntry,
+} from "@/lib/types";
+import {
+  eachDayOfInterval,
+  endOfWeek,
+  format,
+  isSameDay,
+  parseISO,
+  startOfWeek,
+  startOfYear,
+} from "date-fns";
+import { ClipboardPlus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+
+function TechStat({
+  title,
+  value,
+  hint,
+  tone = "default",
+}: {
+  title: string;
+  value: string | number;
+  hint?: string;
+  tone?: "default" | "danger" | "warning" | "info" | "pto";
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "border-rose-500/30 bg-rose-500/10"
+      : tone === "warning"
+        ? "border-amber-400/30 bg-amber-400/10"
+        : tone === "info"
+          ? "border-cyan-400/30 bg-cyan-500/10"
+          : tone === "pto"
+            ? "border-violet-400/30 bg-violet-500/10"
+            : "border-cyan-500/20 bg-slate-900/70";
+
+  return (
+    <div className={`rounded-xl border p-4 shadow-sm ${toneClass}`}>
+      <p className="text-sm font-medium text-slate-300">{title}</p>
+      <p className="mt-1 text-2xl font-semibold tracking-tight text-white">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-slate-400">{hint}</p> : null}
+    </div>
+  );
+}
+
+function nowTimeValue(): string {
+  return format(new Date(), "HH:mm");
+}
 
 export default function TechnicianWorkspacePage() {
   const { activeRole } = useDemoRole();
@@ -29,15 +94,36 @@ export default function TechnicianWorkspacePage() {
   const [technician, setTechnician] = useState<Technician | null>(null);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
+  const [ptoRequests, setPtoRequests] = useState<TechnicianPtoRequest[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState("");
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [workModalOpen, setWorkModalOpen] = useState(false);
+  const [workModalPhase, setWorkModalPhase] =
+    useState<WorkEntryModalPhase>("timer");
+  const [workDate, setWorkDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [calendarAnchor, setCalendarAnchor] = useState(() => new Date());
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>("week");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [hoursWorked, setHoursWorked] = useState("");
   const [workPerformed, setWorkPerformed] = useState("");
+  const [serviceMethod, setServiceMethod] = useState("On-site");
+  const [ticketStatus, setTicketStatus] = useState("In Progress");
+  const [liveSessionTicketId, setLiveSessionTicketId] = useState<string | null>(
+    null,
+  );
+  const [sessionPaused, setSessionPaused] = useState(false);
+  const [sessionEnRoute, setSessionEnRoute] = useState(false);
+  const [enRouteTicketId, setEnRouteTicketId] = useState<string | null>(null);
+  const [bankedWorkedSeconds, setBankedWorkedSeconds] = useState(0);
+  const [segmentStartedAt, setSegmentStartedAt] = useState<number | null>(null);
+  const [pauseCount, setPauseCount] = useState(0);
+  const [hoursLockedFromSession, setHoursLockedFromSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ptoError, setPtoError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const supabase = createClient();
     const {
       data: { user },
@@ -65,7 +151,7 @@ export default function TechnicianWorkspacePage() {
     setTechnician(techData);
 
     if (techData) {
-      const [t, w] = await Promise.all([
+      const [t, w, p] = await Promise.all([
         supabase
           .from("service_tickets")
           .select("*")
@@ -76,17 +162,42 @@ export default function TechnicianWorkspacePage() {
           .select("*")
           .eq("technician_id", techData.id)
           .order("work_date", { ascending: false }),
+        supabase
+          .from("technician_pto_requests")
+          .select("*")
+          .eq("technician_id", techData.id)
+          .order("start_date", { ascending: false }),
       ]);
       setTickets(t.data ?? []);
       setWorkEntries(w.data ?? []);
+      setPtoRequests(p.data ?? []);
     }
 
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    void loadData();
+  }, [loadData]);
+
+  // Keep top stats / calendar in sync as tickets are assigned or completed.
+  useEffect(() => {
+    const refresh = () => {
+      void loadData();
+    };
+    const intervalId = window.setInterval(refresh, 15000);
+    const onFocus = () => refresh();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [loadData]);
 
   const selectedTicket = tickets.find((t) => t.id === selectedTicketId);
 
@@ -95,68 +206,280 @@ export default function TechnicianWorkspacePage() {
     [tickets],
   );
 
-  // Keep completed tickets visible so Complete / flags can be toggled back off.
-  const assignedListed = useMemo(
+  /** Open work plus completed/closed items that still have a calendar slot. */
+  const calendarTickets = useMemo(
     () =>
-      tickets.filter(
-        (t) => isOpenTicket(t.status) || t.status === "Completed",
-      ),
-    [tickets],
-  );
-
-  const criticalTickets = useMemo(
-    () => assignedOpen.filter((t) => t.priority === "Critical"),
-    [assignedOpen],
-  );
-
-  const slaAtRisk = useMemo(
-    () =>
-      assignedOpen.filter((t) => {
-        const sla = calcSlaStatus({
-          status: t.status,
-          targetResolutionAt: t.target_resolution_at,
-          completedAt: t.completed_at,
-        });
-        return sla === "Approaching Deadline" || sla === "Overdue";
+      tickets.filter((t) => {
+        if (isOpenTicket(t.status)) return true;
+        const done = t.status === "Completed" || t.status === "Closed";
+        return done && Boolean(t.scheduled_start && t.scheduled_window);
       }),
-    [assignedOpen],
+    [tickets],
   );
 
   const hoursThisWeek = useMemo(() => {
     const now = new Date();
-    return workEntries
-      .filter((e) => {
-        if (!e.work_date) return false;
-        const date = new Date(e.work_date);
-        return isWithinInterval(date, {
-          start: startOfWeek(now),
-          end: endOfWeek(now),
-        });
-      })
-      .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
+    return sumHoursInRange(
+      workEntries,
+      startOfWeek(now, { weekStartsOn: 1 }),
+      endOfWeek(now, { weekStartsOn: 1 }),
+    );
   }, [workEntries]);
 
+  const hoursScheduledThisWeek = useMemo(() => {
+    const now = new Date();
+    const weekDays = getWorkWeekDays(now);
+    return assignedOpen.reduce((sum, ticket) => {
+      const parsed = parseScheduledSlot(ticket);
+      if (!parsed) return sum;
+      if (!weekDays.some((day) => isSameDay(day, parsed.day))) return sum;
+      return sum + parsed.durationHours;
+    }, 0);
+  }, [assignedOpen]);
+
+  const payPeriod = useMemo(() => getCurrentPayPeriod(), []);
+  const payPeriodHours = useMemo(
+    () => sumHoursInRange(workEntries, payPeriod.start, payPeriod.end),
+    [workEntries, payPeriod],
+  );
+
+  const payRate = DEFAULT_TECH_HOURLY_RATE;
+  const payPeriodEarnings = payPeriodHours * payRate;
+
+  const annualPtoAllowance =
+    Number(technician?.annual_pto_hours) || DEFAULT_ANNUAL_PTO_HOURS;
+
+  const ptoUsedOrPending = useMemo(() => {
+    const yearStart = startOfYear(new Date());
+    return ptoRequests
+      .filter((request) => {
+        if (request.status === "Denied" || request.status === "Cancelled") return false;
+        const start = parseISO(request.start_date);
+        return start >= yearStart;
+      })
+      .reduce((sum, request) => sum + Number(request.hours_requested ?? 0), 0);
+  }, [ptoRequests]);
+
+  const ptoRemaining = Math.max(0, annualPtoAllowance - ptoUsedOrPending);
+
+  const ptoDates = useMemo(() => {
+    const dates = new Set<string>();
+    for (const request of ptoRequests) {
+      if (request.status === "Denied" || request.status === "Cancelled") continue;
+      const start = parseISO(request.start_date);
+      const end = parseISO(request.end_date);
+      for (const day of eachDayOfInterval({ start, end })) {
+        dates.add(format(day, "yyyy-MM-dd"));
+      }
+    }
+    return dates;
+  }, [ptoRequests]);
+
   useEffect(() => {
+    if (hoursLockedFromSession) return;
     if (startTime && endTime) {
       const hours = hoursBetween(startTime, endTime);
       if (hours != null) {
         setHoursWorked(hours.toString());
       }
     }
-  }, [startTime, endTime]);
+  }, [startTime, endTime, hoursLockedFromSession]);
 
-  function handleTimerComplete({ hours }: WorkTimerResult) {
-    setHoursWorked(hours.toFixed(2));
+  function resetSessionTimer() {
+    setSessionPaused(false);
+    setSessionEnRoute(false);
+    setBankedWorkedSeconds(0);
+    setSegmentStartedAt(null);
+    setPauseCount(0);
+    setHoursLockedFromSession(false);
   }
 
-  function handleInsertAiSummary(summary: string) {
-    setWorkPerformed((current) => {
-      const existing = current.trim();
-      if (!existing) {
-        return summary.trim();
+  function patchTicketLocal(
+    ticketId: string,
+    patch: Partial<ServiceTicket>,
+  ) {
+    setTickets((prev) =>
+      prev.map((ticket) =>
+        ticket.id === ticketId ? { ...ticket, ...patch } : ticket,
+      ),
+    );
+  }
+
+  function currentActiveSeconds(): number {
+    let total = bankedWorkedSeconds;
+    if (!sessionPaused && segmentStartedAt != null) {
+      total += Math.max(0, Math.floor((Date.now() - segmentStartedAt) / 1000));
+    }
+    return total;
+  }
+
+  function openBlankWorkEntry() {
+    setEditingEntryId(null);
+    setSelectedTicketId("");
+    setWorkDate(new Date().toISOString().slice(0, 10));
+    setStartTime("");
+    setEndTime("");
+    setHoursWorked("");
+    setWorkPerformed("");
+    setServiceMethod("On-site");
+    setTicketStatus("In Progress");
+    setLiveSessionTicketId(null);
+    resetSessionTimer();
+    setWorkModalPhase("form");
+    setError(null);
+    setWorkModalOpen(true);
+  }
+
+  function openWorkEntryForTicket(ticketId: string) {
+    const ticket = assignedOpen.find((item) => item.id === ticketId);
+    if (!ticket) return;
+
+    setEditingEntryId(null);
+    setSelectedTicketId(ticketId);
+    setWorkPerformed("");
+    setServiceMethod("On-site");
+    setTicketStatus("In Progress");
+    setError(null);
+    setWorkModalPhase("timer");
+
+    // Resume an in-progress on-site or en-route session for this ticket.
+    if (
+      liveSessionTicketId === ticketId &&
+      ((startTime && !endTime) || sessionEnRoute)
+    ) {
+      setWorkModalOpen(true);
+      return;
+    }
+
+    if (enRouteTicketId === ticketId && !startTime) {
+      setSessionEnRoute(true);
+      setLiveSessionTicketId(ticketId);
+      setWorkModalOpen(true);
+      return;
+    }
+
+    setLiveSessionTicketId(null);
+    resetSessionTimer();
+    setWorkDate(format(new Date(), "yyyy-MM-dd"));
+    setStartTime("");
+    setEndTime("");
+    setHoursWorked("");
+    setWorkModalOpen(true);
+  }
+
+  function openWorkEntryForEdit(entry: WorkEntry) {
+    setEditingEntryId(entry.id);
+    setSelectedTicketId(entry.ticket_id);
+    setWorkDate(entry.work_date ?? new Date().toISOString().slice(0, 10));
+    setStartTime(entry.start_time ? String(entry.start_time).slice(0, 5) : "");
+    setEndTime(entry.end_time ? String(entry.end_time).slice(0, 5) : "");
+    setHoursWorked(
+      entry.hours_worked != null ? String(entry.hours_worked) : "",
+    );
+    setWorkPerformed(entry.work_performed ?? "");
+    setServiceMethod(entry.service_method ?? "On-site");
+    setTicketStatus("");
+    setLiveSessionTicketId(null);
+    setEnRouteTicketId(null);
+    resetSessionTimer();
+    setWorkModalPhase("form");
+    setError(null);
+    setWorkModalOpen(true);
+  }
+
+  function handleEnRoute() {
+    if (!selectedTicketId || startTime) return;
+    setSessionEnRoute(true);
+    setEnRouteTicketId(selectedTicketId);
+    setLiveSessionTicketId(selectedTicketId);
+    setTicketStatus("In Progress");
+    setServiceMethod("On-site");
+    patchTicketLocal(selectedTicketId, { status: "In Progress" });
+    startTransition(async () => {
+      const result = await updateTicketStatus(selectedTicketId, "In Progress");
+      if (!result.success) {
+        showToast(result.message, "error");
+      } else {
+        showToast("Marked on the way to the job.");
+        await loadData();
       }
-      return `${existing}\n\n${summary.trim()}`;
     });
+  }
+
+  function handleStartOnSite() {
+    const startedAt = nowTimeValue();
+    setWorkDate(format(new Date(), "yyyy-MM-dd"));
+    setStartTime(startedAt);
+    setEndTime("");
+    setHoursWorked("");
+    setServiceMethod("On-site");
+    setTicketStatus("In Progress");
+    setLiveSessionTicketId(selectedTicketId || null);
+    setSessionEnRoute(false);
+    setSessionPaused(false);
+    setBankedWorkedSeconds(0);
+    setSegmentStartedAt(Date.now());
+    setPauseCount(0);
+    setHoursLockedFromSession(false);
+    if (selectedTicketId) {
+      patchTicketLocal(selectedTicketId, { status: "In Progress" });
+      if (enRouteTicketId === selectedTicketId) {
+        setEnRouteTicketId(null);
+      }
+    }
+  }
+
+  function handlePauseJob() {
+    if (!startTime || endTime || sessionPaused || segmentStartedAt == null) return;
+    const segmentSeconds = Math.max(
+      0,
+      Math.floor((Date.now() - segmentStartedAt) / 1000),
+    );
+    setBankedWorkedSeconds((prev) => prev + segmentSeconds);
+    setSegmentStartedAt(null);
+    setSessionPaused(true);
+    setPauseCount((prev) => prev + 1);
+    setTicketStatus("In Progress");
+  }
+
+  function handleResumeJob() {
+    if (!startTime || endTime || !sessionPaused) return;
+    setSessionPaused(false);
+    setSegmentStartedAt(Date.now());
+    setTicketStatus("In Progress");
+  }
+
+  function handleEndJob() {
+    if (!startTime) return;
+    const endedAt = nowTimeValue();
+    const activeSeconds = currentActiveSeconds();
+    const hours = Math.round((activeSeconds / 3600) * 100) / 100;
+    setEndTime(endedAt);
+    setHoursWorked(hours.toString());
+    setHoursLockedFromSession(true);
+    setSessionPaused(false);
+    setSessionEnRoute(false);
+    setSegmentStartedAt(null);
+    setBankedWorkedSeconds(activeSeconds);
+    setTicketStatus("Completed");
+    setLiveSessionTicketId(null);
+    setEnRouteTicketId(null);
+    if (selectedTicketId) {
+      // Update top stats immediately; save persists via work entry.
+      patchTicketLocal(selectedTicketId, {
+        status: "Completed",
+        completed_at: new Date().toISOString(),
+      });
+    }
+    if (pauseCount > 0) {
+      setWorkPerformed((prev) => {
+        const note = `On-site visit included ${pauseCount} pause${pauseCount === 1 ? "" : "s"} (time away excluded from hours).`;
+        if (!prev.trim()) return note;
+        if (prev.includes("pause")) return prev;
+        return `${prev.trim()}\n${note}`;
+      });
+    }
+    setWorkModalPhase("form");
   }
 
   function handleWorkEntry(formData: FormData) {
@@ -165,13 +488,22 @@ export default function TechnicianWorkspacePage() {
     formData.set("customer_id", selectedTicket.customer_id);
     formData.set("contract_id", selectedTicket.contract_id ?? "");
     formData.set("ticket_id", selectedTicket.id);
-    formData.set("work_performed", workPerformed);
+    if (editingEntryId) {
+      formData.set("entry_id", editingEntryId);
+    }
 
     setError(null);
     startTransition(async () => {
-      const result = await createWorkEntry(formData);
+      const result = editingEntryId
+        ? await updateWorkEntry(formData)
+        : await createWorkEntry(formData);
       if (result.success) {
         showToast(result.message);
+        setWorkModalOpen(false);
+        setEditingEntryId(null);
+        setLiveSessionTicketId(null);
+        resetSessionTimer();
+        setWorkModalPhase("timer");
         setStartTime("");
         setEndTime("");
         setHoursWorked("");
@@ -179,6 +511,67 @@ export default function TechnicianWorkspacePage() {
         await loadData();
       } else {
         setError(result.message);
+      }
+    });
+  }
+
+  function handleMoveTicket(input: {
+    ticketId: string;
+    scheduledStart: string;
+    scheduledWindow: string;
+    swapTicketId?: string | null;
+    swapScheduledStart?: string | null;
+    swapScheduledWindow?: string | null;
+  }) {
+    startTransition(async () => {
+      try {
+        const result = await updateTicketSchedule({
+          ticketId: input.ticketId,
+          scheduledStart: input.scheduledStart,
+          scheduledWindow: input.scheduledWindow,
+          swapTicketId: input.swapTicketId ?? null,
+          swapScheduledStart: input.swapScheduledStart ?? null,
+          swapScheduledWindow: input.swapScheduledWindow ?? null,
+        });
+        if (result.success) {
+          showToast(result.message);
+          await loadData();
+        } else {
+          showToast(result.message, "error");
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Could not update the schedule. Please refresh and try again.";
+        showToast(message, "error");
+      }
+    });
+  }
+
+  function handlePtoRequest(formData: FormData) {
+    if (!technician) return;
+    formData.set("technician_id", technician.id);
+    setPtoError(null);
+    startTransition(async () => {
+      const result = await createPtoRequest(formData);
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+      } else {
+        setPtoError(result.message);
+      }
+    });
+  }
+
+  function handleCancelPto(requestId: string) {
+    startTransition(async () => {
+      const result = await cancelPtoRequest(requestId);
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+      } else {
+        showToast(result.message, "error");
       }
     });
   }
@@ -196,208 +589,248 @@ export default function TechnicianWorkspacePage() {
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <span className="loading loading-spinner loading-lg text-primary" />
+        <span className="loading loading-spinner loading-lg text-cyan-400" />
       </div>
     );
   }
 
   if (!technician) {
     return (
-      <EmptyState
-        title="No technician profile linked"
-        description="Your account is not linked to a technician record. Contact an administrator to assign your technician profile."
-      />
+      <div className="rounded-xl border border-cyan-500/20 bg-slate-900/80 p-8 text-center text-slate-200">
+        <h3 className="text-lg font-semibold text-white">No technician profile linked</h3>
+        <p className="mt-2 text-sm text-slate-400">
+          Your account is not linked to a technician record. Contact an administrator to assign
+          your technician profile.
+        </p>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-slate-100">
       <PageHeader
         title={`Welcome, ${profile?.full_name ?? technician.technician_name}`}
-        description="View assigned tickets, record work, and update ticket status."
+        description="Schedule tickets, request PTO, log work, and track pay-period hours."
+        action={
+          <button
+            type="button"
+            className="btn border-0 bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+            onClick={openBlankWorkEntry}
+          >
+            <ClipboardPlus className="size-4" aria-hidden="true" />
+            Log work
+          </button>
+        }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Open assignments" value={assignedOpen.length} />
-        <StatCard title="Critical tickets" value={criticalTickets.length} tone="danger" />
-        <StatCard title="SLA at risk" value={slaAtRisk.length} tone="warning" />
-        <StatCard title="Hours this week" value={hoursThisWeek.toFixed(1)} tone="info" />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <TechStat title="Open assignments" value={assignedOpen.length} />
+        <TechStat
+          title="Hours Completed this Week"
+          value={hoursThisWeek.toFixed(1)}
+          tone="info"
+          hint="Logged work Mon–Sun · refreshes automatically"
+        />
+        <TechStat
+          title="Remaining Hours Scheduled this Week"
+          value={hoursScheduledThisWeek.toFixed(1)}
+          hint="Open tickets scheduled Mon–Fri this week"
+        />
       </div>
 
-      {assignedListed.length === 0 ? (
-        <EmptyState
-          title="No open tickets"
-          description="Assigned tickets will appear on your weekly calendar."
+      <div className="rounded-xl border border-cyan-500/20 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-4 shadow-lg sm:p-5">
+        <TechnicianScheduleCalendar
+          tickets={calendarTickets}
+          anchor={calendarAnchor}
+          mode={calendarMode}
+          onAnchorChange={setCalendarAnchor}
+          onModeChange={setCalendarMode}
+          selectedTicketId={selectedTicketId}
+          onSelectTicket={openWorkEntryForTicket}
+          onMoveTicket={handleMoveTicket}
+          ptoDates={ptoDates}
+          busy={isPending}
+          enRouteTicketId={enRouteTicketId}
         />
-      ) : (
-        <WeeklyTicketCalendar
-          tickets={assignedListed}
-          technicianId={technician.id}
-          onUpdated={loadData}
-          onLogWork={(ticketId) => setSelectedTicketId(ticketId)}
-        />
-      )}
+      </div>
 
-      <div className="card border bg-base-100 shadow-sm">
-        <div className="card-body space-y-4">
-          <h2 className="card-title text-base">Record work entry</h2>
-          {error ? <div className="alert alert-error text-sm"><span>{error}</span></div> : null}
-          <WorkTimer onComplete={handleTimerComplete} />
-          <form action={handleWorkEntry} className="form-grid grid gap-4">
-            <FormField label="Ticket" htmlFor="ticket_id" required>
-              <select
-                id="ticket_id"
-                className="select select-bordered w-full"
+      <div className="rounded-xl border border-violet-400/20 bg-slate-900/80 shadow-sm">
+        <div className="space-y-4 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-white">Request PTO</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Pending and approved requests reduce your remaining balance.
+              </p>
+            </div>
+            <div className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-3 text-right">
+              <p className="text-xs font-medium uppercase tracking-wide text-violet-200/80">
+                PTO remaining
+              </p>
+              <p className="mt-1 text-2xl font-semibold text-white">
+                {ptoRemaining.toFixed(0)} hrs
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                of {annualPtoAllowance} hrs annual allotment
+              </p>
+            </div>
+          </div>
+          {ptoError ? (
+            <div className="alert alert-error text-sm">
+              <span>{ptoError}</span>
+            </div>
+          ) : null}
+          <form action={handlePtoRequest} className="form-grid grid gap-4 md:grid-cols-2">
+            <FormField label="Start date" htmlFor="start_date" required>
+              <input
+                id="start_date"
+                name="start_date"
+                type="date"
                 required
-                value={selectedTicketId}
-                onChange={(e) => setSelectedTicketId(e.target.value)}
-              >
-                <option value="" disabled>Select ticket</option>
-                {assignedOpen.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.ticket_number} — {t.title}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-              <FormField label="Work date" htmlFor="work_date">
-                <input
-                  id="work_date"
-                  name="work_date"
-                  type="date"
-                  className="input input-bordered w-full"
-                  defaultValue={new Date().toISOString().slice(0, 10)}
-                />
-              </FormField>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Start time" htmlFor="start_time">
-                  <input
-                    id="start_time"
-                    name="start_time"
-                    type="time"
-                    className="input input-bordered w-full"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                  />
-                </FormField>
-                <FormField label="End time" htmlFor="end_time">
-                  <input
-                    id="end_time"
-                    name="end_time"
-                    type="time"
-                    className="input input-bordered w-full"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                  />
-                </FormField>
-              </div>
-              <FormField
-                label="Hours worked"
-                htmlFor="hours_worked"
-                hint="Filled by the work timer or start/end times. You can edit this value manually."
-              >
-                <input
-                  id="hours_worked"
-                  name="hours_worked"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="input input-bordered w-full"
-                  value={hoursWorked}
-                  onChange={(e) => setHoursWorked(e.target.value)}
-                />
-              </FormField>
-              <AIWorkSummary
-                ticketId={selectedTicketId || undefined}
-                technicianId={technician.id}
-                onInsert={handleInsertAiSummary}
+                className="input input-bordered w-full border-slate-600 bg-slate-950"
               />
-              <FormField label="Work performed" htmlFor="work_performed">
-                <textarea
-                  id="work_performed"
-                  name="work_performed"
-                  className="textarea textarea-bordered w-full"
-                  rows={4}
-                  value={workPerformed}
-                  onChange={(e) => setWorkPerformed(e.target.value)}
-                />
-              </FormField>
-              <FormField label="Resolution notes" htmlFor="resolution_notes">
-                <textarea id="resolution_notes" name="resolution_notes" className="textarea textarea-bordered w-full" rows={2} />
-              </FormField>
-              <FormField label="Service method" htmlFor="service_method">
-                <select id="service_method" name="service_method" className="select select-bordered w-full" defaultValue="Remote">
-                  <option value="Remote">Remote</option>
-                  <option value="On-site">On-site</option>
-                </select>
-              </FormField>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Parts cost" htmlFor="parts_cost">
-                  <input id="parts_cost" name="parts_cost" type="number" min="0" step="0.01" className="input input-bordered w-full" />
-                </FormField>
-                <FormField label="Software cost" htmlFor="software_cost">
-                  <input id="software_cost" name="software_cost" type="number" min="0" step="0.01" className="input input-bordered w-full" />
-                </FormField>
-                <FormField label="Equipment cost" htmlFor="equipment_cost">
-                  <input id="equipment_cost" name="equipment_cost" type="number" min="0" step="0.01" className="input input-bordered w-full" />
-                </FormField>
-                <FormField label="Travel cost" htmlFor="travel_cost">
-                  <input id="travel_cost" name="travel_cost" type="number" min="0" step="0.01" className="input input-bordered w-full" />
-                </FormField>
-              </div>
-              <FormField label="Other direct cost" htmlFor="other_cost">
-                <input id="other_cost" name="other_cost" type="number" min="0" step="0.01" className="input input-bordered w-full" />
-              </FormField>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Included in contract" htmlFor="included_in_contract">
-                  <select id="included_in_contract" name="included_in_contract" className="select select-bordered w-full" defaultValue="true">
-                    <option value="true">Yes</option>
-                    <option value="false">No — billable</option>
-                  </select>
-                </FormField>
-                <FormField label="Additional approval needed" htmlFor="additional_approval_required">
-                  <select id="additional_approval_required" name="additional_approval_required" className="select select-bordered w-full" defaultValue="false">
-                    <option value="false">No</option>
-                    <option value="true">Yes</option>
-                  </select>
-                </FormField>
-              </div>
-              <FormField label="Update ticket status" htmlFor="ticket_status">
-                <select id="ticket_status" name="ticket_status" className="select select-bordered w-full" defaultValue="In Progress">
-                  <option value="In Progress">In Progress</option>
-                  <option value="On Hold">On Hold</option>
-                  <option value="Waiting on Customer">Waiting on Customer</option>
-                  <option value="Waiting on Vendor">Waiting on Vendor</option>
-                  <option value="Completed">Completed</option>
-                </select>
-              </FormField>
-              <button type="submit" className="btn btn-primary" disabled={isPending || !selectedTicketId}>
-                {isPending ? <span className="loading loading-spinner loading-sm" /> : "Save Work Entry"}
+            </FormField>
+            <FormField label="End date" htmlFor="end_date" required>
+              <input
+                id="end_date"
+                name="end_date"
+                type="date"
+                required
+                className="input input-bordered w-full border-slate-600 bg-slate-950"
+              />
+            </FormField>
+            <FormField
+              label="Hours requested"
+              htmlFor="hours_requested"
+              hint="Defaults to 8 hours per day in the range if left blank."
+            >
+              <input
+                id="hours_requested"
+                name="hours_requested"
+                type="number"
+                min="0.5"
+                step="0.5"
+                className="input input-bordered w-full border-slate-600 bg-slate-950"
+                placeholder="Auto from date range"
+              />
+            </FormField>
+            <FormField label="Reason" htmlFor="reason">
+              <textarea
+                id="reason"
+                name="reason"
+                rows={2}
+                className="textarea textarea-bordered w-full border-slate-600 bg-slate-950"
+                placeholder="Vacation, appointment, etc."
+              />
+            </FormField>
+            <div className="md:col-span-2">
+              <button
+                type="submit"
+                className="btn border-0 bg-violet-500 text-white hover:bg-violet-400"
+                disabled={isPending}
+              >
+                {isPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Submit PTO request"
+                )}
               </button>
-            </form>
+            </div>
+          </form>
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-200">Your PTO requests</h3>
+            {ptoRequests.length === 0 ? (
+              <p className="text-sm text-slate-500">No PTO requests yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {ptoRequests.slice(0, 6).map((request) => (
+                  <div
+                    key={request.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm text-white">
+                        {request.start_date}
+                        {request.end_date !== request.start_date
+                          ? ` → ${request.end_date}`
+                          : ""}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {Number(request.hours_requested).toFixed(1)} hrs
+                        {request.reason ? ` · ${request.reason}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={request.status} />
+                      {request.status === "Pending" ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs text-slate-300"
+                          disabled={isPending}
+                          onClick={() => handleCancelPto(request.id)}
+                        >
+                          Cancel
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
+      </div>
 
-      {selectedTicketId ? (
-        <ExpenseTracker
-          ticketId={selectedTicketId}
-          technicianId={technician.id}
-          ticketLabel={
-            selectedTicket
-              ? `${selectedTicket.ticket_number} — ${selectedTicket.title}`
-              : undefined
-          }
-        />
-      ) : null}
+      <div className="rounded-xl border border-emerald-400/25 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 p-5 shadow-sm">
+        <div>
+          <h2 className="text-base font-semibold text-white">Current pay period</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Biweekly · {format(payPeriod.start, "MMM d")} –{" "}
+            {format(payPeriod.end, "MMM d, yyyy")}
+          </p>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
+            <p className="text-sm text-slate-300">Pay rate</p>
+            <p className="mt-1 text-3xl font-semibold text-white">
+              {formatCurrency(payRate)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Typical US IT technician wage / hr
+            </p>
+          </div>
+          <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
+            <p className="text-sm text-slate-300">Hours worked this period</p>
+            <p className="mt-1 text-3xl font-semibold text-white">
+              {payPeriodHours.toFixed(1)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
+            <p className="text-sm text-slate-300">Estimated earnings this period</p>
+            <p className="mt-1 text-3xl font-semibold text-emerald-300">
+              {formatCurrency(payPeriodEarnings)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {payPeriodHours.toFixed(1)} hrs × {formatCurrency(payRate)}/hr
+            </p>
+          </div>
+        </div>
+      </div>
 
       {workEntries.length > 0 ? (
-        <div className="card border bg-base-100 shadow-sm">
-          <div className="card-body">
-            <h2 className="card-title text-base">Recent work</h2>
+        <div className="rounded-xl border border-cyan-500/20 bg-slate-900/80 shadow-sm">
+          <div className="space-y-4 p-5">
+            <div>
+              <h2 className="text-base font-semibold text-white">Recent work</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Click a row to edit a completed work entry.
+              </p>
+            </div>
             <div className="overflow-x-auto">
-              <table className="table table-sm">
+              <table className="table table-sm text-slate-200">
                 <thead>
-                  <tr>
+                  <tr className="border-slate-700 text-slate-400">
                     <th>Date</th>
                     <th>Hours</th>
                     <th>Work performed</th>
@@ -406,12 +839,18 @@ export default function TechnicianWorkspacePage() {
                 </thead>
                 <tbody>
                   {workEntries.slice(0, 8).map((entry) => (
-                    <tr key={entry.id}>
+                    <tr
+                      key={entry.id}
+                      className="cursor-pointer border-slate-800 transition hover:bg-cyan-500/10"
+                      onClick={() => openWorkEntryForEdit(entry)}
+                    >
                       <td>{entry.work_date ?? "—"}</td>
                       <td>{formatHours(entry.hours_worked)}</td>
                       <td>{entry.work_performed ?? "—"}</td>
                       <td>
-                        <StatusBadge status={entry.included_in_contract ? "Included" : "Billable"} />
+                        <StatusBadge
+                          status={entry.included_in_contract ? "Included" : "Billable"}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -421,6 +860,69 @@ export default function TechnicianWorkspacePage() {
           </div>
         </div>
       ) : null}
+
+      <WorkEntryModal
+        open={workModalOpen}
+        onClose={() => {
+          setWorkModalOpen(false);
+          setEditingEntryId(null);
+          // Keep active on-site / en-route sessions so reopening the ticket resumes them.
+          if (!(startTime && !endTime) && !sessionEnRoute) {
+            setLiveSessionTicketId(null);
+          }
+        }}
+        tickets={
+          editingEntryId
+            ? // Include the selected ticket even if closed, so edits still show the label.
+              (() => {
+                const selected = tickets.find((ticket) => ticket.id === selectedTicketId);
+                const merged = [...assignedOpen];
+                if (selected && !merged.some((ticket) => ticket.id === selected.id)) {
+                  merged.unshift(selected);
+                }
+                return merged;
+              })()
+            : assignedOpen
+        }
+        selectedTicketId={selectedTicketId}
+        onSelectedTicketChange={setSelectedTicketId}
+        workDate={workDate}
+        onWorkDateChange={setWorkDate}
+        startTime={startTime}
+        onStartTimeChange={(value) => {
+          setHoursLockedFromSession(false);
+          setStartTime(value);
+        }}
+        endTime={endTime}
+        onEndTimeChange={(value) => {
+          setHoursLockedFromSession(false);
+          setEndTime(value);
+        }}
+        hoursWorked={hoursWorked}
+        onHoursWorkedChange={setHoursWorked}
+        workPerformed={workPerformed}
+        onWorkPerformedChange={setWorkPerformed}
+        serviceMethod={serviceMethod}
+        onServiceMethodChange={setServiceMethod}
+        ticketStatus={ticketStatus}
+        onTicketStatusChange={setTicketStatus}
+        error={error}
+        isPending={isPending}
+        onSubmit={handleWorkEntry}
+        mode={editingEntryId ? "edit" : "create"}
+        phase={workModalPhase}
+        onPhaseChange={setWorkModalPhase}
+        onEnRoute={handleEnRoute}
+        onStartOnSite={handleStartOnSite}
+        onPauseJob={handlePauseJob}
+        onResumeJob={handleResumeJob}
+        onEndJob={handleEndJob}
+        sessionEnRoute={sessionEnRoute}
+        sessionPaused={sessionPaused}
+        bankedWorkedSeconds={bankedWorkedSeconds}
+        segmentStartedAt={segmentStartedAt}
+        pauseCount={pauseCount}
+      />
     </div>
   );
 }

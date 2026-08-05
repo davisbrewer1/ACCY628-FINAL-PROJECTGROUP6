@@ -133,7 +133,19 @@ export interface Technician {
   specialty: string | null;
   internal_hourly_cost: number | null;
   hourly_rate?: number | null;
+  annual_pto_hours?: number | null;
   active: boolean;
+  created_at: string;
+}
+
+export interface TechnicianPtoRequest {
+  id: string;
+  technician_id: string;
+  start_date: string;
+  end_date: string;
+  hours_requested: number;
+  reason: string | null;
+  status: "Pending" | "Approved" | "Denied" | "Cancelled" | string;
   created_at: string;
 }
 
@@ -173,6 +185,8 @@ export interface ServiceTicket {
   additional_billable_work: boolean | null;
   approval_status: string | null;
   invoice_status: string | null;
+  scheduled_start: string | null;
+  scheduled_window: string | null;
 }
 
 export interface WorkEntry {

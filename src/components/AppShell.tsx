@@ -29,6 +29,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { DemoRoleSwitcher } from "@/components/DemoRoleSwitcher";
 import { ThemeSelector } from "@/components/ThemeSelector";
+import { TechnicianHeaderTools } from "@/components/technician/TechnicianHeaderTools";
 import {
   getNavForRole,
   ROLE_LABELS,
@@ -101,6 +102,7 @@ interface AppShellProps {
   onDemoRoleChange?: (role: UserRole) => void;
   alertArea?: ReactNode;
   children: ReactNode;
+  technicianId?: string | null;
 }
 
 function NavLinks({
@@ -143,19 +145,37 @@ function NavLinks({
   );
 }
 
-function BrandMark() {
+function BrandMark({ techTheme }: { techTheme?: boolean }) {
   return (
     <Link
       href="/"
       className="flex items-center gap-3 px-4 py-4 transition-opacity hover:opacity-80"
       aria-label="Nexus Technology Solutions home"
     >
-      <div className="flex size-10 items-center justify-center rounded-box bg-primary text-primary-content font-bold tracking-tight">
+      <div
+        className={`flex size-10 items-center justify-center rounded-box font-bold tracking-tight ${
+          techTheme
+            ? "bg-cyan-500 text-slate-950"
+            : "bg-primary text-primary-content"
+        }`}
+      >
         NX
       </div>
       <div>
-        <p className="text-sm font-semibold leading-tight">Nexus Technology Solutions</p>
-        <p className="text-xs text-base-content/60">Technology Operations Platform</p>
+        <p
+          className={`text-sm font-semibold leading-tight ${
+            techTheme ? "text-white" : ""
+          }`}
+        >
+          Nexus Technology Solutions
+        </p>
+        <p
+          className={`text-xs ${
+            techTheme ? "text-slate-400" : "text-base-content/60"
+          }`}
+        >
+          Technology Operations Platform
+        </p>
       </div>
     </Link>
   );
@@ -171,6 +191,7 @@ function SidebarPanel({
   onDemoRoleChange,
   onLogout,
   onNavigate,
+  techTheme,
 }: {
   pathname: string;
   navItems: NavItem[];
@@ -181,25 +202,40 @@ function SidebarPanel({
   onDemoRoleChange?: (role: UserRole) => void;
   onLogout: () => void;
   onNavigate?: () => void;
+  techTheme?: boolean;
 }) {
   return (
     <div className="flex h-full flex-col">
-      <BrandMark />
-      <div className="divider my-0" />
+      <BrandMark techTheme={techTheme} />
+      <div className={`divider my-0 ${techTheme ? "before:bg-cyan-500/20 after:bg-cyan-500/20" : ""}`} />
       <nav className="flex-1 overflow-y-auto py-2">
         <NavLinks items={navItems} pathname={pathname} onNavigate={onNavigate} />
       </nav>
-      <div className="space-y-3 border-t border-base-300 p-4">
+      <div
+        className={`space-y-3 border-t p-4 ${
+          techTheme ? "border-cyan-500/20" : "border-base-300"
+        }`}
+      >
         <div>
-          <p className="text-sm font-semibold">{userName || userEmail || "Signed in user"}</p>
+          <p
+            className={`text-sm font-semibold ${techTheme ? "text-white" : ""}`}
+          >
+            {userName || userEmail || "Signed in user"}
+          </p>
           {userName && userEmail ? (
-            <p className="text-xs text-base-content/60">{userEmail}</p>
+            <p className={`text-xs ${techTheme ? "text-slate-400" : "text-base-content/60"}`}>
+              {userEmail}
+            </p>
           ) : null}
-          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-primary">
+          <p
+            className={`mt-1 text-xs font-medium uppercase tracking-wide ${
+              techTheme ? "text-cyan-300" : "text-primary"
+            }`}
+          >
             {ROLE_LABELS[activeRole]}
           </p>
         </div>
-        <ThemeSelector />
+        {!techTheme ? <ThemeSelector /> : null}
         {onDemoRoleChange ? (
           <DemoRoleSwitcher
             realRole={realRole}
@@ -209,7 +245,11 @@ function SidebarPanel({
         ) : null}
         <button
           type="button"
-          className="btn btn-outline btn-sm w-full"
+          className={`btn btn-sm w-full ${
+            techTheme
+              ? "border-slate-600 bg-slate-950 text-slate-100 hover:border-cyan-500/50"
+              : "btn-outline"
+          }`}
           onClick={onLogout}
         >
           <LogOut className="size-4" aria-hidden="true" />
@@ -229,11 +269,13 @@ export function AppShell({
   onDemoRoleChange,
   alertArea,
   children,
+  technicianId = null,
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navItems = getNavForRole(activeRole);
+  const techTheme = activeRole === "technician";
 
   async function handleLogout() {
     const supabase = createClient();
@@ -243,7 +285,7 @@ export function AppShell({
   }
 
   return (
-    <div className="drawer lg:drawer-open">
+    <div className={`drawer lg:drawer-open ${techTheme ? "tech-shell" : ""}`}>
       <input
         id="app-shell-drawer"
         type="checkbox"
@@ -252,12 +294,24 @@ export function AppShell({
         onChange={(event) => setMobileOpen(event.target.checked)}
       />
 
-      <div className="drawer-content flex min-h-screen flex-col bg-base-200">
-        <header className="navbar sticky top-0 z-20 border-b border-base-300 bg-base-100 px-4 lg:px-6">
+      <div
+        className={`drawer-content flex min-h-screen flex-col ${
+          techTheme
+            ? "bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 text-slate-100"
+            : "bg-base-200"
+        }`}
+      >
+        <header
+          className={`navbar sticky top-0 z-20 border-b px-4 lg:px-6 ${
+            techTheme
+              ? "border-cyan-500/20 bg-slate-950/90 text-white backdrop-blur"
+              : "border-base-300 bg-base-100"
+          }`}
+        >
           <div className="flex-none lg:hidden">
             <label
               htmlFor="app-shell-drawer"
-              className="btn btn-ghost btn-square"
+              className={`btn btn-square ${techTheme ? "btn-ghost text-white" : "btn-ghost"}`}
               aria-label="Open navigation menu"
             >
               <Menu className="size-5" />
@@ -269,37 +323,56 @@ export function AppShell({
               className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-80"
               aria-label="Nexus Technology Solutions home"
             >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-box bg-primary text-xs font-bold text-primary-content">
+              <span
+                className={`flex size-8 shrink-0 items-center justify-center rounded-box text-xs font-bold ${
+                  techTheme
+                    ? "bg-cyan-500 text-slate-950"
+                    : "bg-primary text-primary-content"
+                }`}
+              >
                 NX
               </span>
-              <span className="truncate text-sm font-semibold leading-tight sm:text-base">
+              <span
+                className={`truncate text-sm font-semibold leading-tight sm:text-base ${
+                  techTheme ? "text-white" : ""
+                }`}
+              >
                 Nexus Technology Solutions
               </span>
             </Link>
-            <span className="hidden h-5 w-px shrink-0 bg-base-300 sm:block" aria-hidden="true" />
-            <h1 className="hidden truncate text-base font-medium text-base-content/70 sm:block lg:text-lg">
+            <span
+              className={`hidden h-5 w-px shrink-0 sm:block ${
+                techTheme ? "bg-cyan-500/30" : "bg-base-300"
+              }`}
+              aria-hidden="true"
+            />
+            <h1
+              className={`hidden truncate text-base font-medium sm:block lg:text-lg ${
+                techTheme ? "text-slate-300" : "text-base-content/70"
+              }`}
+            >
               {pageTitle}
             </h1>
           </div>
-          {(activeRole === "technician" ||
+          <div className="flex flex-none items-center gap-1">
+            {techTheme ? (
+              <TechnicianHeaderTools technicianId={technicianId} />
+            ) : null}
+            {activeRole === "technician" ||
             activeRole === "administrator" ||
-            activeRole === "service_manager") ? (
-            <div className="flex flex-none items-center gap-1">
-              <KnowledgeBasePanel
-                canEdit={
-                  activeRole === "administrator" ||
-                  activeRole === "service_manager"
-                }
-              />
-              {(activeRole === "technician" ||
-                activeRole === "administrator" ||
-                activeRole === "service_manager") && (
+            activeRole === "service_manager" ? (
+              <>
+                <KnowledgeBasePanel
+                  canEdit={
+                    activeRole === "administrator" ||
+                    activeRole === "service_manager"
+                  }
+                />
                 <NotificationCenter />
-              )}
-            </div>
-          ) : null}
+              </>
+            ) : null}
+          </div>
         </header>
-
         <main className="flex-1 space-y-4 p-4 lg:p-6">
           {alertArea}
           {children}
@@ -312,7 +385,13 @@ export function AppShell({
           className="drawer-overlay"
           aria-label="Close navigation menu"
         />
-        <aside className="min-h-full w-72 bg-base-100">
+        <aside
+          className={`min-h-full w-72 ${
+            techTheme
+              ? "border-r border-cyan-500/20 bg-slate-950 text-slate-100"
+              : "bg-base-100"
+          }`}
+        >
           <SidebarPanel
             pathname={pathname}
             navItems={navItems}
@@ -323,6 +402,7 @@ export function AppShell({
             onDemoRoleChange={onDemoRoleChange}
             onLogout={handleLogout}
             onNavigate={() => setMobileOpen(false)}
+            techTheme={techTheme}
           />
         </aside>
       </div>

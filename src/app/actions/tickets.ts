@@ -136,6 +136,7 @@ export async function createPortalTicket(
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Portal/end-user requests stay unassigned and unscheduled until a manager assigns them.
   const { error } = await supabase.from("service_tickets").insert({
     ticket_number: ticketNumber,
     customer_id: customerId,
@@ -156,6 +157,9 @@ export async function createPortalTicket(
       requestType === "security" ||
       formData.get("cybersecurity_incident") === "true",
     status: "New",
+    assigned_technician_id: null,
+    scheduled_start: null,
+    scheduled_window: null,
     opened_at: new Date().toISOString(),
     notes: String(formData.get("availability_notes") ?? "").trim() || null,
     created_by: user?.id ?? null,
@@ -168,7 +172,14 @@ export async function createPortalTicket(
   revalidatePath("/portal");
   revalidatePath("/end-user");
   revalidatePath("/end-user/support");
-  return { success: true, message: "Support request submitted." };
+  revalidatePath("/technician");
+  revalidatePath("/operations");
+  revalidatePath("/service-tickets");
+  return {
+    success: true,
+    message:
+      "Support request submitted. A service manager will assign and schedule a technician.",
+  };
 }
 
 export async function updateTicketStatus(
@@ -230,40 +241,88 @@ export async function assignTickets(
   };
 }
 
-/** Move a ticket onto a calendar day (custom technician schedule). */
+/** Move or clear a ticket schedule (supports hour-grid swaps and weekly calendar). */
 export async function updateTicketSchedule(input: {
   ticketId: string;
   scheduledStart: string | null;
   scheduledWindow?: string | null;
+  swapTicketId?: string | null;
+  swapScheduledStart?: string | null;
+  swapScheduledWindow?: string | null;
 }): Promise<ActionResult> {
-  const supabase = await createClient();
+  try {
+    const supabase = await createClient();
 
-  if (!input.ticketId) {
-    return { success: false, message: "Ticket is required." };
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        success: false,
+        message: "Your session expired. Sign in again, then retry the move.",
+      };
+    }
+
+    const ticketId = String(input.ticketId ?? "").trim();
+    if (!ticketId) {
+      return { success: false, message: "Ticket is required." };
+    }
+
+    const updates: {
+      scheduled_start: string | null;
+      scheduled_window?: string | null;
+      status?: string;
+    } = {
+      scheduled_start: input.scheduledStart,
+    };
+
+    if (input.scheduledWindow !== undefined) {
+      updates.scheduled_window = input.scheduledWindow;
+    }
+
+    if (input.scheduledStart) {
+      updates.status = "Assigned";
+    }
+
+    const { error } = await supabase
+      .from("service_tickets")
+      .update(updates)
+      .eq("id", ticketId);
+
+    if (error) {
+      return { success: false, message: error.message };
+    }
+
+    const swapTicketId = input.swapTicketId
+      ? String(input.swapTicketId).trim()
+      : "";
+
+    if (swapTicketId) {
+      const { error: swapError } = await supabase
+        .from("service_tickets")
+        .update({
+          scheduled_start: input.swapScheduledStart
+            ? String(input.swapScheduledStart)
+            : null,
+          scheduled_window: input.swapScheduledWindow
+            ? String(input.swapScheduledWindow)
+            : null,
+        })
+        .eq("id", swapTicketId);
+
+      if (swapError) {
+        return { success: false, message: swapError.message };
+      }
+    }
+
+    revalidatePath("/technician");
+    revalidatePath("/operations");
+    revalidatePath("/service-tickets");
+    return { success: true, message: "Schedule updated." };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not update the schedule.";
+    return { success: false, message };
   }
-
-  const updates: {
-    scheduled_start: string | null;
-    scheduled_window?: string | null;
-  } = {
-    scheduled_start: input.scheduledStart,
-  };
-
-  if (input.scheduledWindow !== undefined) {
-    updates.scheduled_window = input.scheduledWindow;
-  }
-
-  const { error } = await supabase
-    .from("service_tickets")
-    .update(updates)
-    .eq("id", input.ticketId);
-
-  if (error) {
-    return { success: false, message: error.message };
-  }
-
-  revalidatePath("/technician");
-  revalidatePath("/service-tickets");
-  revalidatePath("/operations");
-  return { success: true, message: "Schedule updated." };
 }

@@ -84,6 +84,15 @@ export function PortalLoginMenu() {
     setError(null);
     setLoadingEmail(email);
     const supabase = createClient();
+
+    // Switch accounts cleanly when already signed in as someone else.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user?.email && user.email.toLowerCase() !== email.toLowerCase()) {
+      await supabase.auth.signOut();
+    }
+
     const { error: authError } = await supabase.auth.signInWithPassword({
       email,
       password: DEMO_PASSWORD,
@@ -159,8 +168,30 @@ export function PortalLoginMenu() {
                   }}
                 >
                   <LayoutDashboard className="size-4" aria-hidden="true" />
-                  Open console
+                  Open my console
                 </button>
+                <div className="divider my-1" />
+                <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-base-content/50">
+                  Switch demo portal
+                </p>
+                {PORTAL_ROLES.map((role) => (
+                  <button
+                    key={role.email}
+                    type="button"
+                    role="menuitem"
+                    className="btn btn-ghost btn-sm h-auto w-full flex-col items-start gap-0 py-2"
+                    disabled={loadingEmail !== null}
+                    onClick={() => loginAs(role.email, role.href)}
+                  >
+                    <span className="font-semibold">
+                      {loadingEmail === role.email ? "Signing in…" : role.label}
+                    </span>
+                    <span className="text-xs font-normal text-base-content/60">
+                      {role.description}
+                    </span>
+                  </button>
+                ))}
+                <div className="divider my-1" />
                 <button
                   type="button"
                   role="menuitem"
