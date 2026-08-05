@@ -7,17 +7,49 @@ import type {
   AssetAssignment,
   AssetIncident,
   AssetMonitoring,
+  AssetOrderTicketStatus,
   AssetPhoto,
   AssetRepair,
   AssetSoftware,
   HardwareAsset,
   ServiceTicket,
+  UserRole,
 } from "@/lib/types";
+
+const ORDER_PRIORITIES = new Set(["Low", "Medium", "High", "Urgent"]);
+const REVIEW_STATUSES = new Set<AssetOrderTicketStatus>([
+  "Approved",
+  "Rejected",
+  "Needs more information",
+]);
 
 function revalidateHardware() {
   revalidatePath("/hardware");
   revalidatePath("/portal");
   revalidatePath("/technician");
+}
+
+async function getUserAndRole() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { supabase, user: null, role: null };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return {
+    supabase,
+    user,
+    role: (profile?.role as UserRole | undefined) ?? null,
+  };
 }
 
 export async function createHardwareAsset(
@@ -37,6 +69,9 @@ export async function createHardwareAsset(
     `HW-${Date.now().toString().slice(-8)}`;
 
   const purchaseCostRaw = String(formData.get("purchase_cost") ?? "").trim();
+  const quantityRaw = Number(formData.get("quantity") ?? 1);
+  const quantity =
+    Number.isInteger(quantityRaw) && quantityRaw > 0 ? quantityRaw : 1;
 
   const { error } = await supabase.from("hardware_assets").insert({
     asset_number: assetNumber,
@@ -44,6 +79,7 @@ export async function createHardwareAsset(
     customer_id: customerId,
     location: String(formData.get("location") ?? "").trim() || null,
     category,
+    quantity,
     manufacturer: String(formData.get("manufacturer") ?? "").trim() || null,
     model: String(formData.get("model") ?? "").trim() || null,
     serial_number: String(formData.get("serial_number") ?? "").trim() || null,
@@ -386,4 +422,185 @@ export async function uploadAssetPhoto(input: {
 
   revalidateHardware();
   return { success: true, message: "Photo uploaded." };
+}
+
+export async function createAssetOrderTicket(
+  formData: FormData,
+): Promise<ActionResult> {
+  const { supabase, user, role } = await getUserAndRole();
+
+  if (!user) {
+    return { success: false, message: "You must be signed in to submit an order ticket." };
+  }
+  if (role !== "technician" && role !== "administrator") {
+    return { success: false, message: "Only technicians can submit asset order tickets." };
+  }
+
+  const assetId = String(formData.get("asset_id") ?? "").trim();
+  const replacementManufacturer = String(
+    formData.get("replacement_manufacturer") ?? "",
+  ).trim();
+  const replacementModel = String(
+    formData.get("replacement_model") ?? "",
+  ).trim();
+  const justification = String(
+    formData.get("business_justification") ?? "",
+  ).trim();
+  const priority = String(formData.get("priority") ?? "Medium").trim();
+
+  if (!assetId || !replacementManufacturer || !replacementModel || !justification) {
+    return {
+      success: false,
+      message: "Asset, replacement manufacturer, model, and justification are required.",
+    };
+  }
+  if (!ORDER_PRIORITIES.has(priority)) {
+    return { success: false, message: "Invalid order priority." };
+  }
+
+  const { data: asset, error: assetError } = await supabase
+    .from("hardware_assets")
+    .select("id, customer_id, quantity, needs_replacement")
+    .eq("id", assetId)
+    .maybeSingle();
+
+  if (assetError || !asset) {
+    return { success: false, message: "The selected asset could not be found." };
+  }
+  if (!asset.needs_replacement) {
+    return {
+      success: false,
+      message: "Order tickets can only be submitted for assets marked Needs replacement.",
+    };
+  }
+
+  const estimatedUnitCostRaw = String(
+    formData.get("estimated_unit_cost") ?? "",
+  ).trim();
+  const estimatedUnitCost = estimatedUnitCostRaw
+    ? Number(estimatedUnitCostRaw)
+    : null;
+  if (
+    estimatedUnitCost !== null &&
+    (!Number.isFinite(estimatedUnitCost) || estimatedUnitCost < 0)
+  ) {
+    return { success: false, message: "Estimated unit cost must be zero or greater." };
+  }
+
+  const ticketNumber = `AOT-${Date.now().toString().slice(-8)}`;
+  const { error } = await supabase.from("asset_order_tickets").insert({
+    ticket_number: ticketNumber,
+    asset_id: asset.id,
+    customer_id: asset.customer_id,
+    requested_by: user.id,
+    replacement_manufacturer: replacementManufacturer,
+    replacement_model: replacementModel,
+    requested_quantity: asset.quantity,
+    priority,
+    business_justification: justification,
+    technical_requirements:
+      String(formData.get("technical_requirements") ?? "").trim() || null,
+    preferred_vendor:
+      String(formData.get("preferred_vendor") ?? "").trim() || null,
+    estimated_unit_cost: estimatedUnitCost,
+    needed_by: String(formData.get("needed_by") ?? "").trim() || null,
+    status: "Pending",
+  });
+
+  if (error) {
+    const message = error.code === "23505"
+      ? "This asset already has an active order ticket."
+      : error.message;
+    return { success: false, message };
+  }
+
+  revalidateHardware();
+  return { success: true, message: `Order ticket ${ticketNumber} submitted for approval.` };
+}
+
+export async function reviewAssetOrderTicket(
+  ticketId: string,
+  status: AssetOrderTicketStatus,
+  adminNotes: string,
+): Promise<ActionResult> {
+  const { supabase, user, role } = await getUserAndRole();
+
+  if (!user || role !== "administrator") {
+    return { success: false, message: "Only administrators can review order tickets." };
+  }
+  if (!REVIEW_STATUSES.has(status)) {
+    return { success: false, message: "Invalid approval status." };
+  }
+
+  const notes = adminNotes.trim();
+  if ((status === "Rejected" || status === "Needs more information") && !notes) {
+    return { success: false, message: "Add an administrator note for this decision." };
+  }
+
+  const { error } = await supabase
+    .from("asset_order_tickets")
+    .update({
+      status,
+      admin_notes: notes || null,
+      reviewed_by: user.id,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", ticketId);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidateHardware();
+  return { success: true, message: `Order ticket marked ${status}.` };
+}
+
+export async function restockInventoryPart(
+  partId: string,
+  amount: number,
+): Promise<ActionResult> {
+  const { supabase, user, role } = await getUserAndRole();
+
+  if (!user || (role !== "technician" && role !== "administrator")) {
+    return { success: false, message: "Only technicians can order inventory parts." };
+  }
+  if (!Number.isInteger(amount) || amount < 1 || amount > 50) {
+    return { success: false, message: "Order quantity must be between 1 and 50." };
+  }
+
+  const { data: part, error: readError } = await supabase
+    .from("inventory_parts")
+    .select("id, part_name, quantity")
+    .eq("id", partId)
+    .maybeSingle();
+
+  if (readError || !part) {
+    return { success: false, message: "The selected part could not be found." };
+  }
+  if (part.quantity + amount > 50) {
+    return {
+      success: false,
+      message: `Only ${50 - part.quantity} more can be ordered; inventory is capped at 50.`,
+    };
+  }
+
+  const { error } = await supabase
+    .from("inventory_parts")
+    .update({
+      quantity: part.quantity + amount,
+      last_restocked_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", partId);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidateHardware();
+  return {
+    success: true,
+    message: `${amount} × ${part.part_name} ordered and added to inventory.`,
+  };
 }
