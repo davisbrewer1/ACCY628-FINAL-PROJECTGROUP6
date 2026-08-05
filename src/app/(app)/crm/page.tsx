@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
+import { HealthScoreLegend } from "@/components/HealthScoreLegend";
 import { PageHeader } from "@/components/PageHeader";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -196,8 +197,10 @@ export default function AccountHealthPage() {
     <div className="space-y-6">
       <PageHeader
         title="Account Health"
-        description="Visual portfolio of customer risk — tickets, SLA, AR, and renewals — without a CRM laundry list."
+        description="Visual portfolio of customer risk — each label is backed by tickets, invoice AR, and contract renewals."
       />
+
+      <HealthScoreLegend />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <button
@@ -247,10 +250,13 @@ export default function AccountHealthPage() {
 
       <div className="grid gap-4 xl:grid-cols-2">
         <ChartCard title="Health mix">
+          <p className="mb-2 text-xs text-base-content/55">
+            Source: scoring rules above · count of accounts in each band
+          </p>
           {rows.length === 0 ? (
             <EmptyState title="No accounts" description="Add customers to see health distribution." />
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={240}>
               <PieChart>
                 <Pie
                   data={healthDistribution}
@@ -277,7 +283,10 @@ export default function AccountHealthPage() {
         </ChartCard>
 
         <ChartCard title="MRR by health band">
-          <ResponsiveContainer width="100%" height={260}>
+          <p className="mb-2 text-xs text-base-content/55">
+            Source: active contracts.monthly_recurring_fee, grouped by health label
+          </p>
+          <ResponsiveContainer width="100%" height={240}>
             <BarChart data={mrrByHealth}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="name" />
@@ -296,10 +305,13 @@ export default function AccountHealthPage() {
         </ChartCard>
 
         <ChartCard title="Open AR concentration">
+          <p className="mb-2 text-xs text-base-content/55">
+            Source: invoices.remaining_balance by customer (top 6)
+          </p>
           {topAr.length === 0 ? (
             <EmptyState title="No open AR" description="Accounts with remaining balances will chart here." />
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={240}>
               <BarChart data={topAr} layout="vertical" margin={{ left: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" tickFormatter={(v) => `$${Math.round(Number(v) / 1000)}k`} />
@@ -317,10 +329,13 @@ export default function AccountHealthPage() {
         </ChartCard>
 
         <ChartCard title="Ticket pressure">
+          <p className="mb-2 text-xs text-base-content/55">
+            Source: open service tickets · open count, Critical priority, and SLA at risk
+          </p>
           {ticketPressure.length === 0 ? (
             <EmptyState title="No open tickets" description="Accounts with open work will chart here." />
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={240}>
               <BarChart data={ticketPressure}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" />
@@ -380,44 +395,38 @@ export default function AccountHealthPage() {
                   <StatusBadge status={row.health.scoreLabel} />
                 </div>
 
-                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-lg bg-base-200/70 px-2 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-base-content/50">
-                      MRR
-                    </p>
-                    <p className="text-sm font-semibold">
-                      {formatCurrency(row.health.mrr)}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-base-200/70 px-2 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-base-content/50">
-                      Tickets
-                    </p>
-                    <p className="text-sm font-semibold">{row.health.openTickets}</p>
-                  </div>
-                  <div className="rounded-lg bg-base-200/70 px-2 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-base-content/50">
-                      AR
-                    </p>
-                    <p className="text-sm font-semibold">
-                      {formatCurrency(row.health.arBalance)}
-                    </p>
-                  </div>
-                </div>
+                <p className="mt-2 text-xs text-base-content/60">
+                  {row.health.scoreReason}
+                </p>
+                <p className="mt-1 text-xs text-base-content/50">
+                  MRR {formatCurrency(row.health.mrr)} from active contracts
+                </p>
 
-                <div className="mt-3 flex flex-wrap items-center gap-1">
-                  {row.health.riskFlags.length === 0 ? (
-                    <span className="text-xs text-success">No active risk flags</span>
-                  ) : (
-                    row.health.riskFlags.map((flag) => (
-                      <span key={flag} className="badge badge-warning badge-xs">
-                        {flag}
-                      </span>
-                    ))
-                  )}
-                </div>
+                <ul className="mt-3 space-y-1.5">
+                  {row.health.signals.map((signal) => (
+                    <li
+                      key={signal.id}
+                      className={`rounded-lg px-2.5 py-1.5 text-xs ${
+                        signal.active
+                          ? "bg-warning/15 text-base-content"
+                          : "bg-base-200/70 text-base-content/65"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{signal.label}</span>
+                        <span className={signal.active ? "text-warning" : "text-success"}>
+                          {signal.active ? "Flagged" : "Clear"}
+                        </span>
+                      </div>
+                      <p className="mt-0.5">{signal.evidence}</p>
+                      <p className="text-[11px] text-base-content/50">
+                        From {signal.source}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
                 <p className="mt-2 text-xs text-base-content/50">
-                  Renewal {formatDate(row.health.nextRenewal)}
+                  Next renewal {formatDate(row.health.nextRenewal)}
                 </p>
               </Link>
             ))}

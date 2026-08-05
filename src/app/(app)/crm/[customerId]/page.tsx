@@ -19,6 +19,7 @@ import {
 } from "recharts";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
+import { HealthScoreLegend } from "@/components/HealthScoreLegend";
 import { PageHeader } from "@/components/PageHeader";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -214,46 +215,89 @@ export default function AccountHealthDetailPage() {
         </Link>
         <PageHeader
           title={customer.customer_name}
-          description={`${customer.industry ?? "IT account"} · Health from tickets, SLA, AR, and renewals.`}
+          description={`${customer.industry ?? "IT account"} · ${health.scoreReason}`}
           action={<StatusBadge status={health.scoreLabel} />}
         />
       </div>
 
+      <HealthScoreLegend />
+
+      <section className="rounded-box border border-base-300 bg-base-100 p-4">
+        <h2 className="text-sm font-semibold tracking-wide text-base-content/80">
+          This account&apos;s score drivers
+        </h2>
+        <p className="mt-1 text-sm text-base-content/65">{health.scoreReason}</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {health.signals.map((signal) => (
+            <div
+              key={signal.id}
+              className={`rounded-lg border p-3 ${
+                signal.active
+                  ? "border-warning/40 bg-warning/10"
+                  : "border-base-300 bg-base-200/40"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium">{signal.label}</p>
+                <span
+                  className={`badge badge-sm ${
+                    signal.active ? "badge-warning" : "badge-success"
+                  }`}
+                >
+                  {signal.active ? "Contributing to score" : "Not flagged"}
+                </span>
+              </div>
+              <p className="mt-2 text-lg font-semibold">{signal.evidence}</p>
+              <p className="mt-1 text-sm text-base-content/70">{signal.detail}</p>
+              <Link
+                href={signal.sourceHref}
+                className="link link-hover mt-2 inline-block text-xs"
+              >
+                Open source: {signal.source}
+              </Link>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-box border border-base-300 bg-base-100 p-4">
-          <p className="text-xs uppercase tracking-wide text-base-content/60">MRR</p>
+          <p className="text-xs uppercase tracking-wide text-base-content/60">
+            MRR · active contracts
+          </p>
           <p className="mt-1 text-2xl font-semibold">{formatCurrency(health.mrr)}</p>
-        </div>
-        <div className="rounded-box border border-base-300 bg-base-100 p-4">
-          <p className="text-xs uppercase tracking-wide text-base-content/60">Open tickets</p>
-          <p className="mt-1 text-2xl font-semibold">{health.openTickets}</p>
-          <p className="text-xs text-base-content/60">
-            {health.criticalTickets} critical · {health.slaAtRisk} SLA risk
+          <p className="text-xs text-base-content/55">
+            Sum of monthly_recurring_fee on Active contracts
           </p>
         </div>
         <div className="rounded-box border border-base-300 bg-base-100 p-4">
-          <p className="text-xs uppercase tracking-wide text-base-content/60">AR balance</p>
-          <p className="mt-1 text-2xl font-semibold">{formatCurrency(health.arBalance)}</p>
+          <p className="text-xs uppercase tracking-wide text-base-content/60">
+            Open tickets · service tickets
+          </p>
+          <p className="mt-1 text-2xl font-semibold">{health.openTickets}</p>
+          <p className="text-xs text-base-content/55">
+            {health.criticalTickets} critical · {health.slaAtRisk} approaching/overdue SLA
+          </p>
         </div>
         <div className="rounded-box border border-base-300 bg-base-100 p-4">
-          <p className="text-xs uppercase tracking-wide text-base-content/60">Next renewal</p>
+          <p className="text-xs uppercase tracking-wide text-base-content/60">
+            AR balance · invoices
+          </p>
+          <p className="mt-1 text-2xl font-semibold">{formatCurrency(health.arBalance)}</p>
+          <p className="text-xs text-base-content/55">Sum of remaining_balance</p>
+        </div>
+        <div className="rounded-box border border-base-300 bg-base-100 p-4">
+          <p className="text-xs uppercase tracking-wide text-base-content/60">
+            Next renewal · contracts
+          </p>
           <p className="mt-1 text-2xl font-semibold">{formatDate(health.nextRenewal)}</p>
+          <p className="text-xs text-base-content/55">
+            {health.renewingSoon
+              ? "Inside 90-day renewal window"
+              : "Outside 90-day renewal window"}
+          </p>
         </div>
       </div>
-
-      {health.riskFlags.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {health.riskFlags.map((flag) => (
-            <span key={flag} className="badge badge-warning">
-              {flag}
-            </span>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-box border border-success/30 bg-success/5 px-4 py-3 text-sm text-success">
-          No active risk flags on this account.
-        </div>
-      )}
 
       <div className="flex flex-wrap gap-2">
         <Link href="/service-tickets" className="btn btn-outline btn-sm">
@@ -269,10 +313,13 @@ export default function AccountHealthDetailPage() {
 
       <div className="grid gap-4 xl:grid-cols-2">
         <ChartCard title="Open tickets by priority">
+          <p className="mb-2 text-xs text-base-content/55">
+            Source: open service_tickets for this customer, grouped by priority
+          </p>
           {priorityChart.length === 0 ? (
             <EmptyState title="No open tickets" description="Priority mix appears when tickets are open." />
           ) : (
-            <ResponsiveContainer width="100%" height={240}>
+            <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
                   data={priorityChart}
@@ -298,7 +345,10 @@ export default function AccountHealthDetailPage() {
         </ChartCard>
 
         <ChartCard title="SLA posture (open work)">
-          <ResponsiveContainer width="100%" height={240}>
+          <p className="mb-2 text-xs text-base-content/55">
+            Source: open tickets vs target_resolution_at (On Track / Approaching / Overdue)
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={slaChart}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
@@ -323,7 +373,10 @@ export default function AccountHealthDetailPage() {
         </ChartCard>
 
         <ChartCard title="MRR vs open AR">
-          <ResponsiveContainer width="100%" height={240}>
+          <p className="mb-2 text-xs text-base-content/55">
+            Source: Active contract fees vs invoice remaining_balance
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={moneyChart}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="name" />
@@ -338,10 +391,13 @@ export default function AccountHealthDetailPage() {
         </ChartCard>
 
         <ChartCard title="AR aging">
+          <p className="mb-2 text-xs text-base-content/55">
+            Source: invoices with remaining_balance, bucketed by days past due_date
+          </p>
           {invoiceAging.every((b) => b.amount === 0) ? (
             <EmptyState title="No open AR" description="Invoice aging shows when balances remain." />
           ) : (
-            <ResponsiveContainer width="100%" height={240}>
+            <ResponsiveContainer width="100%" height={220}>
               <BarChart data={invoiceAging}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" />
