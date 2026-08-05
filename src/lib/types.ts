@@ -458,6 +458,12 @@ export interface ApprovalAttachment {
   created_at: string;
 }
 
+export type InvoiceSource =
+  | "manual"
+  | "plan_recurring"
+  | "work_entries"
+  | "asset_overage";
+
 export interface Invoice {
   id: string;
   invoice_number: string;
@@ -475,6 +481,8 @@ export interface Invoice {
   amount_paid: number | null;
   remaining_balance: number | null;
   status: InvoiceStatus | string | null;
+  invoice_source?: InvoiceSource | string | null;
+  billing_period?: string | null;
   created_by: string | null;
   created_at: string;
 }

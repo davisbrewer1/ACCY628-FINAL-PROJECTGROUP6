@@ -19,6 +19,7 @@ import {
   getPendingApprovalEntries,
   getReadyToInvoiceEntries,
 } from "@/lib/manager-ops";
+import { allocateOverageHours } from "@/lib/plan-pricing";
 import { isOpenTicket, isThisMonth } from "@/lib/dashboard-stats";
 import { createClient } from "@/lib/supabase/client";
 import type { Contract, Customer, ServiceTicket, Technician, WorkEntry } from "@/lib/types";
@@ -129,12 +130,34 @@ export default function WorkBillingPage() {
     const contractMap = new Map(contracts.map((c) => [c.id, c]));
     const ticketMap = new Map(tickets.map((t) => [t.id, t]));
 
+    const overageByEntryId = new Map<string, number>();
+    for (const contract of contracts) {
+      const contractEntries = entries.filter((e) => e.contract_id === contract.id);
+      if (contractEntries.length === 0) continue;
+      const byMonth = new Map<string, typeof contractEntries>();
+      for (const entry of contractEntries) {
+        const month = entry.work_date?.slice(0, 7) ?? "unknown";
+        const list = byMonth.get(month) ?? [];
+        list.push(entry);
+        byMonth.set(month, list);
+      }
+      for (const monthEntries of byMonth.values()) {
+        const allocated = allocateOverageHours({
+          selected: monthEntries,
+          includedHoursPerMonth: Number(contract.included_support_hours ?? 0),
+        });
+        for (const [id, hours] of allocated) {
+          overageByEntryId.set(id, hours);
+        }
+      }
+    }
+
     return entries.map((entry) => {
       const contract = entry.contract_id ? contractMap.get(entry.contract_id) : null;
       const ticket = ticketMap.get(entry.ticket_id);
-      const billableHours = entry.included_in_contract ? 0 : (entry.hours_worked ?? 0);
+      const overageHours = overageByEntryId.get(entry.id) ?? (entry.hours_worked ?? 0);
       const additionalBillable =
-        billableHours * (contract?.additional_hourly_rate ?? 0) +
+        overageHours * (contract?.additional_hourly_rate ?? 0) +
         (entry.parts_cost ?? 0) +
         (entry.software_cost ?? 0) +
         (entry.equipment_cost ?? 0) +
@@ -169,12 +192,26 @@ export default function WorkBillingPage() {
 
   const monthRollup = useMemo(() => {
     const monthEntries = entries.filter((e) => isThisMonth(e.work_date));
-    const included = monthEntries
-      .filter((e) => e.included_in_contract)
-      .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
-    const billable = monthEntries
-      .filter((e) => !e.included_in_contract)
-      .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
+    let included = 0;
+    let billable = 0;
+    for (const contract of contracts) {
+      const list = monthEntries.filter((e) => e.contract_id === contract.id);
+      if (list.length === 0) continue;
+      const allocated = allocateOverageHours({
+        selected: list,
+        includedHoursPerMonth: Number(contract.included_support_hours ?? 0),
+      });
+      for (const entry of list) {
+        const hours = Number(entry.hours_worked ?? 0);
+        const overage = allocated.get(entry.id) ?? 0;
+        billable += overage;
+        included += Math.max(0, hours - overage);
+      }
+    }
+    for (const entry of monthEntries) {
+      if (entry.contract_id) continue;
+      billable += Number(entry.hours_worked ?? 0);
+    }
     const readyAmount = rows
       .filter((r) => ready.some((e) => e.id === r.id))
       .reduce((sum, r) => sum + r.additionalBillable, 0);
@@ -185,7 +222,7 @@ export default function WorkBillingPage() {
       pendingCount: pending.length,
       returnedCount: returned.length,
     };
-  }, [entries, rows, ready, pending, returned]);
+  }, [entries, rows, ready, pending, returned, contracts]);
 
   const visibleRows = useMemo(() => {
     if (view === "queue") {
@@ -326,7 +363,7 @@ export default function WorkBillingPage() {
     <div className="space-y-6">
       <PageHeader
         title="Work & Billing"
-        description="Approve or return technician time, then push billable overages into the invoice queue. Same handoff path Operations uses for ready-to-invoice."
+        description="Approve or return technician time, then push work into Billing. Plan hour pools cover included support; only overages and pass-through expenses (travel, meals, parts) invoice."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -375,7 +412,7 @@ export default function WorkBillingPage() {
           <p className="mt-1 text-2xl font-semibold">
             {formatCurrency(monthRollup.readyAmount)}
           </p>
-          <p className="text-xs text-base-content/55">{ready.length} billable entries</p>
+          <p className="text-xs text-base-content/55">{ready.length} approved entries</p>
         </button>
         <div className="rounded-box border border-base-300 bg-base-100 p-4">
           <p className="text-xs uppercase tracking-wide text-base-content/60">
@@ -385,7 +422,7 @@ export default function WorkBillingPage() {
             {formatHours(monthRollup.included + monthRollup.billable)}
           </p>
           <p className="text-xs text-base-content/55">
-            {formatHours(monthRollup.included)} included · {formatHours(monthRollup.billable)} billable
+            {formatHours(monthRollup.included)} in plan pool · {formatHours(monthRollup.billable)} overage
           </p>
         </div>
       </div>
@@ -431,10 +468,12 @@ export default function WorkBillingPage() {
 
       {view === "ready" ? (
         <div className="rounded-box border border-base-300 bg-base-200/40 px-4 py-3 text-sm text-base-content/70">
-          Select billable entries, then{" "}
+          Select approved entries, then{" "}
           <span className="font-medium text-base-content">Send to Billing</span>.
-          That creates <span className="font-medium text-base-content">Draft</span>{" "}
-          invoices (one per customer + contract) and moves the work out of this queue.
+          Plan hour pools are applied automatically (in-pool hours = $0 support charge).
+          Travel, meals, parts, and overage hours still invoice. Creates{" "}
+          <span className="font-medium text-base-content">Draft</span> invoices
+          (one per customer + contract).
         </div>
       ) : null}
 
@@ -470,7 +509,7 @@ export default function WorkBillingPage() {
               : view === "returned"
                 ? "Nothing returned to technicians"
                 : view === "ready"
-                  ? "No billable work ready"
+                  ? "No approved work ready to invoice"
                   : "No work entries yet"
           }
           description="Entries appear after technicians log work on tickets in My Work."
@@ -482,7 +521,6 @@ export default function WorkBillingPage() {
             const selectable =
               view === "ready" ||
               (view === "history" &&
-                !row.included_in_contract &&
                 row.approval_status === "Approved" &&
                 row.billing_status !== "Billed");
 

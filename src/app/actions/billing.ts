@@ -1,17 +1,35 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/actions/customers";
 import {
+  allocateOverageHours,
   computeLateFeeAmount,
+  expectedPlanPeriods,
   invoiceSubtotal,
 } from "@/lib/plan-pricing";
+import { computeContractAssetBurns } from "@/lib/manager-ops";
+import { createClient } from "@/lib/supabase/server";
+import type { Contract, HardwareAsset, ServicePlan } from "@/lib/types";
 
 function parseNumber(value: FormDataEntryValue | null): number | null {
   if (value == null || value === "") return null;
   const num = Number(value);
   return Number.isNaN(num) || num < 0 ? null : num;
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function revalidateBillingPaths() {
+  revalidatePath("/billing");
+  revalidatePath("/portal");
+  revalidatePath("/end-user/billing");
+  revalidatePath("/operations");
+  revalidatePath("/reports");
+  revalidatePath("/time-costs");
+  revalidatePath("/contracts");
 }
 
 /**
@@ -136,11 +154,7 @@ export async function syncLateFees(): Promise<
   }
 
   if (updated > 0) {
-    revalidatePath("/billing");
-    revalidatePath("/portal");
-    revalidatePath("/end-user/billing");
-    revalidatePath("/operations");
-    revalidatePath("/reports");
+    revalidateBillingPaths();
   }
 
   return {
@@ -150,6 +164,315 @@ export async function syncLateFees(): Promise<
         ? `Applied late fees on ${updated} invoice${updated === 1 ? "" : "s"}.`
         : "Late fees already up to date.",
     updated,
+  };
+}
+
+/**
+ * Create missing cash-cadence plan invoices for Active contracts
+ * (monthly / yearly / up-front). Idempotent via (contract, source, period).
+ */
+export async function syncPlanInvoices(): Promise<
+  ActionResult & { created?: number }
+> {
+  const supabase = await createClient();
+  const now = new Date();
+
+  const { data: contracts, error: contractError } = await supabase
+    .from("contracts")
+    .select(
+      "id, customer_id, contract_status, approval_status, start_date, end_date, monthly_recurring_fee, setup_fee, billing_frequency, invoice_due_days, plan_id",
+    )
+    .eq("contract_status", "Active");
+
+  if (contractError) {
+    return { success: false, message: contractError.message };
+  }
+
+  const active = (contracts ?? []).filter(
+    (c) => !c.approval_status || c.approval_status === "Approved",
+  ) as Contract[];
+
+  if (active.length === 0) {
+    return {
+      success: true,
+      message: "No active contracts for plan invoicing.",
+      created: 0,
+    };
+  }
+
+  const planIds = [
+    ...new Set(active.map((c) => c.plan_id).filter((id): id is string => Boolean(id))),
+  ];
+
+  const planMap = new Map<string, ServicePlan>();
+  if (planIds.length > 0) {
+    const { data: plans } = await supabase
+      .from("service_plans")
+      .select("id, pricing_model, base_price")
+      .in("id", planIds);
+    for (const plan of plans ?? []) {
+      planMap.set(plan.id, plan as ServicePlan);
+    }
+  }
+
+  const contractIds = active.map((c) => c.id);
+  const { data: existing } = await supabase
+    .from("invoices")
+    .select("contract_id, billing_period")
+    .eq("invoice_source", "plan_recurring")
+    .in("contract_id", contractIds);
+
+  const existingKeys = new Set(
+    (existing ?? [])
+      .filter((row) => row.contract_id && row.billing_period)
+      .map((row) => `${row.contract_id}::${row.billing_period}`),
+  );
+
+  let created = 0;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  for (const contract of active) {
+    const plan = contract.plan_id ? planMap.get(contract.plan_id) : null;
+    const periods = expectedPlanPeriods(contract, now, plan ?? null);
+
+    for (const period of periods) {
+      if (period.amount <= 0) continue;
+      const key = `${contract.id}::${period.period}`;
+      if (existingKeys.has(key)) continue;
+
+      const stamp = Date.now().toString(36).toUpperCase();
+      const suffix = Math.floor(Math.random() * 900 + 100);
+      const invoiceNumber = `INV-PLAN-${period.period}-${stamp}-${suffix}`.slice(
+        0,
+        64,
+      );
+
+      const due = new Date(period.dueDate);
+      let status = "Issued";
+      if (due < now) status = "Past Due";
+
+      const { error: insertError } = await supabase.from("invoices").insert({
+        invoice_number: invoiceNumber,
+        customer_id: contract.customer_id,
+        contract_id: contract.id,
+        invoice_date: period.invoiceDate,
+        due_date: period.dueDate,
+        recurring_service_fee: roundMoney(period.amount),
+        additional_support_charges: 0,
+        software_charges: 0,
+        equipment_charges: 0,
+        other_charges: 0,
+        late_fee_amount: 0,
+        total_amount: roundMoney(period.amount),
+        amount_paid: 0,
+        remaining_balance: roundMoney(period.amount),
+        status,
+        invoice_source: "plan_recurring",
+        billing_period: period.period,
+        created_by: user?.id ?? null,
+      });
+
+      if (!insertError) {
+        existingKeys.add(key);
+        created += 1;
+      }
+    }
+  }
+
+  if (created > 0) {
+    revalidateBillingPaths();
+  }
+
+  return {
+    success: true,
+    message:
+      created > 0
+        ? `Generated ${created} plan invoice${created === 1 ? "" : "s"} from contract cadence.`
+        : "Plan invoices already up to date.",
+    created,
+  };
+}
+
+/**
+ * Ensure one open asset-overage invoice per Active contract that is over budget.
+ * Updates the open invoice in place when the overage estimate changes.
+ */
+export async function syncAssetOverageInvoices(): Promise<
+  ActionResult & { created?: number; updated?: number }
+> {
+  const supabase = await createClient();
+
+  const { data: contracts, error: contractError } = await supabase
+    .from("contracts")
+    .select(
+      "id, customer_id, contract_status, start_date, end_date, included_asset_budget, additional_asset_rate, invoice_due_days",
+    )
+    .eq("contract_status", "Active");
+
+  if (contractError) {
+    return { success: false, message: contractError.message };
+  }
+
+  const active = (contracts ?? []) as Contract[];
+  if (active.length === 0) {
+    return {
+      success: true,
+      message: "No active contracts for asset overage sync.",
+      created: 0,
+      updated: 0,
+    };
+  }
+
+  const { data: assets } = await supabase.from("hardware_assets").select("*");
+  const burns = computeContractAssetBurns(
+    active,
+    (assets ?? []) as HardwareAsset[],
+  );
+  const overBurns = burns.filter((b) => b.isOver && b.overageEstimate > 0);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let created = 0;
+  let updated = 0;
+  const today = new Date();
+  const invoiceDate = today.toISOString().slice(0, 10);
+
+  for (const burn of overBurns) {
+    const contract = active.find((c) => c.id === burn.contractId);
+    if (!contract) continue;
+
+    const billingPeriod = `term:${contract.start_date ?? "open"}:${contract.end_date ?? "open"}`;
+    const amount = roundMoney(burn.overageEstimate);
+
+    const { data: existing } = await supabase
+      .from("invoices")
+      .select("*")
+      .eq("contract_id", contract.id)
+      .eq("invoice_source", "asset_overage")
+      .eq("billing_period", billingPeriod)
+      .maybeSingle();
+
+    if (existing) {
+      if (existing.status === "Paid" || existing.status === "Canceled") {
+        continue;
+      }
+      const amountPaid = Number(existing.amount_paid ?? 0);
+      const lateFee = Number(existing.late_fee_amount ?? 0);
+      const totalAmount = roundMoney(amount + lateFee);
+      const remaining = Math.max(0, roundMoney(totalAmount - amountPaid));
+      if (
+        Math.abs(Number(existing.equipment_charges ?? 0) - amount) < 0.005 &&
+        Math.abs(Number(existing.total_amount ?? 0) - totalAmount) < 0.005
+      ) {
+        continue;
+      }
+
+      let status = String(existing.status ?? "Issued");
+      if (remaining <= 0 && amountPaid > 0) status = "Paid";
+      else if (amountPaid > 0) status = "Partially Paid";
+      else if (existing.due_date && new Date(existing.due_date) < today) {
+        status = "Past Due";
+      } else {
+        status = "Issued";
+      }
+
+      const { error } = await supabase
+        .from("invoices")
+        .update({
+          equipment_charges: amount,
+          total_amount: totalAmount,
+          remaining_balance: remaining,
+          status,
+        })
+        .eq("id", existing.id);
+
+      if (!error) updated += 1;
+      continue;
+    }
+
+    const dueDays = Number(contract.invoice_due_days ?? 30) || 30;
+    const due = new Date(today);
+    due.setDate(due.getDate() + dueDays);
+    const stamp = Date.now().toString(36).toUpperCase();
+    const suffix = Math.floor(Math.random() * 900 + 100);
+
+    const { error: insertError } = await supabase.from("invoices").insert({
+      invoice_number: `INV-ASSET-${stamp}-${suffix}`,
+      customer_id: contract.customer_id,
+      contract_id: contract.id,
+      invoice_date: invoiceDate,
+      due_date: due.toISOString().slice(0, 10),
+      recurring_service_fee: 0,
+      additional_support_charges: 0,
+      software_charges: 0,
+      equipment_charges: amount,
+      other_charges: 0,
+      late_fee_amount: 0,
+      total_amount: amount,
+      amount_paid: 0,
+      remaining_balance: amount,
+      status: "Issued",
+      invoice_source: "asset_overage",
+      billing_period: billingPeriod,
+      created_by: user?.id ?? null,
+    });
+
+    if (!insertError) created += 1;
+  }
+
+  if (created > 0 || updated > 0) {
+    revalidateBillingPaths();
+  }
+
+  return {
+    success: true,
+    message:
+      created + updated > 0
+        ? `Asset overage sync: ${created} created, ${updated} updated.`
+        : "Asset overage invoices already up to date.",
+    created,
+    updated,
+  };
+}
+
+/** Run plan cadence, asset overage, and late-fee sync (Billing page load). */
+export async function syncBillingCadence(): Promise<
+  ActionResult & {
+    planCreated?: number;
+    assetCreated?: number;
+    assetUpdated?: number;
+    lateUpdated?: number;
+  }
+> {
+  const plan = await syncPlanInvoices();
+  if (!plan.success) return plan;
+
+  const asset = await syncAssetOverageInvoices();
+  if (!asset.success) return asset;
+
+  const late = await syncLateFees();
+  if (!late.success) return late;
+
+  const planCreated = plan.created ?? 0;
+  const assetCreated = asset.created ?? 0;
+  const assetUpdated = asset.updated ?? 0;
+  const lateUpdated = late.updated ?? 0;
+  const total = planCreated + assetCreated + assetUpdated + lateUpdated;
+
+  return {
+    success: true,
+    message:
+      total > 0
+        ? `Billing sync: ${planCreated} plan invoice(s), ${assetCreated + assetUpdated} asset overage change(s), ${lateUpdated} late-fee update(s).`
+        : "Billing already up to date.",
+    planCreated,
+    assetCreated,
+    assetUpdated,
+    lateUpdated,
   };
 }
 
@@ -239,6 +562,8 @@ export async function createInvoice(formData: FormData): Promise<ActionResult> {
     amount_paid: 0,
     remaining_balance: totalAmount,
     status,
+    invoice_source: "manual",
+    billing_period: null,
     created_by: user?.id ?? null,
   });
 
@@ -246,10 +571,7 @@ export async function createInvoice(formData: FormData): Promise<ActionResult> {
     return { success: false, message: error.message };
   }
 
-  revalidatePath("/billing");
-  revalidatePath("/portal");
-  revalidatePath("/operations");
-  revalidatePath("/reports");
+  revalidateBillingPaths();
   return { success: true, message: "Invoice created successfully." };
 }
 
@@ -266,7 +588,6 @@ export async function recordPayment(formData: FormData): Promise<ActionResult> {
     };
   }
 
-  // Refresh late fees before accepting payment so balance is current.
   await syncLateFees();
 
   const { data: invoice, error: fetchError } = await supabase
@@ -338,8 +659,8 @@ export async function recordPayment(formData: FormData): Promise<ActionResult> {
 }
 
 /**
- * Create Draft invoices from selected billable work entries,
- * grouped by customer + contract, and link those entries as Billed.
+ * Create Draft invoices from selected work entries (pool-based hours).
+ * In-pool support hours are $0; overage hours × rate + pass-through expenses bill.
  */
 export async function createInvoicesFromWorkEntries(
   entryIds: string[],
@@ -367,7 +688,6 @@ export async function createInvoicesFromWorkEntries(
 
   const ineligible = entries.filter(
     (e) =>
-      e.included_in_contract ||
       e.approval_status !== "Approved" ||
       e.billing_status === "Billed" ||
       !e.customer_id ||
@@ -378,7 +698,7 @@ export async function createInvoicesFromWorkEntries(
     return {
       success: false,
       message:
-        "Every selected entry must be Approved, billable (not included), not already billed, and linked to a contract.",
+        "Every selected entry must be Approved, not already billed, and linked to a contract. Hours inside the plan pool are not charged; expenses still bill.",
     };
   }
 
@@ -388,7 +708,9 @@ export async function createInvoicesFromWorkEntries(
 
   const { data: contracts, error: contractError } = await supabase
     .from("contracts")
-    .select("id, additional_hourly_rate, invoice_due_days, customer_id")
+    .select(
+      "id, additional_hourly_rate, included_support_hours, invoice_due_days, customer_id",
+    )
     .in("id", contractIds);
 
   if (contractError) {
@@ -397,15 +719,44 @@ export async function createInvoicesFromWorkEntries(
 
   const contractMap = new Map((contracts ?? []).map((c) => [c.id, c]));
 
+  // Prior billed hours by contract+month so pool allocation is chronological.
+  const months = [
+    ...new Set(
+      entries
+        .map((e) => (e.work_date ? String(e.work_date).slice(0, 7) : null))
+        .filter((m): m is string => Boolean(m)),
+    ),
+  ];
+
+  const priorByContractMonth = new Map<string, number>();
+  if (months.length > 0) {
+    const { data: priorEntries } = await supabase
+      .from("work_entries")
+      .select("id, contract_id, work_date, hours_worked, billing_status")
+      .in("contract_id", contractIds)
+      .eq("billing_status", "Billed");
+
+    for (const prior of priorEntries ?? []) {
+      if (!prior.contract_id || !prior.work_date) continue;
+      if (entryIds.includes(prior.id)) continue;
+      const month = String(prior.work_date).slice(0, 7);
+      if (!months.includes(month)) continue;
+      const key = `${prior.contract_id}::${month}`;
+      priorByContractMonth.set(
+        key,
+        (priorByContractMonth.get(key) ?? 0) + Number(prior.hours_worked ?? 0),
+      );
+    }
+  }
+
   type Group = {
     customerId: string;
     contractId: string;
     entryIds: string[];
-    additional: number;
-    software: number;
-    equipment: number;
-    other: number;
+    entries: typeof entries;
     dueDays: number;
+    includedHours: number;
+    rate: number;
   };
 
   const groups = new Map<string, Group>();
@@ -426,40 +777,68 @@ export async function createInvoicesFromWorkEntries(
       customerId,
       contractId,
       entryIds: [] as string[],
-      additional: 0,
-      software: 0,
-      equipment: 0,
-      other: 0,
+      entries: [] as typeof entries,
       dueDays: contract.invoice_due_days ?? 30,
+      includedHours: Number(contract.included_support_hours ?? 0),
+      rate: Number(contract.additional_hourly_rate ?? 0),
     };
-
-    const hours = Number(entry.hours_worked ?? 0);
-    const rate = Number(contract.additional_hourly_rate ?? 0);
-    existing.additional += hours * rate;
-    existing.software += Number(entry.software_cost ?? 0);
-    existing.equipment += Number(entry.equipment_cost ?? 0);
-    existing.other +=
-      Number(entry.parts_cost ?? 0) +
-      Number(entry.travel_cost ?? 0) +
-      Number(entry.other_cost ?? 0);
     existing.entryIds.push(entry.id);
+    existing.entries.push(entry);
     groups.set(key, existing);
   }
 
   const today = new Date();
   const invoiceDate = today.toISOString().slice(0, 10);
   let created = 0;
+  let coveredOnly = 0;
 
   for (const group of groups.values()) {
-    const total =
-      group.additional + group.software + group.equipment + group.other;
+    const priorHoursByMonth: Record<string, number> = {};
+    for (const [key, hours] of priorByContractMonth) {
+      if (!key.startsWith(`${group.contractId}::`)) continue;
+      const month = key.slice(group.contractId.length + 2);
+      priorHoursByMonth[month] = hours;
+    }
+
+    const overageById = allocateOverageHours({
+      selected: group.entries,
+      includedHoursPerMonth: group.includedHours,
+      priorHoursByMonth,
+    });
+
+    let additional = 0;
+    let software = 0;
+    let equipment = 0;
+    let other = 0;
+
+    for (const entry of group.entries) {
+      const overageHours = overageById.get(entry.id) ?? 0;
+      additional += overageHours * group.rate;
+      software += Number(entry.software_cost ?? 0);
+      equipment += Number(entry.equipment_cost ?? 0);
+      other +=
+        Number(entry.parts_cost ?? 0) +
+        Number(entry.travel_cost ?? 0) +
+        Number(entry.other_cost ?? 0);
+    }
+
+    const total = additional + software + equipment + other;
 
     if (total <= 0) {
-      return {
-        success: false,
-        message:
-          "Selected work does not produce a billable amount (check hours and contract overage rates).",
-      };
+      const { error: linkError } = await supabase
+        .from("work_entries")
+        .update({
+          approval_status: "Approved",
+          billing_status: "Billed",
+          invoice_id: null,
+        })
+        .in("id", group.entryIds);
+
+      if (linkError) {
+        return { success: false, message: linkError.message };
+      }
+      coveredOnly += group.entryIds.length;
+      continue;
     }
 
     const due = new Date(today);
@@ -479,14 +858,17 @@ export async function createInvoicesFromWorkEntries(
         invoice_date: invoiceDate,
         due_date: dueDate,
         recurring_service_fee: 0,
-        additional_support_charges: roundMoney(group.additional),
-        software_charges: roundMoney(group.software),
-        equipment_charges: roundMoney(group.equipment),
-        other_charges: roundMoney(group.other),
+        additional_support_charges: roundMoney(additional),
+        software_charges: roundMoney(software),
+        equipment_charges: roundMoney(equipment),
+        other_charges: roundMoney(other),
+        late_fee_amount: 0,
         total_amount: roundMoney(total),
         amount_paid: 0,
         remaining_balance: roundMoney(total),
         status: "Draft",
+        invoice_source: "work_entries",
+        billing_period: null,
         created_by: user?.id ?? null,
       })
       .select("id")
@@ -515,19 +897,26 @@ export async function createInvoicesFromWorkEntries(
     created += 1;
   }
 
-  revalidatePath("/billing");
-  revalidatePath("/time-costs");
-  revalidatePath("/operations");
-  revalidatePath("/reports");
-  revalidatePath("/portal");
+  revalidateBillingPaths();
   revalidatePath("/technician");
+
+  const parts: string[] = [];
+  if (created > 0) {
+    parts.push(
+      `Created ${created} draft invoice${created === 1 ? "" : "s"} from work entries (pool hours excluded; expenses and overages billed)`,
+    );
+  }
+  if (coveredOnly > 0) {
+    parts.push(
+      `marked ${coveredOnly} entr${coveredOnly === 1 ? "y" : "ies"} billed with no charge (covered by plan pool, no expenses)`,
+    );
+  }
 
   return {
     success: true,
-    message: `Created ${created} draft invoice${created === 1 ? "" : "s"} in Billing from ${entryIds.length} work entr${entryIds.length === 1 ? "y" : "ies"}.`,
+    message:
+      parts.length > 0
+        ? `${parts.join("; ")}.`
+        : "No billable amounts from selected work.",
   };
-}
-
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
 }

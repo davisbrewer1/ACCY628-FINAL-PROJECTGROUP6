@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { syncLateFees } from "@/app/actions/billing";
+import { syncBillingCadence } from "@/app/actions/billing";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertBanner } from "@/components/AlertBanner";
@@ -57,7 +57,7 @@ export default function EndUserInvoiceDetailPage() {
         return;
       }
 
-      await syncLateFees();
+      await syncBillingCadence();
 
       const { data: invoiceData } = await supabase
         .from("invoices")

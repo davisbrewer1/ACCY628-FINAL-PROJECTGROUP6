@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { syncLateFees } from "@/app/actions/billing";
+import { syncBillingCadence } from "@/app/actions/billing";
 import Link from "next/link";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
@@ -52,7 +52,7 @@ export default function EndUserBillingPage() {
         return;
       }
 
-      await syncLateFees();
+      await syncBillingCadence();
 
       const customerId = profileData.customer_id;
       const [co, inv, work] = await Promise.all([
