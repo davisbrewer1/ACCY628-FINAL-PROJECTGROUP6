@@ -68,12 +68,6 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "billing", "account_manager"],
   },
   {
-    href: "/recommendations",
-    label: "Risk Management",
-    icon: "Lightbulb",
-    roles: ["administrator", "executive", "service_manager", "account_manager", "client_admin"],
-  },
-  {
     href: "/reports",
     label: "Reports",
     icon: "BarChart3",
