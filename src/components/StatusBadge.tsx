@@ -42,6 +42,9 @@ const STATUS_STYLES: Record<string, string> = {
   Healthy: "badge-success",
   Watch: "badge-warning",
   "At risk": "badge-error",
+  Active: "badge-success",
+  "No longer in use": "badge-ghost",
+  "Plan retired": "badge-warning",
 };
 
 interface StatusBadgeProps {

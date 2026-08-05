@@ -65,6 +65,13 @@ export function buildInvoiceLineItems(invoice: Invoice): InvoiceLineItem[] {
       explanation: "Other approved billable items not categorized above.",
       amount: invoice.other_charges ?? 0,
     },
+    {
+      key: "late_fee",
+      label: "Late fee",
+      explanation:
+        "Automatic past-due charge from your contract late-fee percent and timeframe.",
+      amount: invoice.late_fee_amount ?? 0,
+    },
   ];
 
   return candidates.filter((item) => item.amount > 0);

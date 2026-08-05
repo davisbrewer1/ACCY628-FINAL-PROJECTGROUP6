@@ -23,6 +23,7 @@ import {
   getReadyToInvoiceEntries,
   getRenewalsInDays,
 } from "@/lib/manager-ops";
+import { allocateOverageHours } from "@/lib/plan-pricing";
 import { createClient } from "@/lib/supabase/client";
 import type {
   AiPlatform,
@@ -132,10 +133,45 @@ export default function ReportsPage() {
       .filter((c) => c.contract_status === "Active")
       .reduce((sum, c) => sum + (c.monthly_recurring_fee ?? 0), 0);
 
-    const unbilledRevenue = getReadyToInvoiceEntries(workEntries).reduce(
-      (sum, e) => sum + (e.total_direct_cost ?? 0),
-      0,
-    );
+    // Unbilled = pool overage hours × rate + pass-through expenses on ready entries
+    const ready = getReadyToInvoiceEntries(workEntries);
+    let unbilledRevenue = 0;
+    for (const contract of contracts) {
+      const contractReady = ready.filter((e) => e.contract_id === contract.id);
+      if (contractReady.length === 0) continue;
+      const byMonth = new Map<string, typeof contractReady>();
+      for (const entry of contractReady) {
+        const month = entry.work_date?.slice(0, 7) ?? "unknown";
+        const list = byMonth.get(month) ?? [];
+        list.push(entry);
+        byMonth.set(month, list);
+      }
+      for (const monthEntries of byMonth.values()) {
+        const allocated = allocateOverageHours({
+          selected: monthEntries,
+          includedHoursPerMonth: Number(contract.included_support_hours ?? 0),
+        });
+        for (const entry of monthEntries) {
+          const overage = allocated.get(entry.id) ?? 0;
+          unbilledRevenue +=
+            overage * (contract.additional_hourly_rate ?? 0) +
+            (entry.parts_cost ?? 0) +
+            (entry.software_cost ?? 0) +
+            (entry.equipment_cost ?? 0) +
+            (entry.travel_cost ?? 0) +
+            (entry.other_cost ?? 0);
+        }
+      }
+    }
+    for (const entry of ready) {
+      if (entry.contract_id) continue;
+      unbilledRevenue +=
+        (entry.parts_cost ?? 0) +
+        (entry.software_cost ?? 0) +
+        (entry.equipment_cost ?? 0) +
+        (entry.travel_cost ?? 0) +
+        (entry.other_cost ?? 0);
+    }
 
     const accountsReceivable = invoices.reduce(
       (sum, i) => sum + (i.remaining_balance ?? 0),

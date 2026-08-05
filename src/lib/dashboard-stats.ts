@@ -62,12 +62,40 @@ export function computeDashboardStats(
   }).length;
 
   const monthEntries = workEntries.filter((e) => isThisMonth(e.work_date));
-  const includedHours = monthEntries
-    .filter((e) => e.included_in_contract)
-    .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
-  const billableHours = monthEntries
-    .filter((e) => !e.included_in_contract)
-    .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
+
+  // Pool-aware: hours within each contract's included_support_hours are covered;
+  // only overage hours are "billable" for revenue estimates.
+  let includedHours = 0;
+  let billableHours = 0;
+  const activeForHours = contracts.filter((c) => c.contract_status === "Active");
+  const seenContractIds = new Set<string>();
+
+  for (const contract of activeForHours) {
+    seenContractIds.add(contract.id);
+    const entries = monthEntries
+      .filter((e) => e.contract_id === contract.id)
+      .sort((a, b) => {
+        const da = a.work_date ?? "";
+        const db = b.work_date ?? "";
+        if (da !== db) return da.localeCompare(db);
+        return a.id.localeCompare(b.id);
+      });
+    const pool = Number(contract.included_support_hours ?? 0);
+    let used = 0;
+    for (const entry of entries) {
+      const hours = Number(entry.hours_worked ?? 0);
+      if (hours <= 0) continue;
+      const covered = Math.min(hours, Math.max(0, pool - used));
+      includedHours += covered;
+      billableHours += Math.max(0, hours - covered);
+      used += hours;
+    }
+  }
+
+  for (const entry of monthEntries) {
+    if (entry.contract_id && seenContractIds.has(entry.contract_id)) continue;
+    billableHours += Number(entry.hours_worked ?? 0);
+  }
 
   const unpaidBalance = invoices
     .filter((i) => i.status !== "Paid" && i.status !== "Canceled")
@@ -85,7 +113,24 @@ export function computeDashboardStats(
         (sum, e) => sum + (e.total_direct_cost ?? 0),
         0,
       );
-      const revenue = (c.monthly_recurring_fee ?? 0) + billableHours * (c.additional_hourly_rate ?? 0);
+      const monthContractEntries = monthEntries.filter(
+        (e) => e.contract_id === c.id,
+      );
+      const pool = Number(c.included_support_hours ?? 0);
+      let used = 0;
+      let overage = 0;
+      const sorted = [...monthContractEntries].sort((a, b) =>
+        (a.work_date ?? "").localeCompare(b.work_date ?? ""),
+      );
+      for (const entry of sorted) {
+        const hours = Number(entry.hours_worked ?? 0);
+        const covered = Math.min(hours, Math.max(0, pool - used));
+        overage += Math.max(0, hours - covered);
+        used += hours;
+      }
+      const revenue =
+        (c.monthly_recurring_fee ?? 0) +
+        overage * (c.additional_hourly_rate ?? 0);
       return calcProfitMargin(revenue, costs);
     })
     .filter((m): m is number => m != null);

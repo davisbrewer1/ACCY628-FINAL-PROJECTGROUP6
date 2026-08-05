@@ -187,7 +187,12 @@ export default function EndUserContractsPage() {
                         <th>Invoice due days</th>
                         <td>{contract.invoice_due_days ?? "—"}</td>
                         <th>Late fee policy</th>
-                        <td>{contract.late_fee_policy ?? "—"}</td>
+                        <td>
+                          {contract.late_fee_percent != null &&
+                          contract.late_fee_period_days != null
+                            ? `${contract.late_fee_percent}% every ${contract.late_fee_period_days} days past due`
+                            : (contract.late_fee_policy ?? "—")}
+                        </td>
                       </tr>
                       <tr>
                         <th>Remote support included</th>

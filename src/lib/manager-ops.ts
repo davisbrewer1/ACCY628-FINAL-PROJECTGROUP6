@@ -3,6 +3,7 @@ import { isOpenTicket, isThisMonth } from "@/lib/dashboard-stats";
 import type {
   Contract,
   Customer,
+  HardwareAsset,
   Invoice,
   Payment,
   Recommendation,
@@ -26,6 +27,17 @@ export interface ContractHoursBurn {
   includedHours: number;
   burnPercent: number | null;
   overageHours: number;
+  overageEstimate: number;
+  isOver: boolean;
+}
+
+export interface ContractAssetBurn {
+  contractId: string;
+  customerId: string;
+  assetSpend: number;
+  includedBudget: number;
+  burnPercent: number | null;
+  overageAmount: number;
   overageEstimate: number;
   isOver: boolean;
 }
@@ -116,13 +128,120 @@ export function computeContractHoursBurns(
     });
 }
 
+/**
+ * Asset dollars deployed against a contract-length budget.
+ * Counts hardware for the contract's customer when purchase_date falls in
+ * [start_date, end_date]. Assets with a null purchase_date still count when
+ * they are assigned to the customer (customer_id set) so demo inventory
+ * without purchase dates is not silently excluded.
+ */
+export function assetSpendForContract(
+  contract: Contract,
+  assets: HardwareAsset[],
+): number {
+  const start = safeParse(contract.start_date);
+  const end = safeParse(contract.end_date);
+
+  return assets
+    .filter((asset) => asset.customer_id === contract.customer_id)
+    .reduce((sum, asset) => {
+      const purchase = safeParse(asset.purchase_date);
+      if (purchase) {
+        if (start && purchase < start) return sum;
+        if (end && purchase > end) return sum;
+      } else if (!asset.customer_id) {
+        return sum;
+      }
+      return sum + (asset.purchase_cost ?? asset.current_value ?? 0);
+    }, 0);
+}
+
+export function computeContractAssetBurns(
+  contracts: Contract[],
+  assets: HardwareAsset[],
+): ContractAssetBurn[] {
+  return contracts
+    .filter((c) => c.contract_status === "Active")
+    .map((contract) => {
+      const assetSpend = assetSpendForContract(contract, assets);
+      const includedBudget = contract.included_asset_budget ?? 0;
+      const overageAmount = Math.max(0, assetSpend - includedBudget);
+      const burnPercent =
+        includedBudget > 0 ? (assetSpend / includedBudget) * 100 : null;
+      return {
+        contractId: contract.id,
+        customerId: contract.customer_id,
+        assetSpend,
+        includedBudget,
+        burnPercent,
+        overageAmount,
+        overageEstimate:
+          overageAmount * (contract.additional_asset_rate ?? 1),
+        isOver: includedBudget > 0 && assetSpend > includedBudget,
+      };
+    });
+}
+
+/**
+ * Approved work ready to push to Billing. Pool-based hour inclusion is applied
+ * at invoice time — entries are eligible regardless of included_in_contract.
+ * Prefer entries with expenses or that may produce overage; still include
+ * in-pool-only rows so managers can clear them as covered.
+ */
 export function getReadyToInvoiceEntries(workEntries: WorkEntry[]): WorkEntry[] {
   return workEntries.filter(
     (e) =>
-      !e.included_in_contract &&
       e.approval_status === "Approved" &&
-      e.billing_status !== "Billed",
+      e.billing_status !== "Billed" &&
+      Boolean(e.customer_id) &&
+      Boolean(e.contract_id),
   );
+}
+
+/**
+ * Split this month's hours into pool-covered vs overage using each contract's
+ * included_support_hours (chronological within the month).
+ */
+export function computePoolHourSplit(
+  contracts: Contract[],
+  workEntries: WorkEntry[],
+): { includedHours: number; overageHours: number } {
+  let includedHours = 0;
+  let overageHours = 0;
+
+  for (const contract of contracts) {
+    const monthEntries = workEntries.filter(
+      (e) => e.contract_id === contract.id && isThisMonth(e.work_date),
+    );
+    if (monthEntries.length === 0) continue;
+
+    const pool = Number(contract.included_support_hours ?? 0);
+    const sorted = [...monthEntries].sort((a, b) => {
+      const da = a.work_date ?? "";
+      const db = b.work_date ?? "";
+      if (da !== db) return da.localeCompare(db);
+      return a.id.localeCompare(b.id);
+    });
+
+    let used = 0;
+    for (const entry of sorted) {
+      const hours = Number(entry.hours_worked ?? 0);
+      if (hours <= 0) continue;
+      const remaining = Math.max(0, pool - used);
+      const covered = Math.min(hours, remaining);
+      includedHours += covered;
+      overageHours += Math.max(0, hours - covered);
+      used += hours;
+    }
+  }
+
+  // Entries without a contract still count as overage/billable for metrics
+  const orphanHours = workEntries
+    .filter((e) => !e.contract_id && isThisMonth(e.work_date))
+    .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
+  overageHours += orphanHours;
+
+  return { includedHours, overageHours };
 }
 
 /** Entries waiting on a manager approve / dispute decision. */

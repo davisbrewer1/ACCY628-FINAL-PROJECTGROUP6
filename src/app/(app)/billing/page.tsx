@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, Wallet } from "lucide-react";
-import { createInvoice, recordPayment } from "@/app/actions/billing";
+import { createInvoice, recordPayment, syncBillingCadence } from "@/app/actions/billing";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
@@ -13,14 +13,23 @@ import { useToast } from "@/components/Toast";
 import { formatCurrency, formatDate, formatHours } from "@/lib/format";
 import {
   cashCollectedMtd,
+  computeContractAssetBurns,
   computeContractHoursBurns,
   getArAgingBucket,
   getOpenArInvoices,
   getPastDueInvoices,
   summarizeArAging,
 } from "@/lib/manager-ops";
+import { PLAN_CASH_BILLING_GUIDANCE } from "@/lib/plan-pricing";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, Invoice, Payment, WorkEntry } from "@/lib/types";
+import type {
+  Contract,
+  Customer,
+  HardwareAsset,
+  Invoice,
+  Payment,
+  WorkEntry,
+} from "@/lib/types";
 
 interface InvoiceRow extends Invoice {
   customerName: string;
@@ -41,32 +50,43 @@ export default function BillingPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
+  const [assets, setAssets] = useState<HardwareAsset[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
-  const [prefillAdditional, setPrefillAdditional] = useState("");
-  const [prefillContractId, setPrefillContractId] = useState("");
+  const [selectedContractId, setSelectedContractId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   async function loadData() {
+    const sync = await syncBillingCadence();
+    if (sync.success) {
+      const created = (sync.planCreated ?? 0) + (sync.assetCreated ?? 0);
+      if (created > 0) {
+        showToast(sync.message);
+      }
+    }
     const supabase = createClient();
-    const [c, co, i, p, w] = await Promise.all([
+    const [c, co, i, p, w, a] = await Promise.all([
       supabase.from("customers").select("*").order("customer_name"),
       supabase.from("contracts").select("*"),
       supabase.from("invoices").select("*").order("invoice_date", { ascending: false }),
       supabase.from("payments").select("*"),
       supabase.from("work_entries").select("*"),
+      supabase.from("hardware_assets").select("*"),
     ]);
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
     setInvoices(i.data ?? []);
     setPayments(p.data ?? []);
     setWorkEntries(w.data ?? []);
+    setAssets((a.data as HardwareAsset[]) ?? []);
     setLoading(false);
   }
 
   useEffect(() => {
-    loadData();
+    // Initial page load only.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch on mount
+    void loadData();
   }, []);
 
   const customerContracts = useMemo(
@@ -78,20 +98,34 @@ export default function BillingPage() {
   const cashMtd = useMemo(() => cashCollectedMtd(payments), [payments]);
   const pastDue = useMemo(() => getPastDueInvoices(invoices), [invoices]);
 
-  const overageOpportunities = useMemo(() => {
-    return computeContractHoursBurns(contracts, workEntries)
-      .filter((b) => b.isOver && b.overageEstimate > 0)
-      .map((b) => {
-        const contract = contracts.find((c) => c.id === b.contractId);
-        const customer = customers.find((c) => c.id === b.customerId);
-        return {
-          ...b,
-          contractName: contract?.contract_name ?? "Contract",
-          customerName: customer?.customer_name ?? "Customer",
-          customerId: b.customerId,
-        };
-      });
-  }, [contracts, workEntries, customers]);
+  const hourBurns = useMemo(
+    () =>
+      computeContractHoursBurns(contracts, workEntries).filter(
+        (b) => b.isOver && b.overageEstimate > 0,
+      ),
+    [contracts, workEntries],
+  );
+
+  const assetBurns = useMemo(
+    () =>
+      computeContractAssetBurns(contracts, assets).filter(
+        (b) => b.isOver && b.overageEstimate > 0,
+      ),
+    [contracts, assets],
+  );
+
+  const syncedAssetContractIds = useMemo(() => {
+    return new Set(
+      invoices
+        .filter(
+          (inv) =>
+            inv.invoice_source === "asset_overage" &&
+            inv.status !== "Canceled" &&
+            inv.contract_id,
+        )
+        .map((inv) => inv.contract_id as string),
+    );
+  }, [invoices]);
 
   const rows: InvoiceRow[] = useMemo(() => {
     const customerMap = new Map(customers.map((c) => [c.id, c.customer_name]));
@@ -130,14 +164,6 @@ export default function BillingPage() {
 
   const selectedInvoice = invoices.find((i) => i.id === selectedInvoiceId);
 
-  function openOverageInvoice(item: (typeof overageOpportunities)[number]) {
-    setSelectedCustomer(item.customerId);
-    setPrefillContractId(item.contractId);
-    setPrefillAdditional(item.overageEstimate.toFixed(2));
-    setError(null);
-    invoiceDialogRef.current?.showModal();
-  }
-
   function handleCreateInvoice(formData: FormData) {
     setError(null);
     startTransition(async () => {
@@ -145,8 +171,7 @@ export default function BillingPage() {
       if (result.success) {
         showToast(result.message);
         invoiceDialogRef.current?.close();
-        setPrefillAdditional("");
-        setPrefillContractId("");
+        setSelectedContractId("");
         await loadData();
       } else {
         setError(result.message);
@@ -180,14 +205,22 @@ export default function BillingPage() {
     <div className="space-y-6">
       <PageHeader
         title="Billing & AR"
-        description="Aging, cash, and one-click overage invoices with contract context."
+        description="Plan cadence invoices, pool-aware work charges, aging, and cash."
         action={
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => invoiceDialogRef.current?.showModal()}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => invoiceDialogRef.current?.showModal()}
+            >
               <Plus className="size-4" />
               Create Invoice
             </button>
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => paymentDialogRef.current?.showModal()}>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => paymentDialogRef.current?.showModal()}
+            >
               <Wallet className="size-4" />
               Record Payment
             </button>
@@ -195,57 +228,88 @@ export default function BillingPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard title="Current" value={formatCurrency(aging.current)} />
-        <StatCard title="1–30 days" value={formatCurrency(aging.d30)} tone={aging.d30 > 0 ? "warning" : "default"} />
-        <StatCard title="31–60 days" value={formatCurrency(aging.d60)} tone={aging.d60 > 0 ? "warning" : "default"} />
-        <StatCard title="61–90+ days" value={formatCurrency(aging.d90)} tone={aging.d90 > 0 ? "danger" : "default"} />
-        <StatCard title="Cash collected (MTD)" value={formatCurrency(cashMtd)} tone="success" />
+      <div className="alert alert-info text-sm">
+        <span>{PLAN_CASH_BILLING_GUIDANCE}</span>
       </div>
 
-      {overageOpportunities.length > 0 ? (
-        <div className="card border border-warning/30 bg-warning/5 shadow-sm">
-          <div className="card-body gap-3">
-            <h2 className="card-title text-base">Invoice from overages</h2>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard title="Current" value={formatCurrency(aging.current)} />
+        <StatCard
+          title="1–30 days"
+          value={formatCurrency(aging.d30)}
+          tone={aging.d30 > 0 ? "warning" : "default"}
+        />
+        <StatCard
+          title="31–60 days"
+          value={formatCurrency(aging.d60)}
+          tone={aging.d60 > 0 ? "warning" : "default"}
+        />
+        <StatCard
+          title="61–90+ days"
+          value={formatCurrency(aging.d90)}
+          tone={aging.d90 > 0 ? "danger" : "default"}
+        />
+        <StatCard
+          title="Cash collected (MTD)"
+          value={formatCurrency(cashMtd)}
+          tone="success"
+        />
+      </div>
+
+      {hourBurns.length > 0 ? (
+        <div className="card border bg-base-100 shadow-sm">
+          <div className="card-body gap-2">
+            <h2 className="card-title text-base">Hour pool overages (this month)</h2>
             <p className="text-sm text-base-content/70">
-              Active contracts over included hours this month — create an invoice with estimated overage charges.
+              In-pool hours are covered by the plan fee. Overage hours bill when you push
+              approved work from{" "}
+              <a href="/time-costs" className="link">
+                Work &amp; Billing
+              </a>
+              — not as a separate prefill here.
             </p>
-            <div className="overflow-x-auto">
-              <table className="table table-sm">
-                <thead>
-                  <tr>
-                    <th>Customer</th>
-                    <th>Contract</th>
-                    <th>Hours</th>
-                    <th className="text-right">Est. overage</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {overageOpportunities.map((item) => (
-                    <tr key={item.contractId}>
-                      <td>{item.customerName}</td>
-                      <td>{item.contractName}</td>
-                      <td>
-                        {formatHours(item.hoursUsed)} / {formatHours(item.includedHours)}
-                      </td>
-                      <td className="text-right font-medium">
-                        {formatCurrency(item.overageEstimate)}
-                      </td>
-                      <td className="text-right">
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-xs"
-                          onClick={() => openOverageInvoice(item)}
-                        >
-                          Create invoice
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="text-sm">
+              {hourBurns.map((b) => {
+                const contract = contracts.find((c) => c.id === b.contractId);
+                const customer = customers.find((c) => c.id === b.customerId);
+                return (
+                  <li key={b.contractId}>
+                    {customer?.customer_name ?? "Customer"} ·{" "}
+                    {contract?.contract_name ?? "Contract"}:{" "}
+                    {formatHours(b.hoursUsed)} / {formatHours(b.includedHours)} (
+                    {formatCurrency(b.overageEstimate)} est.)
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      ) : null}
+
+      {assetBurns.length > 0 ? (
+        <div className="card border bg-base-100 shadow-sm">
+          <div className="card-body gap-2">
+            <h2 className="card-title text-base">Asset budget overages</h2>
+            <p className="text-sm text-base-content/70">
+              Hardware under the contract asset budget is not billed separately. Overage
+              invoices are created automatically when Billing loads.
+            </p>
+            <ul className="text-sm">
+              {assetBurns.map((b) => {
+                const contract = contracts.find((c) => c.id === b.contractId);
+                const customer = customers.find((c) => c.id === b.customerId);
+                const synced = syncedAssetContractIds.has(b.contractId);
+                return (
+                  <li key={b.contractId}>
+                    {customer?.customer_name ?? "Customer"} ·{" "}
+                    {contract?.contract_name ?? "Contract"}:{" "}
+                    {formatCurrency(b.assetSpend)} / {formatCurrency(b.includedBudget)} (
+                    {formatCurrency(b.overageEstimate)}
+                    {synced ? " — synced" : ""})
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
       ) : null}
@@ -253,16 +317,22 @@ export default function BillingPage() {
       {filter !== "all" ? (
         <div className="alert alert-info text-sm py-2">
           <span>Filtered billing view: {filter}</span>
-          <a href="/billing" className="link">Clear</a>
+          <a href="/billing" className="link">
+            Clear
+          </a>
         </div>
       ) : null}
 
       {filteredRows.length === 0 ? (
         <EmptyState
           title="No invoices in this view"
-          description="Create an invoice to track recurring fees and additional billable charges."
+          description="Plan cadence invoices appear automatically for active contracts. You can also create a manual invoice."
           action={
-            <button type="button" className="btn btn-primary" onClick={() => invoiceDialogRef.current?.showModal()}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => invoiceDialogRef.current?.showModal()}
+            >
               Create Invoice
             </button>
           }
@@ -275,6 +345,7 @@ export default function BillingPage() {
                 <tr>
                   <th>Invoice #</th>
                   <th>Customer / contract</th>
+                  <th>Source</th>
                   <th>Due</th>
                   <th>Aging</th>
                   <th className="text-right">Total</th>
@@ -290,7 +361,11 @@ export default function BillingPage() {
                       <div className="font-medium">{row.customerName}</div>
                       <div className="text-xs text-base-content/60">
                         {row.contractName} · {row.planName}
+                        {row.billing_period ? ` · ${row.billing_period}` : ""}
                       </div>
+                    </td>
+                    <td className="text-xs capitalize">
+                      {String(row.invoice_source ?? "manual").replace(/_/g, " ")}
                     </td>
                     <td>
                       <div>{formatDate(row.due_date)}</div>
@@ -300,14 +375,18 @@ export default function BillingPage() {
                     </td>
                     <td>
                       <span className="badge badge-outline badge-sm uppercase">
-                        {row.aging === "current" ? "Current" : row.aging.replace("d", "") + "d"}
+                        {row.aging === "current"
+                          ? "Current"
+                          : row.aging.replace("d", "") + "d"}
                       </span>
                     </td>
                     <td className="text-right">{formatCurrency(row.total_amount)}</td>
                     <td className="text-right font-medium">
                       {formatCurrency(row.remaining_balance)}
                     </td>
-                    <td><StatusBadge status={row.status ?? "Draft"} /></td>
+                    <td>
+                      <StatusBadge status={row.status ?? "Draft"} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -319,23 +398,52 @@ export default function BillingPage() {
       <dialog ref={invoiceDialogRef} className="modal">
         <div className="modal-box max-w-2xl">
           <h3 className="text-lg font-bold">Create Invoice</h3>
-          {error ? <div className="alert alert-error mt-4 text-sm"><span>{error}</span></div> : null}
-          <form action={handleCreateInvoice} className="form-grid mt-4 grid gap-4 sm:grid-cols-2">
+          {error ? (
+            <div className="alert alert-error mt-4 text-sm">
+              <span>{error}</span>
+            </div>
+          ) : null}
+          <form
+            action={handleCreateInvoice}
+            className="form-grid mt-4 grid gap-4 sm:grid-cols-2"
+          >
             <FormField label="Invoice number" htmlFor="invoice_number" required>
-              <input id="invoice_number" name="invoice_number" className="input input-bordered w-full" placeholder={`INV-${Date.now().toString().slice(-6)}`} required />
+              <input
+                id="invoice_number"
+                name="invoice_number"
+                className="input input-bordered w-full"
+                placeholder="INV-123456"
+                required
+              />
             </FormField>
             <FormField label="Status" htmlFor="status">
-              <select id="status" name="status" className="select select-bordered w-full" defaultValue="Draft">
+              <select
+                id="status"
+                name="status"
+                className="select select-bordered w-full"
+                defaultValue="Draft"
+              >
                 <option value="Draft">Draft</option>
                 <option value="Pending Approval">Pending Approval</option>
                 <option value="Issued">Issued</option>
               </select>
             </FormField>
             <FormField label="Customer" htmlFor="customer_id" required>
-              <select id="customer_id" name="customer_id" className="select select-bordered w-full" required value={selectedCustomer} onChange={(e) => setSelectedCustomer(e.target.value)}>
-                <option value="" disabled>Select customer</option>
+              <select
+                id="customer_id"
+                name="customer_id"
+                className="select select-bordered w-full"
+                required
+                value={selectedCustomer}
+                onChange={(e) => setSelectedCustomer(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select customer
+                </option>
                 {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.customer_name}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.customer_name}
+                  </option>
                 ))}
               </select>
             </FormField>
@@ -345,25 +453,49 @@ export default function BillingPage() {
                 name="contract_id"
                 className="select select-bordered w-full"
                 required
-                value={prefillContractId}
-                onChange={(e) => setPrefillContractId(e.target.value)}
+                value={selectedContractId}
+                onChange={(e) => setSelectedContractId(e.target.value)}
               >
-                <option value="" disabled>Select contract</option>
+                <option value="" disabled>
+                  Select contract
+                </option>
                 {customerContracts.map((c) => (
-                  <option key={c.id} value={c.id}>{c.contract_name}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.contract_name}
+                  </option>
                 ))}
               </select>
             </FormField>
             <FormField label="Invoice date" htmlFor="invoice_date">
-              <input id="invoice_date" name="invoice_date" type="date" className="input input-bordered w-full" />
+              <input
+                id="invoice_date"
+                name="invoice_date"
+                type="date"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <FormField label="Due date" htmlFor="due_date">
-              <input id="due_date" name="due_date" type="date" className="input input-bordered w-full" />
+              <input
+                id="due_date"
+                name="due_date"
+                type="date"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <FormField label="Recurring service fee" htmlFor="recurring_service_fee">
-              <input id="recurring_service_fee" name="recurring_service_fee" type="number" min="0" step="0.01" className="input input-bordered w-full" />
+              <input
+                id="recurring_service_fee"
+                name="recurring_service_fee"
+                type="number"
+                min="0"
+                step="0.01"
+                className="input input-bordered w-full"
+              />
             </FormField>
-            <FormField label="Additional support charges" htmlFor="additional_support_charges">
+            <FormField
+              label="Additional support charges"
+              htmlFor="additional_support_charges"
+            >
               <input
                 id="additional_support_charges"
                 name="additional_support_charges"
@@ -371,28 +503,59 @@ export default function BillingPage() {
                 min="0"
                 step="0.01"
                 className="input input-bordered w-full"
-                value={prefillAdditional}
-                onChange={(e) => setPrefillAdditional(e.target.value)}
               />
             </FormField>
             <FormField label="Software charges" htmlFor="software_charges">
-              <input id="software_charges" name="software_charges" type="number" min="0" step="0.01" className="input input-bordered w-full" />
+              <input
+                id="software_charges"
+                name="software_charges"
+                type="number"
+                min="0"
+                step="0.01"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <FormField label="Equipment charges" htmlFor="equipment_charges">
-              <input id="equipment_charges" name="equipment_charges" type="number" min="0" step="0.01" className="input input-bordered w-full" />
+              <input
+                id="equipment_charges"
+                name="equipment_charges"
+                type="number"
+                min="0"
+                step="0.01"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <FormField label="Other charges" htmlFor="other_charges" className="sm:col-span-2">
-              <input id="other_charges" name="other_charges" type="number" min="0" step="0.01" className="input input-bordered w-full" />
+              <input
+                id="other_charges"
+                name="other_charges"
+                type="number"
+                min="0"
+                step="0.01"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <div className="modal-action sm:col-span-2">
-              <button type="button" className="btn" onClick={() => invoiceDialogRef.current?.close()}>Cancel</button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => invoiceDialogRef.current?.close()}
+              >
+                Cancel
+              </button>
               <button type="submit" className="btn btn-primary" disabled={isPending}>
-                {isPending ? <span className="loading loading-spinner loading-sm" /> : "Create Invoice"}
+                {isPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Create Invoice"
+                )}
               </button>
             </div>
           </form>
         </div>
-        <form method="dialog" className="modal-backdrop"><button type="submit">close</button></form>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit">close</button>
+        </form>
       </dialog>
 
       <dialog ref={paymentDialogRef} className="modal">
@@ -401,7 +564,11 @@ export default function BillingPage() {
           <p className="mt-1 text-sm text-base-content/70">
             Payments reduce accounts receivable. No actual payment processing occurs.
           </p>
-          {error ? <div className="alert alert-error mt-4 text-sm"><span>{error}</span></div> : null}
+          {error ? (
+            <div className="alert alert-error mt-4 text-sm">
+              <span>{error}</span>
+            </div>
+          ) : null}
           <form action={handlePayment} className="form-grid mt-4 grid gap-4">
             <FormField label="Invoice" htmlFor="invoice_id" required>
               <select
@@ -412,7 +579,9 @@ export default function BillingPage() {
                 value={selectedInvoiceId}
                 onChange={(e) => setSelectedInvoiceId(e.target.value)}
               >
-                <option value="" disabled>Select invoice</option>
+                <option value="" disabled>
+                  Select invoice
+                </option>
                 {getOpenArInvoices(invoices).map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.invoice_number} — Balance {formatCurrency(i.remaining_balance)}
@@ -422,33 +591,74 @@ export default function BillingPage() {
             </FormField>
             {selectedInvoice ? (
               <div className="alert alert-info text-sm">
-                <span>Remaining balance: {formatCurrency(selectedInvoice.remaining_balance)}</span>
+                <span>
+                  Remaining balance: {formatCurrency(selectedInvoice.remaining_balance)}
+                </span>
               </div>
             ) : null}
             <FormField label="Payment date" htmlFor="payment_date">
-              <input id="payment_date" name="payment_date" type="date" className="input input-bordered w-full" />
+              <input
+                id="payment_date"
+                name="payment_date"
+                type="date"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <FormField label="Payment amount" htmlFor="payment_amount" required>
-              <input id="payment_amount" name="payment_amount" type="number" min="0.01" step="0.01" className="input input-bordered w-full" required />
+              <input
+                id="payment_amount"
+                name="payment_amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                className="input input-bordered w-full"
+                required
+              />
             </FormField>
             <FormField label="Payment method" htmlFor="payment_method">
-              <input id="payment_method" name="payment_method" className="input input-bordered w-full" placeholder="Check, ACH, Wire, etc." />
+              <input
+                id="payment_method"
+                name="payment_method"
+                className="input input-bordered w-full"
+                placeholder="Check, ACH, Wire, etc."
+              />
             </FormField>
             <FormField label="Reference number" htmlFor="reference_number">
-              <input id="reference_number" name="reference_number" className="input input-bordered w-full" />
+              <input
+                id="reference_number"
+                name="reference_number"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <FormField label="Notes" htmlFor="notes">
-              <textarea id="notes" name="notes" className="textarea textarea-bordered w-full" rows={2} />
+              <textarea
+                id="notes"
+                name="notes"
+                className="textarea textarea-bordered w-full"
+                rows={2}
+              />
             </FormField>
             <div className="modal-action">
-              <button type="button" className="btn" onClick={() => paymentDialogRef.current?.close()}>Cancel</button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => paymentDialogRef.current?.close()}
+              >
+                Cancel
+              </button>
               <button type="submit" className="btn btn-primary" disabled={isPending}>
-                {isPending ? <span className="loading loading-spinner loading-sm" /> : "Record Payment"}
+                {isPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Record Payment"
+                )}
               </button>
             </div>
           </form>
         </div>
-        <form method="dialog" className="modal-backdrop"><button type="submit">close</button></form>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit">close</button>
+        </form>
       </dialog>
     </div>
   );
