@@ -27,6 +27,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { NexusLogo } from "@/components/brand/NexusLogo";
 import { DemoRoleSwitcher } from "@/components/DemoRoleSwitcher";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { TechnicianHeaderTools } from "@/components/technician/TechnicianHeaderTools";
@@ -137,15 +138,7 @@ function BrandMark({ techTheme }: { techTheme?: boolean }) {
       className="flex items-center gap-3 px-4 py-4 transition-opacity hover:opacity-80"
       aria-label="Nexus Technology Solutions home"
     >
-      <div
-        className={`flex size-10 items-center justify-center rounded-box font-bold tracking-tight ${
-          techTheme
-            ? "bg-cyan-500 text-slate-950"
-            : "bg-primary text-primary-content"
-        }`}
-      >
-        NX
-      </div>
+      <NexusLogo size="lg" decorative />
       <div>
         <p
           className={`text-sm font-semibold leading-tight ${
@@ -309,15 +302,7 @@ export function AppShell({
               className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-80"
               aria-label="Nexus Technology Solutions home"
             >
-              <span
-                className={`flex size-8 shrink-0 items-center justify-center rounded-box text-xs font-bold ${
-                  techTheme
-                    ? "bg-cyan-500 text-slate-950"
-                    : "bg-primary text-primary-content"
-                }`}
-              >
-                NX
-              </span>
+              <NexusLogo size="lg" decorative />
               <span
                 className={`truncate text-sm font-semibold leading-tight sm:text-base ${
                   techTheme ? "text-white" : ""

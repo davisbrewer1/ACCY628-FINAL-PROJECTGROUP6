@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { NexusLogo } from "@/components/brand/NexusLogo";
 import { FormField } from "@/components/FormField";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { getDefaultDashboard, normalizeRole } from "@/lib/auth/roles";
@@ -137,8 +138,8 @@ export default function LoginPage() {
           </Link>
         </div>
         <div className="mb-8 max-w-md text-center text-white">
-          <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-cyan-600 text-xl font-bold text-white shadow-lg shadow-cyan-900/40">
-            NX
+          <div className="mx-auto mb-4 flex justify-center">
+            <NexusLogo size="lg" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
             Portal sign-in

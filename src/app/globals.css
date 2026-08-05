@@ -111,3 +111,9 @@ body {
 .tech-shell .navbar .btn-ghost:not([class*="text-"]) {
   color: #cbd5e1;
 }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
