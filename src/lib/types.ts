@@ -303,12 +303,12 @@ export interface AppNotification {
 }
 
 export type KnowledgeBaseCategory =
-  | "Hardware"
-  | "Software"
-  | "Networking"
-  | "Security"
-  | "SOPs"
-  | "Repairs";
+  | "Service Procedures"
+  | "Troubleshooting Guides"
+  | "Tools & Software"
+  | "Standards & Policies"
+  | "Templates & Forms"
+  | "Quick Access";
 
 export interface KnowledgeBaseArticle {
   id: string;

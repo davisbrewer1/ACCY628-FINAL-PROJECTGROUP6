@@ -37,6 +37,14 @@ import {
 } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
 
+const KnowledgeBasePanel = dynamic(
+  () =>
+    import("@/components/KnowledgeBasePanel").then(
+      (mod) => mod.KnowledgeBasePanel,
+    ),
+  { ssr: false },
+);
+
 const NotificationCenter = dynamic(
   () =>
     import("@/components/NotificationCenter").then(
@@ -346,7 +354,10 @@ export function AppShell({
             ) : null}
             {activeRole === "administrator" ||
             activeRole === "service_manager" ? (
-              <NotificationCenter />
+              <>
+                <KnowledgeBasePanel />
+                <NotificationCenter />
+              </>
             ) : null}
           </div>
         </header>
