@@ -163,8 +163,6 @@ export interface ServiceTicket {
   opened_at: string | null;
   target_response_at: string | null;
   target_resolution_at: string | null;
-  scheduled_start?: string | null;
-  scheduled_window?: string | null;
   responded_at: string | null;
   completed_at: string | null;
   status: TicketStatus | string | null;

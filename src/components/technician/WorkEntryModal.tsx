@@ -222,8 +222,8 @@ export function WorkEntryModal({
                   <p className="font-mono text-sm text-cyan-300">
                     {selectedTicket.ticket_number}
                   </p>
-                  <PriorityBadge priority={selectedTicket.priority} />
-                  <StatusBadge status={selectedTicket.status} />
+                  <PriorityBadge priority={selectedTicket.priority ?? "Medium"} />
+                  <StatusBadge status={selectedTicket.status ?? "New"} />
                 </div>
                 <p className="mt-2 text-base font-medium text-white">
                   {selectedTicket.title}
