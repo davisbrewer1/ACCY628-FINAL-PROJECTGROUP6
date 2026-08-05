@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { createContract } from "@/app/actions/contracts";
 import { calcProfitMargin } from "@/lib/calculations";
@@ -10,36 +11,52 @@ import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
-import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
+import { formatCurrency, formatDate, formatHours, formatPercent } from "@/lib/format";
+import {
+  computeContractHoursBurns,
+  getRenewalsInDays,
+  nextInvoiceDateHint,
+} from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, WorkEntry } from "@/lib/types";
+import type { Contract, Customer, Profile, WorkEntry } from "@/lib/types";
 
 interface ContractRow extends Contract {
   customerName: string;
   hoursUsed: number;
+  burnPercent: number | null;
+  overageEstimate: number;
+  isOver: boolean;
   profitMargin: number | null;
+  ownerName: string;
+  slaTier: string;
+  nextInvoiceHint: string | null;
 }
 
 export default function ContractsPage() {
+  const searchParams = useSearchParams();
+  const filter = searchParams.get("filter") ?? "all";
   const { showToast } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   async function loadData() {
     const supabase = createClient();
-    const [c, co, w] = await Promise.all([
+    const [c, co, w, p] = await Promise.all([
       supabase.from("customers").select("*").order("customer_name"),
       supabase.from("contracts").select("*").order("created_at", { ascending: false }),
       supabase.from("work_entries").select("*"),
+      supabase.from("profiles").select("*"),
     ]);
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
     setWorkEntries(w.data ?? []);
+    setProfiles(p.data ?? []);
     setLoading(false);
   }
 
@@ -47,24 +64,67 @@ export default function ContractsPage() {
     loadData();
   }, []);
 
+  const renewals90Ids = useMemo(
+    () => new Set(getRenewalsInDays(contracts, 90).map((c) => c.id)),
+    [contracts],
+  );
+
   const rows: ContractRow[] = useMemo(() => {
     const customerMap = new Map(customers.map((c) => [c.id, c.customer_name]));
+    const profileMap = new Map(
+      profiles.map((p) => [p.id, p.full_name ?? p.email ?? "—"]),
+    );
+    const burns = new Map(
+      computeContractHoursBurns(contracts, workEntries).map((b) => [b.contractId, b]),
+    );
+
     return contracts.map((contract) => {
-      const hoursUsed = workEntries
-        .filter((e) => e.contract_id === contract.id && isThisMonth(e.work_date))
-        .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
+      const burn = burns.get(contract.id);
+      const hoursUsed =
+        burn?.hoursUsed ??
+        workEntries
+          .filter((e) => e.contract_id === contract.id && isThisMonth(e.work_date))
+          .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
       const costs = workEntries
         .filter((e) => e.contract_id === contract.id)
         .reduce((sum, e) => sum + (e.total_direct_cost ?? 0), 0);
       const revenue = contract.monthly_recurring_fee ?? 0;
+      const crit = contract.critical_response_target_hours;
+      const slaTier =
+        crit == null
+          ? contract.service_plan_name ?? "Standard"
+          : crit <= 1
+            ? "Critical ≤1h"
+            : crit <= 4
+              ? "Priority ≤4h"
+              : `Standard ≤${crit}h`;
+
       return {
         ...contract,
         customerName: customerMap.get(contract.customer_id) ?? "Unknown",
         hoursUsed,
+        burnPercent: burn?.burnPercent ?? null,
+        overageEstimate: burn?.overageEstimate ?? 0,
+        isOver: burn?.isOver ?? false,
         profitMargin: calcProfitMargin(revenue, costs),
+        ownerName: contract.contract_owner_id
+          ? profileMap.get(contract.contract_owner_id) ?? "Assigned"
+          : "Unassigned",
+        slaTier,
+        nextInvoiceHint: nextInvoiceDateHint(contract),
       };
     });
-  }, [contracts, customers, workEntries]);
+  }, [contracts, customers, workEntries, profiles]);
+
+  const filteredRows = useMemo(() => {
+    if (filter === "renewals") {
+      return rows.filter((r) => renewals90Ids.has(r.id));
+    }
+    if (filter === "over-hours") {
+      return rows.filter((r) => r.isOver);
+    }
+    return rows;
+  }, [rows, filter, renewals90Ids]);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -88,11 +148,18 @@ export default function ContractsPage() {
     );
   }
 
+  const filterLabel =
+    filter === "renewals"
+      ? "Showing renewals within 90 days"
+      : filter === "over-hours"
+        ? "Showing contracts over included hours"
+        : null;
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Contract management"
-        description="Managed-services agreements, service plans, SLAs, and billing terms."
+        title="Contracts"
+        description="Hours burn, overage risk, SLA tier, renewals, and next billing — manager view."
         action={
           <button type="button" className="btn btn-primary btn-sm" onClick={() => dialogRef.current?.showModal()}>
             <Plus className="size-4" />
@@ -101,10 +168,19 @@ export default function ContractsPage() {
         }
       />
 
-      {rows.length === 0 ? (
+      {filterLabel ? (
+        <div className="alert alert-info text-sm">
+          <span>{filterLabel}</span>
+          <a href="/contracts" className="link">
+            Clear filter
+          </a>
+        </div>
+      ) : null}
+
+      {filteredRows.length === 0 ? (
         <EmptyState
-          title="No contracts yet"
-          description="Create a managed-services contract and connect it to a customer."
+          title="No contracts match"
+          description="Create a managed-services contract or clear the active filter."
           action={
             <button type="button" className="btn btn-primary" onClick={() => dialogRef.current?.showModal()}>
               Add Contract
@@ -120,34 +196,51 @@ export default function ContractsPage() {
                   <th>Contract</th>
                   <th>Customer</th>
                   <th>Status</th>
-                  <th>Monthly fee</th>
-                  <th>Included hrs</th>
-                  <th>Used (month)</th>
-                  <th>Dates</th>
-                  <th>Renewal</th>
+                  <th>SLA / plan</th>
+                  <th className="text-right">MRR</th>
+                  <th>Hours burn</th>
+                  <th className="text-right">Overage est.</th>
+                  <th>Renewal owner</th>
+                  <th>Next invoice</th>
                   <th>Margin</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id}>
+                {filteredRows.map((row) => (
+                  <tr key={row.id} className={row.isOver ? "bg-warning/5" : undefined}>
                     <td className="font-medium">{row.contract_name}</td>
                     <td>{row.customerName}</td>
                     <td>
                       <StatusBadge status={row.contract_status ?? "Unknown"} />
                     </td>
-                    <td>{formatCurrency(row.monthly_recurring_fee)}</td>
-                    <td>{row.included_support_hours ?? "—"}</td>
-                    <td>{row.hoursUsed.toFixed(1)}</td>
                     <td>
-                      {formatDate(row.start_date)} – {formatDate(row.end_date)}
-                    </td>
-                    <td>
-                      {row.automatic_renewal ? "Auto" : "Manual"}
+                      <div>{row.slaTier}</div>
                       <div className="text-xs text-base-content/60">
-                        {formatDate(row.renewal_date)}
+                        {row.service_plan_name ?? "—"}
                       </div>
                     </td>
+                    <td className="text-right">{formatCurrency(row.monthly_recurring_fee)}</td>
+                    <td>
+                      <div>
+                        {formatHours(row.hoursUsed)} /{" "}
+                        {formatHours(row.included_support_hours)}
+                      </div>
+                      <div className={`text-xs ${row.isOver ? "font-medium text-warning" : "text-base-content/60"}`}>
+                        {row.burnPercent != null
+                          ? `${row.burnPercent.toFixed(0)}% used`
+                          : "No allotment"}
+                      </div>
+                    </td>
+                    <td className="text-right">
+                      {row.isOver ? formatCurrency(row.overageEstimate) : "—"}
+                    </td>
+                    <td>
+                      <div>{row.ownerName}</div>
+                      <div className="text-xs text-base-content/60">
+                        {row.automatic_renewal ? "Auto" : "Manual"} · {formatDate(row.renewal_date)}
+                      </div>
+                    </td>
+                    <td>{row.nextInvoiceHint ?? "—"}</td>
                     <td>
                       {row.profitMargin != null ? formatPercent(row.profitMargin) : "—"}
                     </td>

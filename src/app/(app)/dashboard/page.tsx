@@ -191,7 +191,7 @@ export default function ExecutiveDashboardPage() {
       <AlertBanner
         tone="warning"
         title="Executive dashboard"
-        message="This high-level view is designed for executive leadership. Use Operations Dashboard or your role home for day-to-day work."
+        message="This high-level view is designed for executive leadership. Use Manager Command Center or your role home for day-to-day work."
       />
     );
   }

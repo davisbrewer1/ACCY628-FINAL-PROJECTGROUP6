@@ -27,7 +27,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/operations",
-    label: "Operations Dashboard",
+    label: "Manager Command Center",
     icon: "Activity",
     roles: ["administrator", "service_manager", "account_manager"],
   },
@@ -44,18 +44,6 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "service_manager", "account_manager", "billing"],
   },
   {
-    href: "/service-catalog",
-    label: "Service Catalog",
-    icon: "Package",
-    roles: ["administrator", "service_manager", "account_manager", "billing", "client_admin"],
-  },
-  {
-    href: "/hardware",
-    label: "Hardware Assets",
-    icon: "Monitor",
-    roles: ["administrator", "service_manager", "account_manager", "technician", "client_admin"],
-  },
-  {
     href: "/service-tickets",
     label: "Service Tickets",
     icon: "Ticket",
@@ -66,30 +54,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Technicians",
     icon: "Users",
     roles: ["administrator", "service_manager"],
-  },
-  {
-    href: "/technician",
-    label: "My Work",
-    icon: "Wrench",
-    roles: ["technician"],
-  },
-  {
-    href: "/cybersecurity",
-    label: "Cybersecurity",
-    icon: "Shield",
-    roles: ["administrator", "executive", "service_manager", "account_manager", "client_admin"],
-  },
-  {
-    href: "/ai-governance",
-    label: "AI Governance",
-    icon: "Brain",
-    roles: ["administrator", "executive", "service_manager", "account_manager", "client_admin"],
-  },
-  {
-    href: "/recommendations",
-    label: "Recommendations",
-    icon: "Lightbulb",
-    roles: ["administrator", "executive", "service_manager", "account_manager", "client_admin"],
   },
   {
     href: "/time-costs",
@@ -104,10 +68,47 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "billing", "account_manager"],
   },
   {
+    href: "/recommendations",
+    label: "Recommendations & Risk",
+    icon: "Lightbulb",
+    roles: ["administrator", "executive", "service_manager", "account_manager", "client_admin"],
+  },
+  {
     href: "/reports",
     label: "Reports",
     icon: "BarChart3",
     roles: ["administrator", "executive", "service_manager", "billing", "account_manager"],
+  },
+  // Admin / specialist setup views — kept out of daily manager nav
+  {
+    href: "/service-catalog",
+    label: "Service Catalog",
+    icon: "Package",
+    roles: ["administrator", "billing", "client_admin"],
+  },
+  {
+    href: "/hardware",
+    label: "Hardware Assets",
+    icon: "Monitor",
+    roles: ["administrator", "technician", "client_admin"],
+  },
+  {
+    href: "/cybersecurity",
+    label: "Cybersecurity",
+    icon: "Shield",
+    roles: ["administrator", "executive", "client_admin"],
+  },
+  {
+    href: "/ai-governance",
+    label: "AI Governance",
+    icon: "Brain",
+    roles: ["administrator", "executive", "client_admin"],
+  },
+  {
+    href: "/technician",
+    label: "My Work",
+    icon: "Wrench",
+    roles: ["technician"],
   },
   {
     href: "/portal",

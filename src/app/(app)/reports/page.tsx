@@ -8,32 +8,20 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatPercent } from "@/lib/format";
+import {
+  cashCollectedMtd,
+  getPastDueInvoices,
+  getReadyToInvoiceEntries,
+  getRenewalsInDays,
+} from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/client";
 import type { Contract, Invoice, Payment, WorkEntry } from "@/lib/types";
 
-const ACCOUNTING_TOOLTIPS = {
-  recurringRevenue:
-    "Monthly service fees should be associated with the service period in which support is delivered.",
-  additionalRevenue:
-    "Work performed beyond included contract hours may create additional billable revenue once approved.",
-  unbilledRevenue:
-    "Earned but unbilled service revenue represents completed work not yet invoiced.",
-  unearnedRevenue:
-    "Billed but unearned amounts are advance payments that should not be treated as earned revenue yet.",
-  accountsReceivable:
-    "Outstanding invoice balances represent amounts customers owe but have not yet paid.",
-  payments:
-    "Customer payments reduce accounts receivable when applied to outstanding invoices.",
-  directLabor:
-    "Direct labor cost is calculated from hours worked multiplied by technician internal rates.",
-  passThrough:
-    "Software and equipment costs should be connected to the related customer, contract, and ticket.",
-  profitability:
-    "Contract profit equals revenue minus direct costs. Margin is unavailable when revenue is zero.",
-};
+type ReportView = "cash" | "margin" | "leakage" | "churn";
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<ReportView>("cash");
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -62,50 +50,32 @@ export default function ReportsPage() {
       .filter((c) => c.contract_status === "Active")
       .reduce((sum, c) => sum + (c.monthly_recurring_fee ?? 0), 0);
 
-    const additionalRevenue = workEntries
-      .filter((e) => !e.included_in_contract && e.approval_status === "Approved")
-      .reduce((sum, e) => sum + (e.total_direct_cost ?? 0), 0);
-
-    const unbilledRevenue = workEntries
-      .filter((e) => e.billing_status !== "Billed" && !e.included_in_contract)
-      .reduce((sum, e) => sum + (e.total_direct_cost ?? 0), 0);
+    const unbilledRevenue = getReadyToInvoiceEntries(workEntries).reduce(
+      (sum, e) => sum + (e.total_direct_cost ?? 0),
+      0,
+    );
 
     const accountsReceivable = invoices.reduce(
       (sum, i) => sum + (i.remaining_balance ?? 0),
       0,
     );
 
-    const totalPayments = payments.reduce(
-      (sum, p) => sum + (p.payment_amount ?? 0),
-      0,
-    );
-
-    const directLabor = workEntries.reduce(
-      (sum, e) => sum + (e.labor_cost ?? 0),
-      0,
-    );
-
-    const passThroughCosts = workEntries.reduce(
-      (sum, e) =>
-        sum +
-        (e.software_cost ?? 0) +
-        (e.equipment_cost ?? 0) +
-        (e.parts_cost ?? 0),
+    const pastDue = getPastDueInvoices(invoices).reduce(
+      (sum, i) => sum + (i.remaining_balance ?? 0),
       0,
     );
 
     return {
       recurringRevenue,
-      additionalRevenue,
       unbilledRevenue,
       accountsReceivable,
-      totalPayments,
-      directLabor,
-      passThroughCosts,
+      pastDue,
+      cashMtd: cashCollectedMtd(payments),
+      renewals90: getRenewalsInDays(contracts, 90).length,
     };
   }, [contracts, workEntries, invoices, payments]);
 
-  const contractProfitability = useMemo(() => {
+  const contractRows = useMemo(() => {
     return contracts.map((contract) => {
       const costs = workEntries
         .filter((e) => e.contract_id === contract.id)
@@ -113,26 +83,58 @@ export default function ReportsPage() {
       const monthHours = workEntries
         .filter((e) => e.contract_id === contract.id && isThisMonth(e.work_date))
         .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
+      const included = contract.included_support_hours ?? 0;
       const revenue = contract.monthly_recurring_fee ?? 0;
       const profit = calcContractProfit(revenue, costs);
       const margin = calcProfitMargin(revenue, costs);
-      const overHours =
-        (contract.included_support_hours ?? 0) > 0 &&
-        monthHours > (contract.included_support_hours ?? 0);
+      const overHours = included > 0 && monthHours > included;
+      const leakageHours = Math.max(0, monthHours - included);
+      const leakageEstimate =
+        leakageHours * (contract.additional_hourly_rate ?? 0);
 
       return {
         id: contract.id,
         name: contract.contract_name,
+        customerId: contract.customer_id,
         revenue,
         costs,
         profit,
         margin,
         overHours,
+        leakageHours,
+        leakageEstimate,
+        renewalDate: contract.renewal_date,
+        automaticRenewal: contract.automatic_renewal,
         lowMargin: margin != null && margin < 10,
         negative: profit < 0,
       };
     });
   }, [contracts, workEntries]);
+
+  const viewRows = useMemo(() => {
+    if (view === "margin") {
+      return [...contractRows].sort(
+        (a, b) => (a.margin ?? 999) - (b.margin ?? 999),
+      );
+    }
+    if (view === "leakage") {
+      return contractRows
+        .filter((r) => r.overHours)
+        .sort((a, b) => b.leakageEstimate - a.leakageEstimate);
+    }
+    if (view === "churn") {
+      const renewing = new Set(getRenewalsInDays(contracts, 90).map((c) => c.id));
+      return contractRows
+        .filter((r) => renewing.has(r.id) || r.lowMargin || r.negative)
+        .sort((a, b) => {
+          const ad = a.renewalDate ?? "9999";
+          const bd = b.renewalDate ?? "9999";
+          return ad.localeCompare(bd);
+        });
+    }
+    // cash / billed focus uses contracts with AR-linked context via same table
+    return [...contractRows].sort((a, b) => b.revenue - a.revenue);
+  }, [view, contractRows, contracts]);
 
   if (loading) {
     return (
@@ -142,62 +144,90 @@ export default function ReportsPage() {
     );
   }
 
+  const nextActions: Record<ReportView, string> = {
+    cash: "Collect past-due AR and invoice unbilled overages.",
+    margin: "Review lowest-margin contracts for rate or scope changes.",
+    leakage: "Approve and invoice hours beyond included allotments.",
+    churn: "Call accounts renewing soon with low margin or service risk.",
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Management reports"
-        description="Accounting summaries and contract profitability with explanatory guidance."
+        title="Manager reports"
+        description="Saved views tied to cash, margin, hours leakage, and churn risk — each with a next action."
       />
 
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ["cash", "Cash vs billed"],
+            ["margin", "Margin by contract"],
+            ["leakage", "Hours leakage"],
+            ["churn", "Churn / renewal risk"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={`btn btn-sm ${view === value ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setView(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="alert alert-info text-sm">
+        <span>
+          <strong>Next action:</strong> {nextActions[view]}
+        </span>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <TooltipStat
-          title="Recurring service revenue"
+        <StatCard
+          title="MRR"
           value={formatCurrency(summary.recurringRevenue)}
-          tooltip={ACCOUNTING_TOOLTIPS.recurringRevenue}
+          href="/contracts"
         />
-        <TooltipStat
-          title="Additional billable revenue"
-          value={formatCurrency(summary.additionalRevenue)}
-          tooltip={ACCOUNTING_TOOLTIPS.additionalRevenue}
-        />
-        <TooltipStat
-          title="Earned, unbilled revenue"
+        <StatCard
+          title="Ready / unbilled"
           value={formatCurrency(summary.unbilledRevenue)}
-          tooltip={ACCOUNTING_TOOLTIPS.unbilledRevenue}
+          tone="info"
+          href="/time-costs?filter=ready"
         />
-        <TooltipStat
-          title="Accounts receivable"
+        <StatCard
+          title="Open AR"
           value={formatCurrency(summary.accountsReceivable)}
-          tooltip={ACCOUNTING_TOOLTIPS.accountsReceivable}
+          hint={`${formatCurrency(summary.pastDue)} past due`}
+          tone={summary.pastDue > 0 ? "danger" : "default"}
+          href="/billing?filter=past-due"
         />
-        <TooltipStat
-          title="Customer payments"
-          value={formatCurrency(summary.totalPayments)}
-          tooltip={ACCOUNTING_TOOLTIPS.payments}
-        />
-        <TooltipStat
-          title="Direct labor cost"
-          value={formatCurrency(summary.directLabor)}
-          tooltip={ACCOUNTING_TOOLTIPS.directLabor}
-        />
-        <TooltipStat
-          title="Software & equipment costs"
-          value={formatCurrency(summary.passThroughCosts)}
-          tooltip={ACCOUNTING_TOOLTIPS.passThrough}
+        <StatCard
+          title={view === "churn" ? "Renewals (90d)" : "Cash MTD"}
+          value={
+            view === "churn"
+              ? summary.renewals90
+              : formatCurrency(summary.cashMtd)
+          }
+          tone="success"
+          href={view === "churn" ? "/contracts?filter=renewals" : "/billing?filter=cash"}
         />
       </div>
 
       <div className="card border bg-base-100 shadow-sm">
         <div className="card-body">
-          <h2 className="card-title text-base">Contract profitability</h2>
-          <p className="text-sm text-base-content/70" title={ACCOUNTING_TOOLTIPS.profitability}>
-            Revenue minus direct costs by contract. Hover stat labels for accounting guidance.
-          </p>
+          <h2 className="card-title text-base">
+            {view === "cash" && "Contracts by revenue (cash context)"}
+            {view === "margin" && "Lowest margin contracts first"}
+            {view === "leakage" && "Hours over included allotment"}
+            {view === "churn" && "Renewal and margin risk accounts"}
+          </h2>
 
-          {contractProfitability.length === 0 ? (
+          {viewRows.length === 0 ? (
             <EmptyState
-              title="No contract data"
-              description="Profitability analysis will appear once contracts and work entries exist."
+              title="Nothing in this view"
+              description="Data will appear once contracts and work entries exist for this filter."
             />
           ) : (
             <div className="overflow-x-auto">
@@ -209,31 +239,40 @@ export default function ReportsPage() {
                     <th>Direct costs</th>
                     <th>Profit</th>
                     <th>Margin</th>
+                    {view === "leakage" ? <th>Leakage $</th> : null}
+                    {view === "churn" ? <th>Renewal</th> : null}
                     <th>Flags</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {contractProfitability.map((row) => (
+                  {viewRows.map((row) => (
                     <tr key={row.id}>
                       <td className="font-medium">{row.name}</td>
                       <td>{formatCurrency(row.revenue)}</td>
                       <td>{formatCurrency(row.costs)}</td>
-                      <td className={row.negative ? "text-error font-medium" : ""}>
+                      <td className={row.negative ? "font-medium text-error" : ""}>
                         {formatCurrency(row.profit)}
                       </td>
                       <td>
                         {row.margin != null ? formatPercent(row.margin) : "—"}
                       </td>
+                      {view === "leakage" ? (
+                        <td className="font-medium text-warning">
+                          {formatCurrency(row.leakageEstimate)}
+                        </td>
+                      ) : null}
+                      {view === "churn" ? (
+                        <td>
+                          {row.renewalDate ?? "—"}
+                          <div className="text-xs text-base-content/60">
+                            {row.automaticRenewal ? "Auto" : "Manual"}
+                          </div>
+                        </td>
+                      ) : null}
                       <td className="flex flex-wrap gap-1">
-                        {row.negative ? (
-                          <StatusBadge status="Negative profit" />
-                        ) : null}
-                        {row.lowMargin ? (
-                          <StatusBadge status="Low margin" />
-                        ) : null}
-                        {row.overHours ? (
-                          <StatusBadge status="Over included hours" />
-                        ) : null}
+                        {row.negative ? <StatusBadge status="Negative profit" /> : null}
+                        {row.lowMargin ? <StatusBadge status="Low margin" /> : null}
+                        {row.overHours ? <StatusBadge status="Over included hours" /> : null}
                       </td>
                     </tr>
                   ))}
@@ -242,24 +281,6 @@ export default function ReportsPage() {
             </div>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function TooltipStat({
-  title,
-  value,
-  tooltip,
-}: {
-  title: string;
-  value: string;
-  tooltip: string;
-}) {
-  return (
-    <div className="tooltip tooltip-bottom w-full" data-tip={tooltip}>
-      <div>
-        <StatCard title={title} value={value} />
       </div>
     </div>
   );

@@ -8,25 +8,25 @@ import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatDate } from "@/lib/format";
+import {
+  getPastDueInvoices,
+  getRenewalsInDays,
+} from "@/lib/manager-ops";
+import { isOpenTicket, isThisMonth } from "@/lib/dashboard-stats";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, Invoice, ServiceTicket } from "@/lib/types";
+import type { Contract, Customer, Invoice, Profile, ServiceTicket, WorkEntry } from "@/lib/types";
+import { differenceInCalendarDays, parseISO } from "date-fns";
 
 interface CustomerRow extends Customer {
-  activeContracts: number;
+  mrr: number;
   openTickets: number;
   outstandingBalance: number;
+  oldestArDays: number | null;
+  nextRenewal: string | null;
+  accountManagerName: string;
+  riskFlags: string[];
 }
-
-const OPEN_STATUSES = new Set([
-  "New",
-  "Assigned",
-  "In Progress",
-  "Waiting on Customer",
-  "Waiting on Vendor",
-  "Waiting on Approval",
-  "Escalated",
-]);
 
 export default function CustomersPage() {
   const { showToast } = useToast();
@@ -36,21 +36,27 @@ export default function CustomersPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   async function loadData() {
     const supabase = createClient();
-    const [c, co, t, i] = await Promise.all([
+    const [c, co, t, i, w, p] = await Promise.all([
       supabase.from("customers").select("*").order("customer_name"),
       supabase.from("contracts").select("*"),
       supabase.from("service_tickets").select("*"),
       supabase.from("invoices").select("*"),
+      supabase.from("work_entries").select("*"),
+      supabase.from("profiles").select("*"),
     ]);
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
     setTickets(t.data ?? []);
     setInvoices(i.data ?? []);
+    setWorkEntries(w.data ?? []);
+    setProfiles(p.data ?? []);
     setLoading(false);
   }
 
@@ -59,20 +65,81 @@ export default function CustomersPage() {
   }, []);
 
   const rows: CustomerRow[] = useMemo(() => {
-    return customers.map((customer) => ({
-      ...customer,
-      activeContracts: contracts.filter(
+    const profileMap = new Map(profiles.map((p) => [p.id, p.full_name ?? p.email ?? "—"]));
+    const pastDueCustomers = new Set(getPastDueInvoices(invoices).map((i) => i.customer_id));
+    const renewingSoon = new Set(getRenewalsInDays(contracts, 30).map((c) => c.customer_id));
+
+    return customers.map((customer) => {
+      const activeContracts = contracts.filter(
         (c) => c.customer_id === customer.id && c.contract_status === "Active",
-      ).length,
-      openTickets: tickets.filter(
-        (t) =>
-          t.customer_id === customer.id && OPEN_STATUSES.has(t.status ?? ""),
-      ).length,
-      outstandingBalance: invoices
-        .filter((inv) => inv.customer_id === customer.id)
-        .reduce((sum, inv) => sum + (inv.remaining_balance ?? 0), 0),
-    }));
-  }, [customers, contracts, tickets, invoices]);
+      );
+      const mrr = activeContracts.reduce(
+        (sum, c) => sum + (c.monthly_recurring_fee ?? 0),
+        0,
+      );
+      const custInvoices = invoices.filter((inv) => inv.customer_id === customer.id);
+      const outstandingBalance = custInvoices.reduce(
+        (sum, inv) => sum + (inv.remaining_balance ?? 0),
+        0,
+      );
+
+      let oldestArDays: number | null = null;
+      for (const inv of custInvoices) {
+        if ((inv.remaining_balance ?? 0) <= 0) continue;
+        if (!inv.due_date) continue;
+        const due = parseISO(inv.due_date);
+        const days = differenceInCalendarDays(new Date(), due);
+        if (days > 0 && (oldestArDays == null || days > oldestArDays)) {
+          oldestArDays = days;
+        }
+      }
+
+      const included = activeContracts.reduce(
+        (sum, c) => sum + (c.included_support_hours ?? 0),
+        0,
+      );
+      const used = workEntries
+        .filter(
+          (e) =>
+            e.customer_id === customer.id &&
+            isThisMonth(e.work_date) &&
+            activeContracts.some((c) => c.id === e.contract_id),
+        )
+        .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
+
+      const nextRenewal =
+        activeContracts
+          .map((c) => c.renewal_date)
+          .filter((d): d is string => Boolean(d))
+          .sort()[0] ?? null;
+
+      const riskFlags: string[] = [];
+      if (pastDueCustomers.has(customer.id)) riskFlags.push("Past due");
+      if (renewingSoon.has(customer.id)) riskFlags.push("Renewing soon");
+      if (included > 0 && used > included) riskFlags.push("Over hours");
+      if (
+        customer.technology_health_score != null &&
+        customer.technology_health_score < 70
+      ) {
+        riskFlags.push("Low health");
+      }
+
+      return {
+        ...customer,
+        mrr,
+        openTickets: tickets.filter(
+          (t) => t.customer_id === customer.id && isOpenTicket(t.status),
+        ).length,
+        outstandingBalance,
+        oldestArDays,
+        nextRenewal,
+        accountManagerName: customer.account_manager_id
+          ? profileMap.get(customer.account_manager_id) ?? "Assigned"
+          : "Unassigned",
+        riskFlags,
+      };
+    });
+  }, [customers, contracts, tickets, invoices, workEntries, profiles]);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -99,8 +166,8 @@ export default function CustomersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Customer management"
-        description="View business customers, contacts, and account summaries."
+        title="Customer accounts"
+        description="Health, MRR, renewals, and receivables — prioritized for account action."
         action={
           <button
             type="button"
@@ -134,36 +201,68 @@ export default function CustomersPage() {
               <thead>
                 <tr>
                   <th>Customer</th>
-                  <th>Industry</th>
-                  <th>Contact</th>
-                  <th>Status</th>
-                  <th>Location</th>
-                  <th className="text-right">Contracts</th>
+                  <th>Health</th>
+                  <th>Account manager</th>
+                  <th className="text-right">MRR</th>
+                  <th>Next renewal</th>
                   <th className="text-right">Open tickets</th>
-                  <th className="text-right">Balance</th>
+                  <th className="text-right">AR / age</th>
+                  <th>Flags</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.id}>
-                    <td className="font-medium">{row.customer_name}</td>
-                    <td>{row.industry ?? "—"}</td>
                     <td>
-                      <div>{row.primary_contact_name ?? "—"}</div>
+                      <div className="font-medium">{row.customer_name}</div>
                       <div className="text-xs text-base-content/60">
-                        {row.contact_email ?? "—"}
+                        {row.primary_contact_name ?? "No contact"}
+                        {row.industry ? ` · ${row.industry}` : ""}
                       </div>
                     </td>
                     <td>
-                      <StatusBadge status={row.status ?? "Unknown"} />
+                      {row.technology_health_score != null ? (
+                        <span
+                          className={`font-semibold ${
+                            row.technology_health_score < 70
+                              ? "text-error"
+                              : row.technology_health_score < 85
+                                ? "text-warning"
+                                : "text-success"
+                          }`}
+                        >
+                          {row.technology_health_score}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
+                    <td>{row.accountManagerName}</td>
+                    <td className="text-right">{formatCurrency(row.mrr)}</td>
                     <td>
-                      {[row.city, row.state].filter(Boolean).join(", ") || "—"}
+                      {formatDate(row.nextRenewal)}
+                      {row.riskFlags.includes("Renewing soon") ? (
+                        <div className="text-xs text-warning">Within 30 days</div>
+                      ) : null}
                     </td>
-                    <td className="text-right">{row.activeContracts}</td>
                     <td className="text-right">{row.openTickets}</td>
                     <td className="text-right">
-                      {formatCurrency(row.outstandingBalance)}
+                      <div>{formatCurrency(row.outstandingBalance)}</div>
+                      <div className="text-xs text-base-content/60">
+                        {row.oldestArDays != null
+                          ? `${row.oldestArDays}d oldest`
+                          : "Current"}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="flex flex-wrap gap-1">
+                        <StatusBadge status={row.status ?? "Unknown"} />
+                        {row.riskFlags.map((flag) => (
+                          <span key={flag} className="badge badge-warning badge-sm">
+                            {flag}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                   </tr>
                 ))}

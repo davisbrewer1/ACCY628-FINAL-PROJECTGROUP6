@@ -106,5 +106,56 @@ export async function createWorkEntry(formData: FormData): Promise<ActionResult>
 
   revalidatePath("/technician");
   revalidatePath("/time-costs");
+  revalidatePath("/operations");
+  revalidatePath("/billing");
   return { success: true, message: "Work entry recorded." };
+}
+
+export async function updateWorkEntryApproval(
+  entryId: string,
+  approvalStatus: "Approved" | "Disputed" | "Pending",
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_entries")
+    .update({ approval_status: approvalStatus })
+    .eq("id", entryId);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidatePath("/time-costs");
+  revalidatePath("/operations");
+  revalidatePath("/reports");
+  return { success: true, message: `Work entry marked ${approvalStatus}.` };
+}
+
+export async function markWorkEntriesReadyToInvoice(
+  entryIds: string[],
+): Promise<ActionResult> {
+  if (entryIds.length === 0) {
+    return { success: false, message: "Select at least one work entry." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_entries")
+    .update({
+      approval_status: "Approved",
+      billing_status: "Ready to Invoice",
+    })
+    .in("id", entryIds);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidatePath("/time-costs");
+  revalidatePath("/operations");
+  revalidatePath("/billing");
+  return {
+    success: true,
+    message: `Marked ${entryIds.length} entr${entryIds.length === 1 ? "y" : "ies"} ready to invoice.`,
+  };
 }
