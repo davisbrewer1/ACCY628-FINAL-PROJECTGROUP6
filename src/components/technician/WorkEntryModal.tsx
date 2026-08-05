@@ -3,9 +3,19 @@
 import { FormField } from "@/components/FormField";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { StatusBadge } from "@/components/StatusBadge";
-import type { ServiceTicket } from "@/lib/types";
-import { CirclePlay, Navigation, Pause, Square, X } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import type { PartUsageInput } from "@/lib/autoCostCalculator";
+import { formatCurrency } from "@/lib/format";
+import type { InventoryPart, ServiceTicket } from "@/lib/types";
+import {
+  CirclePlay,
+  Navigation,
+  Pause,
+  Plus,
+  Square,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 export type WorkEntryModalPhase = "timer" | "form";
 
@@ -29,6 +39,11 @@ interface WorkEntryModalProps {
   onServiceMethodChange: (value: string) => void;
   ticketStatus: string;
   onTicketStatusChange: (value: string) => void;
+  inventoryParts: InventoryPart[];
+  partsUsed: PartUsageInput[];
+  onPartsUsedChange: (parts: PartUsageInput[]) => void;
+  /** Quantities already deducted for this entry (edit) — count as available again. */
+  partsStockCredit?: PartUsageInput[];
   error: string | null;
   isPending: boolean;
   onSubmit: (formData: FormData) => void;
@@ -78,6 +93,10 @@ export function WorkEntryModal({
   onServiceMethodChange,
   ticketStatus,
   onTicketStatusChange,
+  inventoryParts,
+  partsUsed,
+  onPartsUsedChange,
+  partsStockCredit = [],
   error,
   isPending,
   onSubmit,
@@ -97,8 +116,48 @@ export function WorkEntryModal({
   pauseCount,
 }: WorkEntryModalProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [selectedPartId, setSelectedPartId] = useState("");
+  const [partQty, setPartQty] = useState("1");
   const selectedTicket = tickets.find((ticket) => ticket.id === selectedTicketId);
   const sessionActive = Boolean(startTime) && !endTime;
+
+  const stockCreditById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of partsStockCredit) {
+      map.set(item.partId, (map.get(item.partId) ?? 0) + item.quantity);
+    }
+    return map;
+  }, [partsStockCredit]);
+
+  function maxAvailable(part: InventoryPart) {
+    return Number(part.quantity) + (stockCreditById.get(part.id) ?? 0);
+  }
+
+  const availableParts = useMemo(() => {
+    return inventoryParts.filter((part) => {
+      if (part.active === false) return false;
+      const credit = stockCreditById.get(part.id) ?? 0;
+      const max = Number(part.quantity) + credit;
+      return max > 0 || partsUsed.some((used) => used.partId === part.id);
+    });
+  }, [inventoryParts, partsUsed, stockCreditById]);
+
+  const partsCostTotal = useMemo(
+    () =>
+      partsUsed.reduce((sum, part) => sum + part.unitCost * part.quantity, 0),
+    [partsUsed],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    if (
+      selectedPartId &&
+      availableParts.some((part) => part.id === selectedPartId)
+    ) {
+      return;
+    }
+    setSelectedPartId(availableParts[0]?.id ?? "");
+  }, [open, availableParts, selectedPartId]);
 
 
   useEffect(() => {
@@ -142,6 +201,39 @@ export function WorkEntryModal({
 
   if (!open) return null;
 
+  function addPart() {
+    const part = availableParts.find((item) => item.id === selectedPartId);
+    if (!part) return;
+    const quantity = Math.max(1, Math.floor(Number(partQty) || 1));
+    const alreadyUsed =
+      partsUsed.find((item) => item.partId === part.id)?.quantity ?? 0;
+    if (alreadyUsed + quantity > maxAvailable(part)) {
+      return;
+    }
+    onPartsUsedChange(
+      (() => {
+        const existing = partsUsed.find((item) => item.partId === part.id);
+        if (existing) {
+          return partsUsed.map((item) =>
+            item.partId === part.id
+              ? { ...item, quantity: item.quantity + quantity }
+              : item,
+          );
+        }
+        return [
+          ...partsUsed,
+          {
+            partId: part.id,
+            partName: part.part_name,
+            unitCost: Number(part.unit_cost) || 0,
+            quantity,
+          },
+        ];
+      })(),
+    );
+    setPartQty("1");
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -149,6 +241,8 @@ export function WorkEntryModal({
     formData.set("work_performed", workPerformed);
     formData.set("service_method", serviceMethod);
     formData.set("ticket_status", ticketStatus);
+    formData.set("parts_used", JSON.stringify(partsUsed));
+    formData.set("parts_cost", String(partsCostTotal));
     onSubmit(formData);
   }
 
@@ -479,6 +573,95 @@ export function WorkEntryModal({
                 <option value="Email">Email</option>
               </select>
             </FormField>
+            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+              <p className="text-sm font-medium text-slate-200">Parts used</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Selecting parts deducts stock from Hardware Assets when you save.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <select
+                  className="select select-bordered select-sm min-w-40 flex-1 border-slate-600 bg-slate-950"
+                  value={selectedPartId}
+                  onChange={(e) => setSelectedPartId(e.target.value)}
+                  disabled={availableParts.length === 0}
+                >
+                  {availableParts.length === 0 ? (
+                    <option value="">No parts in stock</option>
+                  ) : (
+                    availableParts.map((part) => {
+                      const used =
+                        partsUsed.find((item) => item.partId === part.id)
+                          ?.quantity ?? 0;
+                      const remaining = Math.max(0, maxAvailable(part) - used);
+                      return (
+                        <option
+                          key={part.id}
+                          value={part.id}
+                          disabled={remaining <= 0}
+                        >
+                          {part.part_name} · {remaining} available ·{" "}
+                          {formatCurrency(part.unit_cost)}
+                        </option>
+                      );
+                    })
+                  )}
+                </select>
+                <input
+                  type="number"
+                  min="1"
+                  className="input input-bordered input-sm w-20 border-slate-600 bg-slate-950"
+                  value={partQty}
+                  onChange={(e) => setPartQty(e.target.value)}
+                  aria-label="Part quantity"
+                />
+                <button
+                  type="button"
+                  className="btn btn-sm border-0 bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                  onClick={addPart}
+                  disabled={!selectedPartId || availableParts.length === 0}
+                >
+                  <Plus className="size-4" />
+                  Add
+                </button>
+              </div>
+              {partsUsed.length > 0 ? (
+                <ul className="mt-3 space-y-1.5">
+                  {partsUsed.map((part) => (
+                    <li
+                      key={part.partId}
+                      className="flex items-center justify-between gap-2 text-sm text-slate-200"
+                    >
+                      <span>
+                        {part.partName ?? "Part"} × {part.quantity}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {formatCurrency(part.unitCost * part.quantity)}
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs btn-square text-slate-400 hover:text-rose-300"
+                          aria-label={`Remove ${part.partName ?? "part"}`}
+                          onClick={() =>
+                            onPartsUsedChange(
+                              partsUsed.filter(
+                                (item) => item.partId !== part.partId,
+                              ),
+                            )
+                          }
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                  <li className="flex justify-between border-t border-slate-700 pt-2 text-sm font-medium text-cyan-200">
+                    <span>Parts total</span>
+                    <span>{formatCurrency(partsCostTotal)}</span>
+                  </li>
+                </ul>
+              ) : (
+                <p className="mt-3 text-xs text-slate-500">No parts selected.</p>
+              )}
+            </div>
             <FormField label="Update ticket status" htmlFor="ticket_status">
               <select
                 id="ticket_status"

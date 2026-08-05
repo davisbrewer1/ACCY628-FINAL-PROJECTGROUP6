@@ -206,7 +206,7 @@ export function TechnicianScheduleCalendar({
 
     const destSpan = getSpanWindows(window, durationHours);
     if (destSpan.length < durationHours) {
-      // Would cross lunch / end of day — still allow what fits by shortening? Prefer block.
+      // Would run past end of day.
       clearDragState();
       return;
     }
@@ -486,8 +486,9 @@ function WeekGrid({
 }) {
   const occupancy = useMemo(() => buildOccupancyMap(schedule), [schedule]);
   const rowCount = WORK_WINDOWS.length;
-  // header row + hour rows
-  const templateRows = `auto repeat(${rowCount}, minmax(3.25rem, auto))`;
+  // Equal-height hour rows — sized so a 1-hour card can show a full title + meta.
+  const hourRowSize = "8.25rem";
+  const templateRows = `auto repeat(${rowCount}, ${hourRowSize})`;
 
   return (
     <div className="overflow-x-auto rounded-xl border border-cyan-500/20 bg-slate-950/60">
@@ -526,7 +527,7 @@ function WeekGrid({
           <div
             key={`label-${window.id}`}
             style={{ gridColumn: 1, gridRow: windowIndex + 2 }}
-            className="sticky left-0 z-10 flex items-center border-b border-r border-cyan-500/10 bg-slate-900/80 px-2 text-xs font-medium text-slate-300"
+            className="sticky left-0 z-10 flex h-full items-center border-b border-r border-cyan-500/10 bg-slate-900/80 px-2 text-sm font-medium text-slate-300"
           >
             {window.label}
           </div>
@@ -562,7 +563,7 @@ function WeekGrid({
                   gridColumn: dayIndex + 2,
                   gridRow: `${windowIndex + 2} / span ${span}`,
                 }}
-                className={`border-b border-l border-cyan-500/10 p-1 transition ${
+                className={`h-full border-b border-l border-cyan-500/10 p-1 transition ${
                   isToday(day) ? "bg-cyan-950/20" : "bg-slate-950/40"
                 } ${isDropTarget ? "bg-cyan-500/20 ring-1 ring-inset ring-cyan-400/60" : ""}`}
                 onDragOver={(event: DragEvent<HTMLDivElement>) => {
@@ -598,7 +599,7 @@ function WeekGrid({
                       if (isDone) return;
                       onSelectTicket?.(occupant.ticket.id);
                     }}
-                    className={`flex h-full min-h-[2.75rem] w-full flex-col rounded-lg border p-2 text-left transition ${
+                    className={`flex h-full min-h-0 w-full flex-col gap-1.5 overflow-hidden rounded-lg border p-2.5 text-left transition ${
                       isDone
                         ? "cursor-default border-emerald-500/25 bg-emerald-950/30 opacity-80"
                         : isEnRoute
@@ -615,43 +616,50 @@ function WeekGrid({
                     }`}
                   >
                     <p
-                      className={`line-clamp-2 text-xs font-semibold ${
+                      className={`min-h-0 flex-1 text-sm font-semibold leading-snug ${
+                        span === 1 ? "line-clamp-3" : "line-clamp-4"
+                      } ${
                         isDone
                           ? "text-emerald-100/90 line-through decoration-emerald-500/50"
                           : "text-white"
                       }`}
+                      title={occupant.ticket.title}
                     >
                       {occupant.ticket.title}
                     </p>
-                    <p className="mt-1 font-mono text-[10px] text-slate-400">
-                      {occupant.ticket.ticket_number}
-                      {occupant.durationHours > 1
-                        ? ` · ${occupant.durationHours}h`
-                        : ""}
-                    </p>
-                    <div className="mt-auto flex flex-wrap gap-1 pt-2">
-                      <PriorityBadge
-                        priority={occupant.ticket.priority ?? "Medium"}
-                      />
-                      <StatusBadge
-                        status={occupant.ticket.status ?? "New"}
-                      />
-                      {isEnRoute ? (
-                        <span className="badge badge-sm gap-1 border-0 bg-sky-500 text-slate-950">
-                          <Navigation className="size-3" aria-hidden="true" />
-                          En route
-                        </span>
-                      ) : null}
-                      {occupant.ticket.cybersecurity_incident ? (
-                        <span className="badge badge-sm badge-error gap-1">
-                          <Shield className="size-3" aria-hidden="true" />
-                          Security
-                        </span>
-                      ) : null}
+                    <div className="shrink-0 space-y-1">
+                      <p className="truncate font-mono text-xs text-slate-400">
+                        {occupant.ticket.ticket_number}
+                        {occupant.durationHours > 1
+                          ? ` · ${occupant.durationHours}h`
+                          : ""}
+                      </p>
+                      <div className="flex flex-nowrap items-center gap-1 overflow-hidden">
+                        <PriorityBadge
+                          priority={occupant.ticket.priority ?? "Medium"}
+                          className="badge-xs"
+                        />
+                        <StatusBadge
+                          status={occupant.ticket.status ?? "New"}
+                          className="badge-xs"
+                        />
+                        {isEnRoute ? (
+                          <span className="badge badge-xs gap-1 border-0 bg-sky-500 text-slate-950">
+                            <Navigation className="size-3" aria-hidden="true" />
+                            En route
+                          </span>
+                        ) : null}
+                        {occupant.ticket.cybersecurity_incident ? (
+                          <span className="badge badge-xs badge-error gap-1">
+                            <Shield className="size-3" aria-hidden="true" />
+                            Security
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </button>
                 ) : (
-                  <div className="flex h-full min-h-[2.75rem] items-center justify-center rounded-lg border border-dashed border-slate-700/60 text-[10px] uppercase tracking-wide text-slate-600">
+                  <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-700/60 text-[10px] uppercase tracking-wide text-slate-600">
                     Drop
                   </div>
                 )}

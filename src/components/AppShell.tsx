@@ -310,11 +310,12 @@ export function AppShell({
               : "border-base-300 bg-base-100"
           }`}
         >
-          <div className="flex-none lg:hidden">
+          <div className="flex-none lg:hidden" suppressHydrationWarning>
             <label
               htmlFor="app-shell-drawer"
-              className={`btn btn-square ${techTheme ? "btn-ghost text-white" : "btn-ghost"}`}
+              className={`btn btn-square btn-ghost ${techTheme ? "text-white" : ""}`}
               aria-label="Open navigation menu"
+              suppressHydrationWarning
             >
               <Menu className="size-5" />
             </label>

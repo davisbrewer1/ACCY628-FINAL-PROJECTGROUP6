@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { AlertTriangle, ClipboardList, PackagePlus, Plus, Search } from "lucide-react";
+import { AlertTriangle, ClipboardList, Plus, Search } from "lucide-react";
 import {
   createAssetOrderTicket,
   createHardwareAsset,
-  restockInventoryPart,
+  requestInventoryReorder,
   reviewAssetOrderTicket,
+  reviewInventoryReorderRequest,
 } from "@/app/actions/hardware";
 import { AssetDetailDrawer } from "@/components/AssetDetailDrawer";
 import { EmptyState } from "@/components/EmptyState";
@@ -25,6 +26,7 @@ import {
   type Customer,
   type HardwareAsset,
   type InventoryPart,
+  type InventoryReorderRequest,
 } from "@/lib/types";
 
 const CAN_ADD_ROLES = new Set([
@@ -60,8 +62,16 @@ export default function HardwarePage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [orderTickets, setOrderTickets] = useState<AssetOrderTicket[]>([]);
   const [parts, setParts] = useState<InventoryPart[]>([]);
+  const [reorderRequests, setReorderRequests] = useState<InventoryReorderRequest[]>(
+    [],
+  );
   const [partSearch, setPartSearch] = useState("");
-  const [restockQuantities, setRestockQuantities] = useState<Record<string, number>>({});
+  const [assetSearch, setAssetSearch] = useState("");
+  const [reorderQuantities, setReorderQuantities] = useState<Record<string, number>>(
+    {},
+  );
+  const [partsOpen, setPartsOpen] = useState(true);
+  const [assetsOpen, setAssetsOpen] = useState(false);
   const [orderAssetId, setOrderAssetId] = useState("");
   const [drawerAssetId, setDrawerAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +82,8 @@ export default function HardwarePage() {
   const canAdd = CAN_ADD_ROLES.has(activeRole);
   const isTechnicianView = activeRole === "technician";
   const isAdministratorView = activeRole === "administrator";
+  const canReviewReorders =
+    activeRole === "administrator" || activeRole === "service_manager";
 
   function onAssetClick(assetId: string) {
     setDrawerAssetId(assetId);
@@ -79,24 +91,34 @@ export default function HardwarePage() {
 
   async function loadData() {
     const supabase = createClient();
-    const [a, c, o, p] = await Promise.all([
-      supabase.from("hardware_assets").select("*").order("asset_number"),
-      supabase.from("customers").select("*").order("customer_name"),
-      supabase
-        .from("asset_order_tickets")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("inventory_parts")
-        .select("*")
-        .eq("active", true)
-        .order("part_name"),
-    ]);
-    setAssets(a.data ?? []);
-    setCustomers(c.data ?? []);
-    setOrderTickets(o.data ?? []);
-    setParts(p.data ?? []);
-    setLoading(false);
+    try {
+      const [a, c, o, p, r] = await Promise.all([
+        supabase.from("hardware_assets").select("*").order("asset_number"),
+        supabase.from("customers").select("*").order("customer_name"),
+        supabase
+          .from("asset_order_tickets")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("inventory_parts")
+          .select("*")
+          .eq("active", true)
+          .order("part_name"),
+        supabase
+          .from("inventory_reorder_requests")
+          .select("*")
+          .order("created_at", { ascending: false }),
+      ]);
+      setAssets(a.data ?? []);
+      setCustomers(c.data ?? []);
+      setOrderTickets(o.data ?? []);
+      setParts(p.data ?? []);
+      setReorderRequests(
+        r.error ? [] : ((r.data as InventoryReorderRequest[] | null) ?? []),
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -119,6 +141,29 @@ export default function HardwarePage() {
       })),
     [assets, customerMap],
   );
+
+  const normalizedAssetSearch = assetSearch.trim().toLowerCase();
+  const filteredRows = useMemo(() => {
+    if (!normalizedAssetSearch) return rows;
+    return rows.filter((row) =>
+      [
+        row.asset_number,
+        row.customerName,
+        row.category,
+        row.manufacturer,
+        row.model,
+        row.serial_number,
+        row.location,
+        row.lifecycle_stage,
+        row.device_status,
+        row.alertBadges.join(" "),
+      ].some((value) =>
+        String(value ?? "")
+          .toLowerCase()
+          .includes(normalizedAssetSearch),
+      ),
+    );
+  }, [normalizedAssetSearch, rows]);
 
   const typeSummary = useMemo(() => {
     const map = new Map<string, number>();
@@ -157,6 +202,16 @@ export default function HardwarePage() {
   const lowStockCount = parts.filter(
     (part) => part.quantity <= part.low_stock_threshold,
   ).length;
+  const pendingReorderRequests = reorderRequests.filter(
+    (request) => request.status === "Pending",
+  );
+  const pendingReorderPartIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const request of pendingReorderRequests) {
+      ids.add(request.part_id);
+    }
+    return ids;
+  }, [pendingReorderRequests]);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -206,10 +261,28 @@ export default function HardwarePage() {
     });
   }
 
-  function handleRestock(part: InventoryPart) {
-    const amount = restockQuantities[part.id] ?? Math.min(5, 50 - part.quantity);
+  function handleReorderRequest(part: InventoryPart) {
+    const amount =
+      reorderQuantities[part.id] ?? Math.min(5, 50 - part.quantity);
     startTransition(async () => {
-      const result = await restockInventoryPart(part.id, amount);
+      const result = await requestInventoryReorder(part.id, amount);
+      showToast(result.message, result.success ? "success" : "error");
+      if (result.success) {
+        await loadData();
+      }
+    });
+  }
+
+  function handleReorderReview(
+    requestId: string,
+    status: "Approved" | "Rejected",
+  ) {
+    startTransition(async () => {
+      const result = await reviewInventoryReorderRequest(
+        requestId,
+        status,
+        reviewNotes[requestId] ?? "",
+      );
       showToast(result.message, result.success ? "success" : "error");
       if (result.success) {
         await loadData();
@@ -414,94 +487,65 @@ export default function HardwarePage() {
         </section>
       ) : null}
 
-      {rows.length === 0 ? (
-        <EmptyState
-          title="No hardware assets"
-          description="Register laptops, servers, and network devices to monitor warranty and lifecycle."
-          action={
-            canAdd ? (
-              <button type="button" className="btn btn-primary" onClick={() => dialogRef.current?.showModal()}>
-                Add Asset
-              </button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <div className="card border bg-base-100 shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="table table-zebra">
-              <thead>
-                <tr>
-                  <th>Asset #</th>
-                  <th>Customer</th>
-                  <th>Type</th>
-                  <th>Qty</th>
-                  <th>Device</th>
-                  <th>Location</th>
-                  <th>Lifecycle</th>
-                  <th>Status</th>
-                  <th>Warranty</th>
-                  <th>Alerts</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="cursor-pointer hover:bg-base-200/80"
-                    onClick={() => onAssetClick(row.id)}
-                  >
-                    <td className="font-mono text-sm">{row.asset_number}</td>
-                    <td>{row.customerName}</td>
-                    <td>{row.category}</td>
-                    <td>{row.quantity}</td>
-                    <td>
-                      <div className="font-medium">{row.manufacturer ?? "—"} {row.model ?? ""}</div>
-                      <div className="text-xs text-base-content/60">{row.serial_number ?? "—"}</div>
-                    </td>
-                    <td>{row.location ?? "—"}</td>
-                    <td>{row.lifecycle_stage}</td>
-                    <td><StatusBadge status={row.device_status} /></td>
-                    <td>{formatDate(row.warranty_expiration)}</td>
-                    <td>
-                      <div className="flex flex-wrap gap-1">
-                        {row.alertBadges.length === 0 ? (
-                          <span className="text-xs text-base-content/50">None</span>
-                        ) : (
-                          <span className="text-xs">
-                            {row.alertBadges.join(" · ")}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {isAdministratorView || isTechnicianView ? (
-        <details className="collapse collapse-arrow card border bg-base-100 shadow-sm">
-          <summary className="collapse-title cursor-pointer">
-            <h2 className="card-title">Parts Inventory</h2>
-            <p className="text-sm text-base-content/60">
-              Replacement parts matched to hardware assets currently on file.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <span className="badge badge-outline">{parts.length} part types</span>
-              <span className={`badge ${lowStockCount > 0 ? "badge-error" : "badge-success"}`}>
-                {lowStockCount} low inventory
-              </span>
+      {isAdministratorView || isTechnicianView || canReviewReorders ? (
+        <section
+          className={`card border shadow-sm ${
+            isTechnicianView
+              ? "border-cyan-500/20 bg-slate-900/80 text-slate-100"
+              : "bg-base-100"
+          }`}
+        >
+          <button
+            type="button"
+            className="flex w-full items-start justify-between gap-3 px-6 py-5 text-left"
+            onClick={() => setPartsOpen((open) => !open)}
+            aria-expanded={partsOpen}
+          >
+            <div>
+              <h2
+                className={`card-title ${isTechnicianView ? "text-white" : ""}`}
+              >
+                Parts Inventory
+              </h2>
+              <p
+                className={`text-sm ${
+                  isTechnicianView ? "text-slate-400" : "text-base-content/60"
+                }`}
+              >
+                Replacement parts matched to hardware assets currently on file.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span className="badge badge-outline">
+                  {parts.length} part types
+                </span>
+                <span
+                  className={`badge ${lowStockCount > 0 ? "badge-error" : "badge-success"}`}
+                >
+                  {lowStockCount} low inventory
+                </span>
+              </div>
             </div>
-          </summary>
-          <div className="collapse-content flex flex-col gap-5">
-            <label className="input input-bordered flex w-full items-center gap-2 lg:max-w-md">
+            <span
+              className={`mt-1 text-xl leading-none ${isTechnicianView ? "text-slate-300" : "text-base-content/50"}`}
+              aria-hidden="true"
+            >
+              {partsOpen ? "▾" : "▸"}
+            </span>
+          </button>
+
+          {partsOpen ? (
+          <div className="flex flex-col gap-5 border-t border-base-300/20 px-6 pb-6 pt-4">
+            <label
+              className={`input input-bordered flex w-full items-center gap-2 lg:max-w-md ${
+                isTechnicianView
+                  ? "border-slate-600 bg-slate-950 text-slate-100"
+                  : ""
+              }`}
+            >
               <Search className="size-4 opacity-60" />
               <input
                 type="search"
-                className="grow"
+                className="grow bg-transparent"
                 value={partSearch}
                 onChange={(event) => setPartSearch(event.target.value)}
                 placeholder="Search part or associated asset"
@@ -510,43 +554,98 @@ export default function HardwarePage() {
             </label>
 
             {filteredParts.length === 0 ? (
-              <div className="rounded-box border border-dashed p-8 text-center text-sm text-base-content/60">
-                No parts match “{partSearch}”.
+              <div
+                className={`rounded-box border border-dashed p-8 text-center text-sm ${
+                  isTechnicianView
+                    ? "border-slate-700 text-slate-400"
+                    : "text-base-content/60"
+                }`}
+              >
+                {partSearch.trim()
+                  ? `No parts match “${partSearch}”.`
+                  : "No parts in inventory."}
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="table">
+                <table
+                  className={`table ${isTechnicianView ? "text-slate-100" : ""}`}
+                >
                   <thead>
-                    <tr>
+                    <tr
+                      className={
+                        isTechnicianView
+                          ? "border-b border-slate-700 [&_th]:!bg-slate-950 [&_th]:!text-slate-300"
+                          : undefined
+                      }
+                    >
                       <th>Part</th>
                       <th>Compatible assets</th>
                       <th>Unit cost</th>
                       <th>On hand</th>
                       <th>Inventory status</th>
-                      {isTechnicianView ? <th>Order more</th> : null}
+                      {isTechnicianView ? <th>Request reorder</th> : null}
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody
+                    className={
+                      isTechnicianView
+                        ? "[&>tr]:!bg-slate-900 [&>tr]:!text-slate-100"
+                        : undefined
+                    }
+                  >
                     {filteredParts.map((part) => {
                       const isLow = part.quantity <= part.low_stock_threshold;
                       const capacity = 50 - part.quantity;
-                      const orderAmount =
-                        restockQuantities[part.id] ?? Math.min(5, capacity);
+                      const requestAmount =
+                        reorderQuantities[part.id] ?? Math.min(5, capacity);
+                      const hasPendingRequest = pendingReorderPartIds.has(
+                        part.id,
+                      );
                       return (
-                        <tr key={part.id}>
+                        <tr
+                          key={part.id}
+                          className={
+                            isTechnicianView
+                              ? "border-b border-slate-700/70 !bg-slate-900"
+                              : undefined
+                          }
+                        >
                           <td>
                             <div className="font-medium">{part.part_name}</div>
-                            <div className="text-xs text-base-content/50">
+                            <div
+                              className={`text-xs ${
+                                isTechnicianView
+                                  ? "text-slate-400"
+                                  : "text-base-content/50"
+                              }`}
+                            >
                               {part.sku} · {part.category}
                             </div>
                           </td>
-                          <td className="max-w-sm text-sm text-base-content/70">
+                          <td
+                            className={`max-w-sm text-sm ${
+                              isTechnicianView
+                                ? "text-slate-300"
+                                : "text-base-content/70"
+                            }`}
+                          >
                             {part.compatible_assets}
                           </td>
                           <td>{formatCurrency(part.unit_cost)}</td>
                           <td>
-                            <span className="text-lg font-bold">{part.quantity}</span>
-                            <span className="text-xs text-base-content/50"> / 50</span>
+                            <span className="text-lg font-bold">
+                              {part.quantity}
+                            </span>
+                            <span
+                              className={`text-xs ${
+                                isTechnicianView
+                                  ? "text-slate-400"
+                                  : "text-base-content/50"
+                              }`}
+                            >
+                              {" "}
+                              / 50
+                            </span>
                           </td>
                           <td>
                             {isLow ? (
@@ -559,47 +658,64 @@ export default function HardwarePage() {
                                 In stock
                               </span>
                             )}
-                            <div className="mt-1 text-xs text-base-content/50">
+                            <div
+                              className={`mt-1 text-xs ${
+                                isTechnicianView
+                                  ? "text-slate-400"
+                                  : "text-base-content/50"
+                              }`}
+                            >
                               Reorder at {part.low_stock_threshold}
                             </div>
                           </td>
                           {isTechnicianView ? (
                             <td>
-                              <div className="flex min-w-48 items-center gap-2">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={capacity}
-                                  className="input input-bordered input-sm w-20"
-                                  value={orderAmount}
-                                  disabled={capacity === 0 || isPending}
-                                  onChange={(event) =>
-                                    setRestockQuantities((current) => ({
-                                      ...current,
-                                      [part.id]: Number(event.target.value),
-                                    }))
-                                  }
-                                  aria-label={`Order quantity for ${part.part_name}`}
-                                />
-                                <button
-                                  type="button"
-                                  className="btn btn-primary btn-sm"
-                                  disabled={
-                                    capacity === 0 ||
-                                    isPending ||
-                                    !Number.isInteger(orderAmount) ||
-                                    orderAmount < 1 ||
-                                    orderAmount > capacity
-                                  }
-                                  onClick={() => handleRestock(part)}
-                                >
-                                  <PackagePlus className="size-4" />
-                                  {capacity === 0 ? "Full" : "Order"}
-                                </button>
-                              </div>
-                              <div className="mt-1 text-xs text-base-content/50">
-                                No approval required
-                              </div>
+                              {hasPendingRequest ? (
+                                <div className="space-y-1">
+                                  <StatusBadge status="Pending" />
+                                  <p className="text-xs text-slate-400">
+                                    Waiting on management
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="flex min-w-48 items-center gap-2">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={capacity}
+                                    className="input input-bordered input-sm w-20 border-slate-600 bg-slate-950 text-slate-100"
+                                    value={requestAmount}
+                                    disabled={capacity === 0 || isPending}
+                                    onChange={(event) =>
+                                      setReorderQuantities((current) => ({
+                                        ...current,
+                                        [part.id]: Number(event.target.value),
+                                      }))
+                                    }
+                                    aria-label={`Reorder quantity for ${part.part_name}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary btn-sm gap-1"
+                                    disabled={
+                                      capacity === 0 ||
+                                      isPending ||
+                                      !Number.isInteger(requestAmount) ||
+                                      requestAmount < 1 ||
+                                      requestAmount > capacity
+                                    }
+                                    onClick={() => handleReorderRequest(part)}
+                                  >
+                                    <ClipboardList className="size-4" />
+                                    {capacity === 0 ? "Full" : "Request"}
+                                  </button>
+                                </div>
+                              )}
+                              {!hasPendingRequest ? (
+                                <div className="mt-1 text-xs text-slate-400">
+                                  Sends a reorder request to management
+                                </div>
+                              ) : null}
                             </td>
                           ) : null}
                         </tr>
@@ -610,8 +726,284 @@ export default function HardwarePage() {
               </div>
             )}
           </div>
-        </details>
+          ) : null}
+        </section>
       ) : null}
+
+      {canReviewReorders ? (
+        <section className="card border bg-base-100 shadow-sm">
+          <div className="card-body">
+            <div>
+              <h2 className="card-title text-base">Parts reorder requests</h2>
+              <p className="text-sm text-base-content/60">
+                Technician requests to restock inventory parts. Approving adds
+                stock automatically.
+              </p>
+            </div>
+            {pendingReorderRequests.length === 0 ? (
+              <p className="text-sm text-base-content/60">
+                No pending parts reorder requests.
+              </p>
+            ) : (
+              <div className="mt-2 space-y-3">
+                {pendingReorderRequests.map((request) => {
+                  const part = parts.find((item) => item.id === request.part_id);
+                  return (
+                    <div key={request.id} className="rounded-box border p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium">
+                              {part?.part_name ?? "Unknown part"}
+                            </span>
+                            <StatusBadge status={request.status} />
+                            <span className="badge badge-outline badge-sm">
+                              Qty {request.requested_quantity}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-base-content/60">
+                            {part
+                              ? `${part.sku} · On hand ${part.quantity} / 50`
+                              : "Part details unavailable"}
+                          </p>
+                          {request.notes ? (
+                            <p className="mt-2 text-sm">{request.notes}</p>
+                          ) : null}
+                        </div>
+                        <span className="text-xs text-base-content/50">
+                          {formatDate(request.created_at)}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-end">
+                        <label className="form-control flex-1">
+                          <span className="label-text mb-1 text-xs">
+                            Review note
+                          </span>
+                          <input
+                            className="input input-bordered input-sm w-full"
+                            value={reviewNotes[request.id] ?? ""}
+                            onChange={(event) =>
+                              setReviewNotes((current) => ({
+                                ...current,
+                                [request.id]: event.target.value,
+                              }))
+                            }
+                            placeholder="Required when rejecting"
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-success btn-sm"
+                            disabled={isPending}
+                            onClick={() =>
+                              handleReorderReview(request.id, "Approved")
+                            }
+                          >
+                            Approve & restock
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-error btn-outline btn-sm"
+                            disabled={isPending}
+                            onClick={() =>
+                              handleReorderReview(request.id, "Rejected")
+                            }
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      <section
+        className={`card border shadow-sm ${
+          isTechnicianView
+            ? "border-cyan-500/20 bg-slate-900/80 text-slate-100"
+            : "bg-base-100"
+        }`}
+      >
+        <button
+          type="button"
+          className="flex w-full items-start justify-between gap-3 px-6 py-5 text-left"
+          onClick={() => setAssetsOpen((open) => !open)}
+          aria-expanded={assetsOpen}
+        >
+          <div>
+            <h2 className={`card-title ${isTechnicianView ? "text-white" : ""}`}>
+              Hardware Assets
+            </h2>
+            <p
+              className={`text-sm ${
+                isTechnicianView ? "text-slate-400" : "text-base-content/60"
+              }`}
+            >
+              Device inventory, lifecycle stages, and replacement alerts.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="badge badge-outline">{rows.length} assets</span>
+              <span
+                className={`badge ${alertCount > 0 ? "badge-warning" : "badge-success"}`}
+              >
+                {alertCount} with alerts
+              </span>
+            </div>
+          </div>
+          <span
+            className={`mt-1 text-xl leading-none ${isTechnicianView ? "text-slate-300" : "text-base-content/50"}`}
+            aria-hidden="true"
+          >
+            {assetsOpen ? "▾" : "▸"}
+          </span>
+        </button>
+
+        {assetsOpen ? (
+        <div className="flex flex-col gap-5 border-t border-base-300/20 px-6 pb-6 pt-4">
+          <label
+            className={`input input-bordered flex w-full items-center gap-2 lg:max-w-md ${
+              isTechnicianView
+                ? "border-slate-600 bg-slate-950 text-slate-100"
+                : ""
+            }`}
+          >
+            <Search className="size-4 opacity-60" />
+            <input
+              type="search"
+              className="grow bg-transparent"
+              value={assetSearch}
+              onChange={(event) => setAssetSearch(event.target.value)}
+              placeholder="Search asset, customer, device, or alert"
+              aria-label="Search hardware assets"
+            />
+          </label>
+
+          {rows.length === 0 ? (
+            <EmptyState
+              title="No hardware assets"
+              description="Register laptops, servers, and network devices to monitor warranty and lifecycle."
+              action={
+                canAdd ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => dialogRef.current?.showModal()}
+                  >
+                    Add Asset
+                  </button>
+                ) : undefined
+              }
+            />
+          ) : filteredRows.length === 0 ? (
+            <div
+              className={`rounded-box border border-dashed p-8 text-center text-sm ${
+                isTechnicianView
+                  ? "border-slate-700 text-slate-400"
+                  : "text-base-content/60"
+              }`}
+            >
+              No assets match “{assetSearch}”.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table
+                className={`table ${isTechnicianView ? "text-slate-100" : ""}`}
+              >
+                <thead>
+                  <tr
+                    className={
+                      isTechnicianView
+                        ? "border-b border-slate-700 bg-slate-950 text-slate-300 [&_th]:!bg-slate-950 [&_th]:!text-slate-300"
+                        : undefined
+                    }
+                  >
+                    <th>Asset #</th>
+                    <th>Customer</th>
+                    <th>Type</th>
+                    <th>Qty</th>
+                    <th>Device</th>
+                    <th>Location</th>
+                    <th>Lifecycle</th>
+                    <th>Status</th>
+                    <th>Warranty</th>
+                    <th>Alerts</th>
+                  </tr>
+                </thead>
+                <tbody
+                  className={
+                    isTechnicianView
+                      ? "[&>tr]:!bg-slate-900 [&>tr]:!text-slate-100"
+                      : undefined
+                  }
+                >
+                  {filteredRows.map((row) => (
+                    <tr
+                      key={row.id}
+                      className={
+                        isTechnicianView
+                          ? "cursor-pointer border-b border-slate-700/70 !bg-slate-900 !text-slate-100 hover:!bg-slate-800"
+                          : "cursor-pointer hover:bg-base-200/80"
+                      }
+                      onClick={() => onAssetClick(row.id)}
+                    >
+                      <td className="font-mono text-sm">{row.asset_number}</td>
+                      <td>{row.customerName}</td>
+                      <td>{row.category}</td>
+                      <td>{row.quantity}</td>
+                      <td>
+                        <div className="font-medium">
+                          {row.manufacturer ?? "—"} {row.model ?? ""}
+                        </div>
+                        <div
+                          className={`text-xs ${
+                            isTechnicianView
+                              ? "text-slate-400"
+                              : "text-base-content/60"
+                          }`}
+                        >
+                          {row.serial_number ?? "—"}
+                        </div>
+                      </td>
+                      <td>{row.location ?? "—"}</td>
+                      <td>{row.lifecycle_stage}</td>
+                      <td>
+                        <StatusBadge status={row.device_status} />
+                      </td>
+                      <td>{formatDate(row.warranty_expiration)}</td>
+                      <td>
+                        <div className="flex flex-wrap gap-1">
+                          {row.alertBadges.length === 0 ? (
+                            <span
+                              className={`text-xs ${
+                                isTechnicianView
+                                  ? "text-slate-400"
+                                  : "text-base-content/50"
+                              }`}
+                            >
+                              None
+                            </span>
+                          ) : (
+                            <span className="text-xs">
+                              {row.alertBadges.join(" · ")}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        ) : null}
+      </section>
 
       <dialog ref={dialogRef} className="modal">
         <div className="modal-box max-h-[90vh] max-w-3xl overflow-y-auto">

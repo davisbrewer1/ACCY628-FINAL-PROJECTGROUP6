@@ -31,8 +31,10 @@ import {
   getWorkWeekDays,
   parseScheduledSlot,
 } from "@/lib/technician-schedule";
+import type { PartUsageInput } from "@/lib/autoCostCalculator";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  InventoryPart,
   Profile,
   ServiceTicket,
   Technician,
@@ -109,6 +111,11 @@ export default function TechnicianWorkspacePage() {
   const [workPerformed, setWorkPerformed] = useState("");
   const [serviceMethod, setServiceMethod] = useState("On-site");
   const [ticketStatus, setTicketStatus] = useState("In Progress");
+  const [inventoryParts, setInventoryParts] = useState<InventoryPart[]>([]);
+  const [partsUsed, setPartsUsed] = useState<PartUsageInput[]>([]);
+  const [partsStockCredit, setPartsStockCredit] = useState<PartUsageInput[]>(
+    [],
+  );
   const [liveSessionTicketId, setLiveSessionTicketId] = useState<string | null>(
     null,
   );
@@ -151,7 +158,7 @@ export default function TechnicianWorkspacePage() {
     setTechnician(techData);
 
     if (techData) {
-      const [t, w, p] = await Promise.all([
+      const [t, w, p, parts] = await Promise.all([
         supabase
           .from("service_tickets")
           .select("*")
@@ -167,10 +174,16 @@ export default function TechnicianWorkspacePage() {
           .select("*")
           .eq("technician_id", techData.id)
           .order("start_date", { ascending: false }),
+        supabase
+          .from("inventory_parts")
+          .select("*")
+          .eq("active", true)
+          .order("part_name"),
       ]);
       setTickets(t.data ?? []);
       setWorkEntries(w.data ?? []);
       setPtoRequests(p.data ?? []);
+      setInventoryParts((parts.data ?? []) as InventoryPart[]);
     }
 
     setLoading(false);
@@ -313,6 +326,29 @@ export default function TechnicianWorkspacePage() {
     return total;
   }
 
+  function resetPartsSelection() {
+    setPartsUsed([]);
+    setPartsStockCredit([]);
+  }
+
+  function normalizePartsUsed(raw: WorkEntry["parts_used"]): PartUsageInput[] {
+    if (!Array.isArray(raw)) return [];
+    const parts: PartUsageInput[] = [];
+    for (const item of raw) {
+      const partId = String(item.partId ?? "").trim();
+      const quantity = Number(item.quantity);
+      const unitCost = Number(item.unitCost);
+      if (!partId || !Number.isFinite(quantity) || quantity < 1) continue;
+      parts.push({
+        partId,
+        partName: item.partName ? String(item.partName) : undefined,
+        unitCost: Number.isFinite(unitCost) && unitCost >= 0 ? unitCost : 0,
+        quantity: Math.floor(quantity),
+      });
+    }
+    return parts;
+  }
+
   function openBlankWorkEntry() {
     setEditingEntryId(null);
     setSelectedTicketId("");
@@ -325,6 +361,7 @@ export default function TechnicianWorkspacePage() {
     setTicketStatus("In Progress");
     setLiveSessionTicketId(null);
     resetSessionTimer();
+    resetPartsSelection();
     setWorkModalPhase("form");
     setError(null);
     setWorkModalOpen(true);
@@ -354,6 +391,7 @@ export default function TechnicianWorkspacePage() {
     if (enRouteTicketId === ticketId && !startTime) {
       setSessionEnRoute(true);
       setLiveSessionTicketId(ticketId);
+      resetPartsSelection();
       setWorkModalOpen(true);
       return;
     }
@@ -364,6 +402,7 @@ export default function TechnicianWorkspacePage() {
     setStartTime("");
     setEndTime("");
     setHoursWorked("");
+    resetPartsSelection();
     setWorkModalOpen(true);
   }
 
@@ -382,6 +421,9 @@ export default function TechnicianWorkspacePage() {
     setLiveSessionTicketId(null);
     setEnRouteTicketId(null);
     resetSessionTimer();
+    const savedParts = normalizePartsUsed(entry.parts_used);
+    setPartsUsed(savedParts);
+    setPartsStockCredit(savedParts);
     setWorkModalPhase("form");
     setError(null);
     setWorkModalOpen(true);
@@ -508,6 +550,7 @@ export default function TechnicianWorkspacePage() {
         setEndTime("");
         setHoursWorked("");
         setWorkPerformed("");
+        resetPartsSelection();
         await loadData();
       } else {
         setError(result.message);
@@ -796,9 +839,6 @@ export default function TechnicianWorkspacePage() {
             <p className="mt-1 text-3xl font-semibold text-white">
               {formatCurrency(payRate)}
             </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Typical US IT technician wage / hr
-            </p>
           </div>
           <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
             <p className="text-sm text-slate-300">Hours worked this period</p>
@@ -807,12 +847,9 @@ export default function TechnicianWorkspacePage() {
             </p>
           </div>
           <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
-            <p className="text-sm text-slate-300">Estimated earnings this period</p>
+            <p className="text-sm text-slate-300">Current Earnings this period</p>
             <p className="mt-1 text-3xl font-semibold text-emerald-300">
               {formatCurrency(payPeriodEarnings)}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              {payPeriodHours.toFixed(1)} hrs × {formatCurrency(payRate)}/hr
             </p>
           </div>
         </div>
@@ -906,6 +943,10 @@ export default function TechnicianWorkspacePage() {
         onServiceMethodChange={setServiceMethod}
         ticketStatus={ticketStatus}
         onTicketStatusChange={setTicketStatus}
+        inventoryParts={inventoryParts}
+        partsUsed={partsUsed}
+        onPartsUsedChange={setPartsUsed}
+        partsStockCredit={partsStockCredit}
         error={error}
         isPending={isPending}
         onSubmit={handleWorkEntry}

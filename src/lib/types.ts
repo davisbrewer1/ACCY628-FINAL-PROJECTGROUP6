@@ -239,6 +239,12 @@ export interface WorkEntry {
   other_cost: number | null;
   labor_cost: number | null;
   total_direct_cost: number | null;
+  parts_used?: Array<{
+    partId: string;
+    partName?: string;
+    unitCost: number;
+    quantity: number;
+  }> | null;
   included_in_contract: boolean | null;
   additional_approval_required: boolean | null;
   approval_status: string | null;
@@ -620,6 +626,25 @@ export interface AssetOrderTicket {
   admin_notes: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type InventoryReorderRequestStatus =
+  | "Pending"
+  | "Approved"
+  | "Rejected";
+
+export interface InventoryReorderRequest {
+  id: string;
+  part_id: string;
+  requested_by: string | null;
+  requested_quantity: number;
+  notes: string | null;
+  status: InventoryReorderRequestStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  admin_notes: string | null;
   created_at: string;
   updated_at: string;
 }

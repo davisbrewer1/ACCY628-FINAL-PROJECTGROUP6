@@ -6,8 +6,10 @@ import {
   calcTotalDirectCost,
   hoursBetween,
 } from "@/lib/calculations";
+import type { PartUsageInput } from "@/lib/autoCostCalculator";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/actions/customers";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 function parseNumber(value: FormDataEntryValue | null): number | null {
   if (value == null || value === "") return null;
@@ -40,7 +42,168 @@ function resolveApprovalStatus(formData: FormData): string {
     : "Not Required";
 }
 
-async function buildWorkEntryPayload(formData: FormData, technicianId: string) {
+function parsePartsUsedRaw(raw: string | null): PartUsageInput[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const parts: PartUsageInput[] = [];
+    for (const item of parsed) {
+      const row = item as Partial<PartUsageInput>;
+      const partId = String(row.partId ?? "").trim();
+      const quantity = Number(row.quantity);
+      const unitCost = Number(row.unitCost);
+      if (!partId || !Number.isInteger(quantity) || quantity < 1) continue;
+      parts.push({
+        partId,
+        partName: row.partName ? String(row.partName) : undefined,
+        unitCost: Number.isFinite(unitCost) && unitCost >= 0 ? unitCost : 0,
+        quantity,
+      });
+    }
+    return parts;
+  } catch {
+    return [];
+  }
+}
+
+async function resolvePartsUsed(
+  supabase: SupabaseClient,
+  formData: FormData,
+  /** Quantities already deducted for this entry (edit flow) count as available again. */
+  previousParts: PartUsageInput[] = [],
+): Promise<{ parts: PartUsageInput[]; partsCost: number; error: string | null }> {
+  const requested = parsePartsUsedRaw(
+    String(formData.get("parts_used") ?? "").trim() || null,
+  );
+  if (requested.length === 0) {
+    return { parts: [], partsCost: 0, error: null };
+  }
+
+  const partIds = [...new Set(requested.map((item) => item.partId))];
+  const { data: rows, error } = await supabase
+    .from("inventory_parts")
+    .select("id, part_name, unit_cost, quantity, active")
+    .in("id", partIds);
+
+  if (error) {
+    return { parts: [], partsCost: 0, error: error.message };
+  }
+
+  const byId = new Map((rows ?? []).map((row) => [row.id as string, row]));
+  const previousById = new Map<string, number>();
+  for (const item of previousParts) {
+    previousById.set(
+      item.partId,
+      (previousById.get(item.partId) ?? 0) + item.quantity,
+    );
+  }
+
+  const parts: PartUsageInput[] = [];
+
+  for (const item of requested) {
+    const part = byId.get(item.partId);
+    if (!part || part.active === false) {
+      return {
+        parts: [],
+        partsCost: 0,
+        error: "One or more selected parts are unavailable.",
+      };
+    }
+    const existing = parts.find((row) => row.partId === item.partId);
+    if (existing) {
+      existing.quantity += item.quantity;
+    } else {
+      parts.push({
+        partId: item.partId,
+        partName: String(part.part_name),
+        unitCost: Number(part.unit_cost) || 0,
+        quantity: item.quantity,
+      });
+    }
+  }
+
+  for (const item of parts) {
+    const part = byId.get(item.partId);
+    if (!part) continue;
+    const available =
+      Number(part.quantity) + (previousById.get(item.partId) ?? 0);
+    if (item.quantity > available) {
+      return {
+        parts: [],
+        partsCost: 0,
+        error: `Not enough stock for ${part.part_name} (available: ${available}).`,
+      };
+    }
+  }
+
+  const partsCost = parts.reduce(
+    (sum, item) => sum + item.unitCost * item.quantity,
+    0,
+  );
+
+  return { parts, partsCost: Math.round(partsCost * 100) / 100, error: null };
+}
+
+async function applyInventoryDelta(
+  supabase: SupabaseClient,
+  previous: PartUsageInput[],
+  next: PartUsageInput[],
+): Promise<string | null> {
+  const delta = new Map<string, number>();
+  for (const item of previous) {
+    delta.set(item.partId, (delta.get(item.partId) ?? 0) - item.quantity);
+  }
+  for (const item of next) {
+    delta.set(item.partId, (delta.get(item.partId) ?? 0) + item.quantity);
+  }
+
+  const partIds = [...delta.keys()];
+  if (partIds.length === 0) return null;
+
+  const { data: rows, error } = await supabase
+    .from("inventory_parts")
+    .select("id, part_name, quantity")
+    .in("id", partIds);
+
+  if (error) return error.message;
+
+  const byId = new Map((rows ?? []).map((row) => [row.id as string, row]));
+
+  for (const [partId, change] of delta) {
+    if (change === 0) continue;
+    const part = byId.get(partId);
+    if (!part) return "A selected inventory part could not be found.";
+    const nextQty = Number(part.quantity) - change;
+    if (nextQty < 0) {
+      return `Not enough stock for ${part.part_name} (on hand: ${part.quantity}).`;
+    }
+  }
+
+  for (const [partId, change] of delta) {
+    if (change === 0) continue;
+    const part = byId.get(partId)!;
+    const nextQty = Number(part.quantity) - change;
+    const { error: updateError } = await supabase
+      .from("inventory_parts")
+      .update({
+        quantity: nextQty,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", partId)
+      .gte("quantity", change > 0 ? change : 0);
+
+    if (updateError) return updateError.message;
+  }
+
+  return null;
+}
+
+async function buildWorkEntryPayload(
+  formData: FormData,
+  technicianId: string,
+  partsCostOverride?: number,
+) {
   const supabase = await createClient();
 
   const startTime = String(formData.get("start_time") ?? "").trim() || null;
@@ -57,13 +220,13 @@ async function buildWorkEntryPayload(formData: FormData, technicianId: string) {
     .eq("id", technicianId)
     .maybeSingle();
 
-  const partsCost = parseNumber(formData.get("parts_cost")) ?? 0;
+  const partsCost =
+    partsCostOverride ?? parseNumber(formData.get("parts_cost")) ?? 0;
   const softwareCost = parseNumber(formData.get("software_cost")) ?? 0;
   const equipmentCost = parseNumber(formData.get("equipment_cost")) ?? 0;
   const travelCost = parseNumber(formData.get("travel_cost")) ?? 0;
   const otherCost = parseNumber(formData.get("other_cost")) ?? 0;
 
-  // Modal may omit this field; default to included/not billable for routine tech work.
   const includedRaw = formData.get("included_in_contract");
   const includedInContract =
     includedRaw == null ? true : String(includedRaw) === "true";
@@ -102,6 +265,14 @@ async function buildWorkEntryPayload(formData: FormData, technicianId: string) {
   };
 }
 
+function revalidateWorkPaths() {
+  revalidatePath("/technician");
+  revalidatePath("/time-costs");
+  revalidatePath("/operations");
+  revalidatePath("/billing");
+  revalidatePath("/hardware");
+}
+
 export async function createWorkEntry(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient();
 
@@ -113,9 +284,27 @@ export async function createWorkEntry(formData: FormData): Promise<ActionResult>
     return { success: false, message: "Ticket, technician, and customer are required." };
   }
 
-  const payload = await buildWorkEntryPayload(formData, technicianId);
+  const resolvedParts = await resolvePartsUsed(supabase, formData);
+  if (resolvedParts.error) {
+    return { success: false, message: resolvedParts.error };
+  }
+
+  const payload = await buildWorkEntryPayload(
+    formData,
+    technicianId,
+    resolvedParts.partsCost,
+  );
   if (payload.hours_worked < 0) {
     return { success: false, message: "Hours worked cannot be negative." };
+  }
+
+  const stockError = await applyInventoryDelta(
+    supabase,
+    [],
+    resolvedParts.parts,
+  );
+  if (stockError) {
+    return { success: false, message: stockError };
   }
 
   const { error } = await supabase.from("work_entries").insert({
@@ -124,9 +313,12 @@ export async function createWorkEntry(formData: FormData): Promise<ActionResult>
     contract_id: String(formData.get("contract_id") ?? "").trim() || null,
     technician_id: technicianId,
     ...payload,
+    parts_used: resolvedParts.parts,
   });
 
   if (error) {
+    // Best-effort rollback of stock if the work entry insert failed.
+    await applyInventoryDelta(supabase, resolvedParts.parts, []);
     return { success: false, message: error.message };
   }
 
@@ -143,11 +335,14 @@ export async function createWorkEntry(formData: FormData): Promise<ActionResult>
       .eq("id", ticketId);
   }
 
-  revalidatePath("/technician");
-  revalidatePath("/time-costs");
-  revalidatePath("/operations");
-  revalidatePath("/billing");
-  return { success: true, message: "Work entry recorded." };
+  revalidateWorkPaths();
+  return {
+    success: true,
+    message:
+      resolvedParts.parts.length > 0
+        ? "Work entry recorded and parts inventory updated."
+        : "Work entry recorded.",
+  };
 }
 
 export async function updateWorkEntry(formData: FormData): Promise<ActionResult> {
@@ -164,8 +359,47 @@ export async function updateWorkEntry(formData: FormData): Promise<ActionResult>
     };
   }
 
-  const payload = await buildWorkEntryPayload(formData, technicianId);
+  const { data: existing, error: existingError } = await supabase
+    .from("work_entries")
+    .select("id, parts_used")
+    .eq("id", entryId)
+    .eq("technician_id", technicianId)
+    .maybeSingle();
+
+  if (existingError || !existing) {
+    return { success: false, message: "Work entry not found." };
+  }
+
+  const previousParts = Array.isArray(existing.parts_used)
+    ? (existing.parts_used as PartUsageInput[])
+    : [];
+
+  const resolvedParts = await resolvePartsUsed(
+    supabase,
+    formData,
+    previousParts,
+  );
+  if (resolvedParts.error) {
+    return { success: false, message: resolvedParts.error };
+  }
+
+  // Validate next usage against stock after restoring previous consumption.
+  const stockError = await applyInventoryDelta(
+    supabase,
+    previousParts,
+    resolvedParts.parts,
+  );
+  if (stockError) {
+    return { success: false, message: stockError };
+  }
+
+  const payload = await buildWorkEntryPayload(
+    formData,
+    technicianId,
+    resolvedParts.partsCost,
+  );
   if (payload.hours_worked < 0) {
+    await applyInventoryDelta(supabase, resolvedParts.parts, previousParts);
     return { success: false, message: "Hours worked cannot be negative." };
   }
 
@@ -176,11 +410,13 @@ export async function updateWorkEntry(formData: FormData): Promise<ActionResult>
       customer_id: customerId,
       contract_id: String(formData.get("contract_id") ?? "").trim() || null,
       ...payload,
+      parts_used: resolvedParts.parts,
     })
     .eq("id", entryId)
     .eq("technician_id", technicianId);
 
   if (error) {
+    await applyInventoryDelta(supabase, resolvedParts.parts, previousParts);
     return { success: false, message: error.message };
   }
 
@@ -197,11 +433,14 @@ export async function updateWorkEntry(formData: FormData): Promise<ActionResult>
       .eq("id", ticketId);
   }
 
-  revalidatePath("/technician");
-  revalidatePath("/time-costs");
-  revalidatePath("/operations");
-  revalidatePath("/billing");
-  return { success: true, message: "Work entry updated." };
+  revalidateWorkPaths();
+  return {
+    success: true,
+    message:
+      resolvedParts.parts.length > 0
+        ? "Work entry updated and parts inventory adjusted."
+        : "Work entry updated.",
+  };
 }
 
 export async function updateWorkEntryApproval(

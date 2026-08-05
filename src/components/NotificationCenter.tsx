@@ -464,13 +464,13 @@ export function NotificationCenter() {
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-xl">
+        <div className="absolute right-0 z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-box border border-base-300 bg-base-100 text-black shadow-xl">
           <div className="flex items-start justify-between gap-2 border-b border-base-300 px-4 py-3">
             <div>
-              <p className="font-semibold">
+              <p className="font-semibold text-black">
                 {selected ? "Notification" : "Notifications"}
               </p>
-              <p className="text-xs text-base-content/60">
+              <p className="text-xs text-black/60">
                 {selected
                   ? getTypeMeta(selected.type).label
                   : unreadCount === 0
@@ -541,13 +541,13 @@ export function NotificationCenter() {
                         <Icon className="size-4" aria-hidden="true" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-base-content/55">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-black/55">
                           {meta.label}
                         </p>
-                        <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">
+                        <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap text-black">
                           {selected.message}
                         </p>
-                        <p className="mt-2 text-xs text-base-content/50">
+                        <p className="mt-2 text-xs text-black/50">
                           {formatExact(selected.created_at)} ·{" "}
                           {formatRelative(selected.created_at)}
                         </p>
@@ -578,11 +578,11 @@ export function NotificationCenter() {
             <>
               {canSendManagerMessage ? (
                 <div className="space-y-2 border-b border-base-300 bg-base-200/40 px-3 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-base-content/55">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-black/55">
                     Message technician
                   </p>
                   <select
-                    className="select select-bordered select-xs w-full"
+                    className="select select-bordered select-xs w-full text-black"
                     value={messageTechId}
                     onChange={(e) => setMessageTechId(e.target.value)}
                   >
@@ -598,7 +598,7 @@ export function NotificationCenter() {
                   </select>
                   <div className="flex gap-2">
                     <input
-                      className="input input-bordered input-xs flex-1"
+                      className="input input-bordered input-xs flex-1 text-black"
                       placeholder="Priority note, schedule change, or instruction…"
                       value={managerNote}
                       onChange={(e) => setManagerNote(e.target.value)}
@@ -634,10 +634,10 @@ export function NotificationCenter() {
                     <span className="loading loading-spinner loading-md text-primary" />
                   </div>
                 ) : unavailable ? (
-                  <div className="space-y-3 px-4 py-8 text-center text-sm text-base-content/60">
+                  <div className="space-y-3 px-4 py-8 text-center text-sm text-black/60">
                     <p>
                       Notifications are unavailable until the{" "}
-                      <code className="text-xs">notifications</code> table is
+                      <code className="text-xs text-black">notifications</code> table is
                       migrated in Supabase.
                     </p>
                     <button
@@ -657,11 +657,11 @@ export function NotificationCenter() {
                     </button>
                   </div>
                 ) : !technicianId && !canSendManagerMessage ? (
-                  <div className="px-4 py-8 text-center text-sm text-base-content/60">
+                  <div className="px-4 py-8 text-center text-sm text-black/60">
                     Link a technician profile to receive alerts.
                   </div>
                 ) : notifications.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-base-content/60">
+                  <div className="px-4 py-8 text-center text-sm text-black/60">
                     No notifications yet. Alerts for ticket changes, SLA risk,
                     upcoming tasks, and manager messages will appear here.
                   </div>
@@ -674,7 +674,7 @@ export function NotificationCenter() {
                         <li key={notification.id} className="relative">
                           <button
                             type="button"
-                            className={`flex w-full items-start gap-3 py-3 pl-4 pr-10 text-left transition hover:bg-base-200/70 ${
+                            className={`flex w-full items-start gap-3 py-3 pl-4 pr-10 text-left text-black transition hover:bg-base-200/70 ${
                               notification.read ? "opacity-70" : "bg-primary/5"
                             }`}
                             onClick={() =>
@@ -688,7 +688,7 @@ export function NotificationCenter() {
                             </span>
                             <span className="min-w-0 flex-1">
                               <span className="flex items-center gap-2">
-                                <span className="text-xs font-semibold uppercase tracking-wide text-base-content/55">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-black/55">
                                   {meta.label}
                                 </span>
                                 {!notification.read ? (
@@ -697,10 +697,10 @@ export function NotificationCenter() {
                                   </span>
                                 ) : null}
                               </span>
-                              <span className="mt-0.5 line-clamp-2 block text-sm leading-snug">
+                              <span className="mt-0.5 line-clamp-2 block text-sm leading-snug text-black">
                                 {notification.message}
                               </span>
-                              <span className="mt-1 block text-xs text-base-content/50">
+                              <span className="mt-1 block text-xs text-black/50">
                                 {formatRelative(notification.created_at)}
                               </span>
                             </span>

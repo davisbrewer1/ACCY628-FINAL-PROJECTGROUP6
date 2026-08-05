@@ -19,7 +19,7 @@ export interface WorkWindow {
 }
 
 /**
- * One-hour weekday work windows (lunch 12:00–1:00 is intentionally omitted).
+ * One-hour weekday work windows (8:00–5:00), including noon.
  * Longer jobs span multiple contiguous windows via scheduled_window "h08x3".
  */
 export const WORK_WINDOWS: WorkWindow[] = [
@@ -27,6 +27,7 @@ export const WORK_WINDOWS: WorkWindow[] = [
   { id: "h09", label: "9:00–10:00", startHour: 9, endHour: 10 },
   { id: "h10", label: "10:00–11:00", startHour: 10, endHour: 11 },
   { id: "h11", label: "11:00–12:00", startHour: 11, endHour: 12 },
+  { id: "h12", label: "12:00–1:00", startHour: 12, endHour: 13 },
   { id: "h13", label: "1:00–2:00", startHour: 13, endHour: 14 },
   { id: "h14", label: "2:00–3:00", startHour: 14, endHour: 15 },
   { id: "h15", label: "3:00–4:00", startHour: 15, endHour: 16 },
@@ -43,7 +44,7 @@ export interface ScheduledTicket {
   window: WorkWindow;
   /** Whole hours occupied on the grid (ceil of real duration, min 1). */
   durationHours: number;
-  /** Contiguous windows covered (does not cross lunch). */
+  /** Contiguous windows covered. */
   spanWindows: WorkWindow[];
   persisted: boolean;
 }
@@ -95,7 +96,7 @@ export function parseWindowSpec(
   return { windowId, durationHours };
 }
 
-/** Contiguous hour windows starting at `start`, stopping at lunch or day end. */
+/** Contiguous hour windows starting at `start`, through end of day. */
 export function getSpanWindows(
   start: WorkWindow,
   durationHours: number,
@@ -104,17 +105,7 @@ export function getSpanWindows(
   if (startIdx < 0) return [start];
 
   const needed = Math.max(1, Math.round(durationHours));
-  const span: WorkWindow[] = [];
-  for (let i = startIdx; i < WORK_WINDOWS.length && span.length < needed; i += 1) {
-    if (
-      span.length > 0 &&
-      WORK_WINDOWS[i].startHour !== WORK_WINDOWS[i - 1].endHour
-    ) {
-      break; // lunch gap
-    }
-    span.push(WORK_WINDOWS[i]);
-  }
-  return span.length > 0 ? span : [start];
+  return WORK_WINDOWS.slice(startIdx, startIdx + needed);
 }
 
 /** Monday–Friday dates for the week containing `reference`. */
@@ -180,7 +171,7 @@ export function parseScheduledSlot(
 
 /**
  * Build the weekly calendar from manager-persisted schedules only.
- * Multi-hour jobs occupy contiguous hour cells (no lunch crossing).
+ * Multi-hour jobs occupy contiguous hour cells.
  */
 export function scheduleTicketsForWeek(
   tickets: ServiceTicket[],

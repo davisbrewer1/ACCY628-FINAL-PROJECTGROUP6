@@ -556,14 +556,179 @@ export async function reviewAssetOrderTicket(
   return { success: true, message: `Order ticket marked ${status}.` };
 }
 
+export async function requestInventoryReorder(
+  partId: string,
+  amount: number,
+  notes = "",
+): Promise<ActionResult> {
+  const { supabase, user, role } = await getUserAndRole();
+
+  if (!user || role !== "technician") {
+    return {
+      success: false,
+      message: "Only technicians can request a parts reorder.",
+    };
+  }
+  if (!Number.isInteger(amount) || amount < 1 || amount > 50) {
+    return { success: false, message: "Request quantity must be between 1 and 50." };
+  }
+
+  const { data: part, error: readError } = await supabase
+    .from("inventory_parts")
+    .select("id, part_name, quantity")
+    .eq("id", partId)
+    .maybeSingle();
+
+  if (readError || !part) {
+    return { success: false, message: "The selected part could not be found." };
+  }
+  if (part.quantity + amount > 50) {
+    return {
+      success: false,
+      message: `Only ${50 - part.quantity} more can fit in inventory (cap is 50).`,
+    };
+  }
+
+  const { data: existing } = await supabase
+    .from("inventory_reorder_requests")
+    .select("id")
+    .eq("part_id", partId)
+    .eq("requested_by", user.id)
+    .eq("status", "Pending")
+    .maybeSingle();
+
+  if (existing) {
+    return {
+      success: false,
+      message: "You already have a pending reorder request for this part.",
+    };
+  }
+
+  const { error } = await supabase.from("inventory_reorder_requests").insert({
+    part_id: partId,
+    requested_by: user.id,
+    requested_quantity: amount,
+    notes: notes.trim() || null,
+    status: "Pending",
+  });
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidateHardware();
+  return {
+    success: true,
+    message: `Reorder request sent to management for ${amount} × ${part.part_name}.`,
+  };
+}
+
+export async function reviewInventoryReorderRequest(
+  requestId: string,
+  status: "Approved" | "Rejected",
+  adminNotes = "",
+): Promise<ActionResult> {
+  const { supabase, user, role } = await getUserAndRole();
+
+  if (
+    !user ||
+    (role !== "administrator" && role !== "service_manager")
+  ) {
+    return {
+      success: false,
+      message: "Only managers or administrators can review reorder requests.",
+    };
+  }
+
+  const notes = adminNotes.trim();
+  if (status === "Rejected" && !notes) {
+    return { success: false, message: "Add a note when rejecting a reorder request." };
+  }
+
+  const { data: request, error: readError } = await supabase
+    .from("inventory_reorder_requests")
+    .select("id, part_id, requested_quantity, status")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (readError || !request) {
+    return { success: false, message: "Reorder request not found." };
+  }
+  if (request.status !== "Pending") {
+    return { success: false, message: "This reorder request was already reviewed." };
+  }
+
+  if (status === "Approved") {
+    const { data: part, error: partError } = await supabase
+      .from("inventory_parts")
+      .select("id, part_name, quantity")
+      .eq("id", request.part_id)
+      .maybeSingle();
+
+    if (partError || !part) {
+      return { success: false, message: "The requested part could not be found." };
+    }
+    if (part.quantity + request.requested_quantity > 50) {
+      return {
+        success: false,
+        message: `Cannot approve: only ${50 - part.quantity} units can be added (cap is 50).`,
+      };
+    }
+
+    const { error: stockError } = await supabase
+      .from("inventory_parts")
+      .update({
+        quantity: part.quantity + request.requested_quantity,
+        last_restocked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", part.id);
+
+    if (stockError) {
+      return { success: false, message: stockError.message };
+    }
+  }
+
+  const { error } = await supabase
+    .from("inventory_reorder_requests")
+    .update({
+      status,
+      admin_notes: notes || null,
+      reviewed_by: user.id,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", requestId);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidateHardware();
+  return {
+    success: true,
+    message:
+      status === "Approved"
+        ? "Reorder approved and inventory updated."
+        : "Reorder request rejected.",
+  };
+}
+
+/** Managers/admins only — direct restock without a technician request. */
 export async function restockInventoryPart(
   partId: string,
   amount: number,
 ): Promise<ActionResult> {
   const { supabase, user, role } = await getUserAndRole();
 
-  if (!user || (role !== "technician" && role !== "administrator")) {
-    return { success: false, message: "Only technicians can order inventory parts." };
+  if (
+    !user ||
+    (role !== "administrator" && role !== "service_manager")
+  ) {
+    return {
+      success: false,
+      message: "Only managers can restock inventory directly.",
+    };
   }
   if (!Number.isInteger(amount) || amount < 1 || amount > 50) {
     return { success: false, message: "Order quantity must be between 1 and 50." };
@@ -601,6 +766,6 @@ export async function restockInventoryPart(
   revalidateHardware();
   return {
     success: true,
-    message: `${amount} × ${part.part_name} ordered and added to inventory.`,
+    message: `${amount} × ${part.part_name} added to inventory.`,
   };
 }
