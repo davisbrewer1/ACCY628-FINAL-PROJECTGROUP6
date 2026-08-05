@@ -11,6 +11,7 @@ import { ExpenseTracker } from "@/components/ExpenseTracker";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
+import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { useToast } from "@/components/Toast";
 import { formatCurrency, formatDate, formatHours } from "@/lib/format";
 import {
@@ -19,7 +20,13 @@ import {
 } from "@/lib/manager-ops";
 import { isOpenTicket, isThisMonth } from "@/lib/dashboard-stats";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, ServiceTicket, Technician, WorkEntry } from "@/lib/types";
+import type {
+  Contract,
+  Customer,
+  ServiceTicket,
+  Technician,
+  WorkEntry,
+} from "@/lib/types";
 
 interface WorkEntryRow extends WorkEntry {
   technicianName: string;
@@ -34,6 +41,8 @@ type ViewMode = "queue" | "ready" | "all";
 export default function TimeCostsPage() {
   const searchParams = useSearchParams();
   const initialFilter = searchParams.get("filter");
+  const { activeRole } = useDemoRole();
+  const expenseOnly = activeRole === "technician";
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>(
@@ -55,11 +64,17 @@ export default function TimeCostsPage() {
       data: { user },
     } = await supabase.auth.getUser();
     const [w, tech, c, co, t] = await Promise.all([
-      supabase.from("work_entries").select("*").order("work_date", { ascending: false }),
+      supabase
+        .from("work_entries")
+        .select("*")
+        .order("work_date", { ascending: false }),
       supabase.from("technicians").select("*").order("technician_name"),
       supabase.from("customers").select("*"),
       supabase.from("contracts").select("*"),
-      supabase.from("service_tickets").select("*").order("opened_at", { ascending: false }),
+      supabase
+        .from("service_tickets")
+        .select("*")
+        .order("opened_at", { ascending: false }),
     ]);
     const techRows = tech.data ?? [];
     const ticketRows = t.data ?? [];
@@ -84,7 +99,7 @@ export default function TimeCostsPage() {
   }
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   useEffect(() => {
@@ -98,8 +113,12 @@ export default function TimeCostsPage() {
     const ticketMap = new Map(tickets.map((t) => [t.id, t.ticket_number]));
 
     return entries.map((entry) => {
-      const contract = entry.contract_id ? contractMap.get(entry.contract_id) : null;
-      const billableHours = entry.included_in_contract ? 0 : (entry.hours_worked ?? 0);
+      const contract = entry.contract_id
+        ? contractMap.get(entry.contract_id)
+        : null;
+      const billableHours = entry.included_in_contract
+        ? 0
+        : (entry.hours_worked ?? 0);
       const additionalBillable =
         billableHours * (contract?.additional_hourly_rate ?? 0) +
         (entry.parts_cost ?? 0) +
@@ -196,155 +215,11 @@ export default function TimeCostsPage() {
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Time & costs"
-        description="Approve or dispute work, see included vs billable hours, and push approved overages to invoice."
-      />
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Pending approval" value={monthRollup.pendingCount} tone="warning" />
-        <StatCard title="Included hours (MTD)" value={formatHours(monthRollup.included)} />
-        <StatCard title="Billable hours (MTD)" value={formatHours(monthRollup.billable)} tone="info" />
-        <StatCard
-          title="Ready to invoice $"
-          value={formatCurrency(monthRollup.readyAmount)}
-          tone="success"
-          href="/billing"
-        />
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {(
-          [
-            ["queue", "Approve / dispute queue"],
-            ["ready", "Ready to invoice"],
-            ["all", "All entries"],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            className={`btn btn-sm ${view === value ? "btn-primary" : "btn-ghost"}`}
-            onClick={() => setView(value)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {selectedIds.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-box border border-primary/30 bg-primary/5 p-3">
-          <span className="text-sm font-medium">{selectedIds.length} selected</span>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled={isPending}
-            onClick={handlePushToInvoice}
-          >
-            Push to invoice queue
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedIds([])}>
-            Clear
-          </button>
-        </div>
+  const expenseSection = (
+    <>
+      {!expenseOnly ? (
+        <div className="divider">Ticket expenses</div>
       ) : null}
-
-      {visibleRows.length === 0 ? (
-        <EmptyState
-          title="Nothing in this view"
-          description="Work entries appear once technicians log time on tickets."
-        />
-      ) : (
-        <div className="card border bg-base-100 shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="table table-zebra">
-              <thead>
-                <tr>
-                  <th />
-                  <th>Date</th>
-                  <th>Technician</th>
-                  <th>Customer / contract</th>
-                  <th>Ticket</th>
-                  <th>Hours</th>
-                  <th>Total cost</th>
-                  <th>Type</th>
-                  <th className="text-right">Billable $</th>
-                  <th>Approval</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm"
-                        checked={selectedIds.includes(row.id)}
-                        onChange={() => toggleSelected(row.id)}
-                        aria-label={`Select work entry ${row.id}`}
-                      />
-                    </td>
-                    <td>{formatDate(row.work_date)}</td>
-                    <td>{row.technicianName}</td>
-                    <td>
-                      <div className="font-medium">{row.customerName}</div>
-                      <div className="text-xs text-base-content/60">{row.contractName}</div>
-                    </td>
-                    <td className="font-mono text-xs">{row.ticketNumber}</td>
-                    <td>{formatHours(row.hours_worked)}</td>
-                    <td>{formatCurrency(row.total_direct_cost)}</td>
-                    <td>
-                      <StatusBadge
-                        status={row.included_in_contract ? "Included" : "Billable"}
-                      />
-                    </td>
-                    <td className="text-right">
-                      {row.included_in_contract
-                        ? "—"
-                        : formatCurrency(row.additionalBillable)}
-                    </td>
-                    <td>
-                      <div className="flex flex-col gap-1">
-                        <StatusBadge status={row.approval_status ?? "Pending"} />
-                        {row.billing_status ? (
-                          <span className="text-xs text-base-content/60">
-                            {row.billing_status}
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="flex flex-wrap gap-1">
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-xs"
-                          disabled={isPending || row.approval_status === "Approved"}
-                          onClick={() => handleApproval(row.id, "Approved")}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-xs text-warning"
-                          disabled={isPending || row.approval_status === "Disputed"}
-                          onClick={() => handleApproval(row.id, "Disputed")}
-                        >
-                          Dispute
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      <div className="divider">Ticket expenses</div>
 
       <div className="card border bg-base-100 shadow-sm">
         <div className="card-body grid gap-3 py-4 sm:grid-cols-2">
@@ -391,6 +266,197 @@ export default function TimeCostsPage() {
             : undefined
         }
       />
+    </>
+  );
+
+  if (expenseOnly) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Expense Tracker"
+          description="Add travel, supplies, meals, and other ticket expenses in seconds."
+        />
+        {expenseSection}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Time & costs"
+        description="Approve or dispute work, see included vs billable hours, and push approved overages to invoice."
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          title="Pending approval"
+          value={monthRollup.pendingCount}
+          tone="warning"
+        />
+        <StatCard
+          title="Included hours (MTD)"
+          value={formatHours(monthRollup.included)}
+        />
+        <StatCard
+          title="Billable hours (MTD)"
+          value={formatHours(monthRollup.billable)}
+          tone="info"
+        />
+        <StatCard
+          title="Ready to invoice $"
+          value={formatCurrency(monthRollup.readyAmount)}
+          tone="success"
+          href="/billing"
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ["queue", "Approve / dispute queue"],
+            ["ready", "Ready to invoice"],
+            ["all", "All entries"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={`btn btn-sm ${view === value ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setView(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {selectedIds.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-box border border-primary/30 bg-primary/5 p-3">
+          <span className="text-sm font-medium">
+            {selectedIds.length} selected
+          </span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={isPending}
+            onClick={handlePushToInvoice}
+          >
+            Push to invoice queue
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setSelectedIds([])}
+          >
+            Clear
+          </button>
+        </div>
+      ) : null}
+
+      {visibleRows.length === 0 ? (
+        <EmptyState
+          title="Nothing in this view"
+          description="Work entries appear once technicians log time on tickets."
+        />
+      ) : (
+        <div className="card border bg-base-100 shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="table table-zebra">
+              <thead>
+                <tr>
+                  <th />
+                  <th>Date</th>
+                  <th>Technician</th>
+                  <th>Customer / contract</th>
+                  <th>Ticket</th>
+                  <th>Hours</th>
+                  <th>Total cost</th>
+                  <th>Type</th>
+                  <th className="text-right">Billable $</th>
+                  <th>Approval</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        checked={selectedIds.includes(row.id)}
+                        onChange={() => toggleSelected(row.id)}
+                        aria-label={`Select work entry ${row.id}`}
+                      />
+                    </td>
+                    <td>{formatDate(row.work_date)}</td>
+                    <td>{row.technicianName}</td>
+                    <td>
+                      <div className="font-medium">{row.customerName}</div>
+                      <div className="text-xs text-base-content/60">
+                        {row.contractName}
+                      </div>
+                    </td>
+                    <td className="font-mono text-xs">{row.ticketNumber}</td>
+                    <td>{formatHours(row.hours_worked)}</td>
+                    <td>{formatCurrency(row.total_direct_cost)}</td>
+                    <td>
+                      <StatusBadge
+                        status={
+                          row.included_in_contract ? "Included" : "Billable"
+                        }
+                      />
+                    </td>
+                    <td className="text-right">
+                      {row.included_in_contract
+                        ? "—"
+                        : formatCurrency(row.additionalBillable)}
+                    </td>
+                    <td>
+                      <div className="flex flex-col gap-1">
+                        <StatusBadge
+                          status={row.approval_status ?? "Pending"}
+                        />
+                        {row.billing_status ? (
+                          <span className="text-xs text-base-content/60">
+                            {row.billing_status}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs"
+                          disabled={
+                            isPending || row.approval_status === "Approved"
+                          }
+                          onClick={() => handleApproval(row.id, "Approved")}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs text-warning"
+                          disabled={
+                            isPending || row.approval_status === "Disputed"
+                          }
+                          onClick={() => handleApproval(row.id, "Disputed")}
+                        >
+                          Dispute
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {expenseSection}
     </div>
   );
 }

@@ -59,7 +59,13 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/time-costs",
     label: "Time & costs",
     icon: "Clock",
-    roles: ["administrator", "service_manager", "technician", "billing"],
+    roles: ["administrator", "service_manager", "billing"],
+  },
+  {
+    href: "/time-costs",
+    label: "Expense Tracker",
+    icon: "Receipt",
+    roles: ["technician"],
   },
   {
     href: "/billing",

@@ -113,7 +113,54 @@ type NotificationItem = {
   createdAt: string;
   security: boolean;
   source: "manager" | "assignment" | "overdue";
+  priority: string;
+  /** Hours past due (overdue only); higher = more urgent. */
+  overdueHours: number;
 };
+
+function priorityRank(priority: string | null | undefined): number {
+  switch ((priority ?? "Medium").trim()) {
+    case "Critical":
+      return 4;
+    case "High":
+      return 3;
+    case "Medium":
+      return 2;
+    case "Low":
+      return 1;
+    default:
+      return 2;
+  }
+}
+
+/** Higher score = more important / time-sensitive; shown first. */
+function notificationImportance(item: NotificationItem): number {
+  let score = priorityRank(item.priority) * 100;
+
+  if (item.security) score += 1000;
+  if (item.source === "overdue") {
+    score += 700 + Math.min(item.overdueHours, 24 * 14);
+  } else if (item.source === "assignment") {
+    score += 200;
+  } else if (item.source === "manager") {
+    score += 120;
+  }
+
+  return score;
+}
+
+function compareNotifications(a: NotificationItem, b: NotificationItem): number {
+  const importanceDiff =
+    notificationImportance(b) - notificationImportance(a);
+  if (importanceDiff !== 0) return importanceDiff;
+
+  if (a.source === "overdue" && b.source === "overdue") {
+    const overdueDiff = b.overdueHours - a.overdueHours;
+    if (overdueDiff !== 0) return overdueDiff;
+  }
+
+  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+}
 
 interface TechnicianHeaderToolsProps {
   technicianId?: string | null;
@@ -179,6 +226,7 @@ export function TechnicianHeaderTools({
   }, [technicianId]);
 
   const overdueNotifications = useMemo((): NotificationItem[] => {
+    const now = Date.now();
     return assignedTickets
       .filter((ticket) => isOpenTicket(ticket.status))
       .filter((ticket) =>
@@ -195,6 +243,10 @@ export function TechnicianHeaderTools({
         const dueAt = new Date(
           new Date(opened).getTime() + dueDays * 24 * 60 * 60 * 1000,
         );
+        const overdueHours = Math.max(
+          0,
+          (now - dueAt.getTime()) / (1000 * 60 * 60),
+        );
         return {
           id: `overdue-${ticket.id}`,
           title: "Work Outstanding Past Due",
@@ -202,6 +254,8 @@ export function TechnicianHeaderTools({
           createdAt: dueAt.toISOString(),
           security: Boolean(ticket.cybersecurity_incident),
           source: "overdue" as const,
+          priority: ticket.priority ?? "Medium",
+          overdueHours,
         };
       });
   }, [assignedTickets]);
@@ -225,6 +279,8 @@ export function TechnicianHeaderTools({
         createdAt: ticket.opened_at ?? ticket.created_at,
         security: Boolean(ticket.cybersecurity_incident),
         source: "assignment" as const,
+        priority: ticket.priority ?? "Medium",
+        overdueHours: 0,
       }));
   }, [assignedTickets]);
 
@@ -234,13 +290,12 @@ export function TechnicianHeaderTools({
         ...message,
         security: false,
         source: "manager" as const,
+        priority: "Medium",
+        overdueHours: 0,
       })),
       ...overdueNotifications,
       ...assignmentNotifications,
-    ].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    ].sort(compareNotifications);
   }, [assignmentNotifications, overdueNotifications]);
 
   const unreadCount = notifications.length;
@@ -292,7 +347,7 @@ export function TechnicianHeaderTools({
                 <p className="text-xs text-slate-400">
                   {panel === "knowledge"
                     ? "Reference guides for Nexus service families"
-                    : "Past-due work, manager messages, and new assignments"}
+                    : "Ranked by risk and time pressure — security and past-due first"}
                 </p>
               </div>
               <button

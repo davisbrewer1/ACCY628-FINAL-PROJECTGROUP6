@@ -58,7 +58,10 @@ export function AppShellClient({
 }: AppShellClientProps) {
   const pathname = usePathname();
   const { realRole, activeRole, setActiveRole } = useDemoRole();
-  const pageTitle = resolvePageTitle(pathname);
+  const pageTitle =
+    pathname === "/time-costs" && activeRole === "technician"
+      ? "Expense Tracker"
+      : resolvePageTitle(pathname);
 
   return (
     <AppShell
