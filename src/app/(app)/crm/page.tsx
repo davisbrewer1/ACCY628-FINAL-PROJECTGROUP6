@@ -1,29 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Plus, Search } from "lucide-react";
-import { createCrmFieldDefinition } from "@/app/actions/crm";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
-import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useToast } from "@/components/Toast";
 import { computeCrmAccountHealth } from "@/lib/crm";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
-import type {
-  Contract,
-  CrmAccountMeta,
-  CrmFieldDefinition,
-  CrmOpportunity,
-  Customer,
-  Invoice,
-  ServiceTicket,
-} from "@/lib/types";
-import { CRM_INDUSTRY_TEMPLATES } from "@/lib/types";
+import type { Contract, Customer, Invoice, ServiceTicket } from "@/lib/types";
 
 const MANAGER_ROLES = new Set([
   "administrator",
@@ -31,127 +31,155 @@ const MANAGER_ROLES = new Set([
   "account_manager",
 ]);
 
+const HEALTH_COLORS: Record<string, string> = {
+  Healthy: "#059669",
+  Watch: "#d97706",
+  "At risk": "#dc2626",
+};
+
+const CHART_COLORS = ["#0e7490", "#2563eb", "#059669", "#d97706", "#dc2626", "#64748b"];
+
 interface AccountRow {
   customer: Customer;
-  meta: CrmAccountMeta | null;
   health: ReturnType<typeof computeCrmAccountHealth>;
-  openOpps: number;
 }
 
-export default function CrmAccountsPage() {
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-box border border-base-300 bg-base-100 p-4">
+      <h2 className="mb-3 text-sm font-semibold tracking-wide text-base-content/80">
+        {title}
+      </h2>
+      <div className="min-h-[260px]">{children}</div>
+    </div>
+  );
+}
+
+export default function AccountHealthPage() {
   const { activeRole } = useDemoRole();
-  const { showToast } = useToast();
-  const fieldDialogRef = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [meta, setMeta] = useState<CrmAccountMeta[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [opportunities, setOpportunities] = useState<CrmOpportunity[]>([]);
-  const [fieldDefs, setFieldDefs] = useState<CrmFieldDefinition[]>([]);
-  const [search, setSearch] = useState("");
-  const [templateFilter, setTemplateFilter] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
-  const [healthFilter, setHealthFilter] = useState("all");
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [focus, setFocus] = useState<"all" | "Healthy" | "Watch" | "At risk">("all");
 
   const canManage = MANAGER_ROLES.has(activeRole);
 
-  async function loadData() {
-    const supabase = createClient();
-    const [c, m, co, t, i, o, f] = await Promise.all([
-      supabase.from("customers").select("*").order("customer_name"),
-      supabase.from("crm_account_meta").select("*"),
-      supabase.from("contracts").select("*"),
-      supabase.from("service_tickets").select("*"),
-      supabase.from("invoices").select("*"),
-      supabase.from("crm_opportunities").select("*").eq("status", "open"),
-      supabase
-        .from("crm_field_definitions")
-        .select("*")
-        .eq("active", true)
-        .order("sort_order"),
-    ]);
-    setCustomers(c.data ?? []);
-    setMeta((m.data as CrmAccountMeta[]) ?? []);
-    setContracts(co.data ?? []);
-    setTickets(t.data ?? []);
-    setInvoices(i.data ?? []);
-    setOpportunities((o.data as CrmOpportunity[]) ?? []);
-    setFieldDefs((f.data as CrmFieldDefinition[]) ?? []);
-    setLoading(false);
-  }
-
   useEffect(() => {
-    loadData();
+    async function load() {
+      const supabase = createClient();
+      const [c, co, t, i] = await Promise.all([
+        supabase.from("customers").select("*").order("customer_name"),
+        supabase.from("contracts").select("*"),
+        supabase.from("service_tickets").select("*"),
+        supabase.from("invoices").select("*"),
+      ]);
+      setCustomers(c.data ?? []);
+      setContracts(co.data ?? []);
+      setTickets(t.data ?? []);
+      setInvoices(i.data ?? []);
+      setLoading(false);
+    }
+    load();
   }, []);
 
-  const rows: AccountRow[] = useMemo(() => {
-    const metaMap = new Map(meta.map((m) => [m.customer_id, m]));
-    return customers.map((customer) => ({
-      customer,
-      meta: metaMap.get(customer.id) ?? null,
-      health: computeCrmAccountHealth(
-        customer.id,
-        contracts,
-        tickets,
-        invoices,
-      ),
-      openOpps: opportunities.filter((o) => o.customer_id === customer.id).length,
+  const rows: AccountRow[] = useMemo(
+    () =>
+      customers.map((customer) => ({
+        customer,
+        health: computeCrmAccountHealth(
+          customer.id,
+          contracts,
+          tickets,
+          invoices,
+        ),
+      })),
+    [customers, contracts, tickets, invoices],
+  );
+
+  const ranked = useMemo(() => {
+    const weight = { "At risk": 0, Watch: 1, Healthy: 2 } as const;
+    return [...rows].sort((a, b) => {
+      const byHealth =
+        weight[a.health.scoreLabel] - weight[b.health.scoreLabel];
+      if (byHealth !== 0) return byHealth;
+      return b.health.mrr - a.health.mrr;
+    });
+  }, [rows]);
+
+  const visible = useMemo(
+    () =>
+      focus === "all"
+        ? ranked
+        : ranked.filter((r) => r.health.scoreLabel === focus),
+    [ranked, focus],
+  );
+
+  const healthDistribution = useMemo(() => {
+    const counts = { Healthy: 0, Watch: 0, "At risk": 0 };
+    for (const row of rows) counts[row.health.scoreLabel] += 1;
+    return (Object.keys(counts) as Array<keyof typeof counts>).map((name) => ({
+      name,
+      value: counts[name],
     }));
-  }, [customers, meta, contracts, tickets, invoices, opportunities]);
+  }, [rows]);
 
-  const allTags = useMemo(() => {
-    const tags = new Set<string>();
-    for (const m of meta) {
-      for (const tag of m.tags ?? []) tags.add(tag);
-    }
-    return Array.from(tags).sort();
-  }, [meta]);
+  const mrrByHealth = useMemo(() => {
+    const totals = { Healthy: 0, Watch: 0, "At risk": 0 };
+    for (const row of rows) totals[row.health.scoreLabel] += row.health.mrr;
+    return (Object.keys(totals) as Array<keyof typeof totals>).map((name) => ({
+      name,
+      mrr: totals[name],
+    }));
+  }, [rows]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (templateFilter) {
-        if ((row.meta?.industry_template ?? "") !== templateFilter) return false;
-      }
-      if (tagFilter) {
-        if (!(row.meta?.tags ?? []).includes(tagFilter)) return false;
-      }
-      if (healthFilter !== "all" && row.health.scoreLabel !== healthFilter) {
-        return false;
-      }
-      if (!q) return true;
-      return (
-        row.customer.customer_name.toLowerCase().includes(q) ||
-        (row.customer.industry ?? "").toLowerCase().includes(q) ||
-        (row.meta?.tags ?? []).some((t) => t.toLowerCase().includes(q))
-      );
-    });
-  }, [rows, search, templateFilter, tagFilter, healthFilter]);
+  const topAr = useMemo(
+    () =>
+      [...rows]
+        .filter((r) => r.health.arBalance > 0)
+        .sort((a, b) => b.health.arBalance - a.health.arBalance)
+        .slice(0, 6)
+        .map((r) => ({
+          name: r.customer.customer_name.split(" ")[0],
+          fullName: r.customer.customer_name,
+          ar: r.health.arBalance,
+        })),
+    [rows],
+  );
 
-  function handleCreateField(formData: FormData) {
-    setError(null);
-    startTransition(async () => {
-      const result = await createCrmFieldDefinition(formData);
-      if (result.success) {
-        showToast(result.message);
-        fieldDialogRef.current?.close();
-        await loadData();
-      } else {
-        setError(result.message);
-      }
-    });
-  }
+  const ticketPressure = useMemo(
+    () =>
+      [...rows]
+        .filter((r) => r.health.openTickets > 0)
+        .sort((a, b) => b.health.openTickets - a.health.openTickets)
+        .slice(0, 6)
+        .map((r) => ({
+          name: r.customer.customer_name.split(" ")[0],
+          fullName: r.customer.customer_name,
+          open: r.health.openTickets,
+          critical: r.health.criticalTickets,
+          sla: r.health.slaAtRisk,
+        })),
+    [rows],
+  );
+
+  const summary = useMemo(() => {
+    const atRisk = rows.filter((r) => r.health.scoreLabel === "At risk").length;
+    const watch = rows.filter((r) => r.health.scoreLabel === "Watch").length;
+    const mrrAtRisk = rows
+      .filter((r) => r.health.scoreLabel === "At risk")
+      .reduce((sum, r) => sum + r.health.mrr, 0);
+    const totalAr = rows.reduce((sum, r) => sum + r.health.arBalance, 0);
+    return { atRisk, watch, mrrAtRisk, totalAr, total: rows.length };
+  }, [rows]);
 
   if (!canManage) {
     return (
       <AlertBanner
         tone="info"
-        title="CRM / Accounts"
-        message="This relationship workspace is for managers. Switch to a manager demo role to use it."
+        title="Account Health"
+        message="Account health is for managers. Switch to a manager demo role to use it."
       />
     );
   }
@@ -167,218 +195,235 @@ export default function CrmAccountsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="CRM / Accounts"
-        description="Flexible account hub for any IT MSP — contacts, custom fields, opportunities, and health tied to tickets and contracts."
-        action={
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={() => {
-              setError(null);
-              fieldDialogRef.current?.showModal();
-            }}
-          >
-            <Plus className="size-4" />
-            Custom field
-          </button>
-        }
+        title="Account Health"
+        description="Visual portfolio of customer risk — tickets, SLA, AR, and renewals — without a CRM laundry list."
       />
 
-      <div className="flex flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-3 lg:flex-row lg:flex-wrap lg:items-center">
-        <label className="input input-bordered input-sm flex items-center gap-2 lg:min-w-[16rem]">
-          <Search className="size-3.5 opacity-60" />
-          <input
-            type="search"
-            className="grow"
-            placeholder="Search accounts or tags…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </label>
-        <select
-          className="select select-bordered select-sm"
-          value={templateFilter}
-          onChange={(e) => setTemplateFilter(e.target.value)}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <button
+          type="button"
+          onClick={() => setFocus("all")}
+          className={`rounded-box border p-4 text-left transition ${
+            focus === "all"
+              ? "border-primary bg-primary/5"
+              : "border-base-300 bg-base-100 hover:border-base-content/20"
+          }`}
         >
-          <option value="">All industry templates</option>
-          {CRM_INDUSTRY_TEMPLATES.filter((t) => t.id).map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-        <select
-          className="select select-bordered select-sm"
-          value={tagFilter}
-          onChange={(e) => setTagFilter(e.target.value)}
+          <p className="text-xs uppercase tracking-wide text-base-content/60">Accounts</p>
+          <p className="mt-1 text-2xl font-semibold">{summary.total}</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => setFocus("At risk")}
+          className={`rounded-box border p-4 text-left transition ${
+            focus === "At risk"
+              ? "border-error bg-error/5"
+              : "border-base-300 bg-base-100 hover:border-base-content/20"
+          }`}
         >
-          <option value="">All tags</option>
-          {allTags.map((tag) => (
-            <option key={tag} value={tag}>
-              {tag}
-            </option>
-          ))}
-        </select>
-        <select
-          className="select select-bordered select-sm"
-          value={healthFilter}
-          onChange={(e) => setHealthFilter(e.target.value)}
+          <p className="text-xs uppercase tracking-wide text-base-content/60">At risk</p>
+          <p className="mt-1 text-2xl font-semibold text-error">{summary.atRisk}</p>
+          <p className="text-xs text-base-content/60">
+            {formatCurrency(summary.mrrAtRisk)} MRR exposed
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => setFocus("Watch")}
+          className={`rounded-box border p-4 text-left transition ${
+            focus === "Watch"
+              ? "border-warning bg-warning/5"
+              : "border-base-300 bg-base-100 hover:border-base-content/20"
+          }`}
         >
-          <option value="all">All health</option>
-          <option value="Healthy">Healthy</option>
-          <option value="Watch">Watch</option>
-          <option value="At risk">At risk</option>
-        </select>
-        <p className="text-xs text-base-content/60 lg:ml-auto">
-          {fieldDefs.length} custom field{fieldDefs.length === 1 ? "" : "s"} configured
-        </p>
+          <p className="text-xs uppercase tracking-wide text-base-content/60">Watch</p>
+          <p className="mt-1 text-2xl font-semibold text-warning">{summary.watch}</p>
+        </button>
+        <div className="rounded-box border border-base-300 bg-base-100 p-4">
+          <p className="text-xs uppercase tracking-wide text-base-content/60">Open AR</p>
+          <p className="mt-1 text-2xl font-semibold">{formatCurrency(summary.totalAr)}</p>
+        </div>
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          title="No matching accounts"
-          description="Adjust filters or add customers first, then open an account to complete CRM setup."
-        />
-      ) : (
-        <div className="card border bg-base-100 shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Account</th>
-                  <th>Template / tags</th>
-                  <th>Health</th>
-                  <th className="text-right">MRR</th>
-                  <th className="text-right">Open tickets</th>
-                  <th className="text-right">AR</th>
-                  <th>Renewal</th>
-                  <th className="text-right">Opps</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.customer.id} className="hover:bg-base-200/50">
-                    <td>
-                      <Link
-                        href={`/crm/${row.customer.id}`}
-                        className="link link-hover font-medium"
-                      >
-                        {row.customer.customer_name}
-                      </Link>
-                      <div className="text-xs text-base-content/60">
-                        {row.customer.industry ?? "No industry set"}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="text-sm">
-                        {CRM_INDUSTRY_TEMPLATES.find(
-                          (t) => t.id === (row.meta?.industry_template ?? ""),
-                        )?.label ?? "General IT / MSP"}
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {(row.meta?.tags ?? []).length === 0 ? (
-                          <span className="text-xs text-base-content/50">No tags</span>
-                        ) : (
-                          row.meta!.tags.map((tag) => (
-                            <span key={tag} className="badge badge-ghost badge-xs">
-                              {tag}
-                            </span>
-                          ))
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <StatusBadge status={row.health.scoreLabel} />
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {row.health.riskFlags.slice(0, 2).map((flag) => (
-                          <span key={flag} className="badge badge-warning badge-xs">
-                            {flag}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="text-right">{formatCurrency(row.health.mrr)}</td>
-                    <td className="text-right">
-                      {row.health.openTickets}
-                      {row.health.criticalTickets > 0 ? (
-                        <div className="text-xs text-error">
-                          {row.health.criticalTickets} critical
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="text-right">
-                      {formatCurrency(row.health.arBalance)}
-                    </td>
-                    <td>{formatDate(row.health.nextRenewal)}</td>
-                    <td className="text-right">{row.openOpps}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <ChartCard title="Health mix">
+          {rows.length === 0 ? (
+            <EmptyState title="No accounts" description="Add customers to see health distribution." />
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <PieChart>
+                <Pie
+                  data={healthDistribution}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={90}
+                  paddingAngle={2}
+                >
+                  {healthDistribution.map((entry) => (
+                    <Cell
+                      key={entry.name}
+                      fill={HEALTH_COLORS[entry.name] ?? "#64748b"}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
 
-      <dialog ref={fieldDialogRef} className="modal">
-        <div className="modal-box max-w-lg">
-          <h3 className="text-lg font-bold">Add custom field</h3>
-          <p className="mt-1 text-sm text-base-content/70">
-            Fields can be global or tied to an industry template so different IT clients see relevant data.
-          </p>
-          {error ? (
-            <div className="alert alert-error mt-4 text-sm">
-              <span>{error}</span>
-            </div>
-          ) : null}
-          <form action={handleCreateField} className="mt-4 grid gap-3">
-            <FormField label="Label" htmlFor="label" required>
-              <input id="label" name="label" className="input input-bordered w-full" required />
-            </FormField>
-            <FormField label="Field type" htmlFor="field_type">
-              <select id="field_type" name="field_type" className="select select-bordered w-full" defaultValue="text">
-                <option value="text">Text</option>
-                <option value="number">Number</option>
-                <option value="date">Date</option>
-                <option value="dropdown">Dropdown</option>
-                <option value="checkbox">Checkbox</option>
-              </select>
-            </FormField>
-            <FormField label="Dropdown options (comma-separated)" htmlFor="options">
-              <input
-                id="options"
-                name="options"
-                className="input input-bordered w-full"
-                placeholder="Yes, No, Pending"
-              />
-            </FormField>
-            <FormField label="Industry template" htmlFor="industry_template">
-              <select
-                id="industry_template"
-                name="industry_template"
-                className="select select-bordered w-full"
-                defaultValue=""
-              >
-                {CRM_INDUSTRY_TEMPLATES.map((t) => (
-                  <option key={t.id || "general"} value={t.id}>
-                    {t.id ? t.label : "Global (all accounts)"}
-                  </option>
+        <ChartCard title="MRR by health band">
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={mrrByHealth}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" />
+              <YAxis tickFormatter={(v) => `$${Math.round(Number(v) / 1000)}k`} />
+              <Tooltip formatter={(v) => formatCurrency(Number(v))} />
+              <Bar dataKey="mrr" name="MRR" radius={[6, 6, 0, 0]}>
+                {mrrByHealth.map((entry) => (
+                  <Cell
+                    key={entry.name}
+                    fill={HEALTH_COLORS[entry.name] ?? "#64748b"}
+                  />
                 ))}
-              </select>
-            </FormField>
-            <div className="modal-action">
-              <button type="button" className="btn" onClick={() => fieldDialogRef.current?.close()}>
-                Cancel
-              </button>
-              <button type="submit" className="btn btn-primary" disabled={isPending}>
-                {isPending ? <span className="loading loading-spinner loading-sm" /> : "Create field"}
-              </button>
-            </div>
-          </form>
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Open AR concentration">
+          {topAr.length === 0 ? (
+            <EmptyState title="No open AR" description="Accounts with remaining balances will chart here." />
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={topAr} layout="vertical" margin={{ left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tickFormatter={(v) => `$${Math.round(Number(v) / 1000)}k`} />
+                <YAxis type="category" dataKey="name" width={72} />
+                <Tooltip
+                  formatter={(v) => formatCurrency(Number(v))}
+                  labelFormatter={(_, payload) =>
+                    String(payload?.[0]?.payload?.fullName ?? "")
+                  }
+                />
+                <Bar dataKey="ar" name="AR" fill={CHART_COLORS[4]} radius={[0, 6, 6, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Ticket pressure">
+          {ticketPressure.length === 0 ? (
+            <EmptyState title="No open tickets" description="Accounts with open work will chart here." />
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={ticketPressure}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" />
+                <YAxis allowDecimals={false} />
+                <Tooltip
+                  labelFormatter={(_, payload) =>
+                    String(payload?.[0]?.payload?.fullName ?? "")
+                  }
+                />
+                <Legend />
+                <Bar dataKey="open" name="Open" fill={CHART_COLORS[0]} stackId="t" />
+                <Bar dataKey="critical" name="Critical" fill={CHART_COLORS[4]} stackId="c" />
+                <Bar dataKey="sla" name="SLA risk" fill={CHART_COLORS[3]} stackId="s" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+      </div>
+
+      <section>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Accounts by urgency</h2>
+            <p className="text-sm text-base-content/60">
+              {focus === "all" ? "All accounts" : focus} · click a tile for detail
+            </p>
+          </div>
+          {focus !== "all" ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFocus("all")}>
+              Clear filter
+            </button>
+          ) : null}
         </div>
-        <form method="dialog" className="modal-backdrop">
-          <button type="submit">close</button>
-        </form>
-      </dialog>
+
+        {visible.length === 0 ? (
+          <EmptyState
+            title="Nothing in this band"
+            description="Try another health filter or clear the selection."
+          />
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {visible.map((row) => (
+              <Link
+                key={row.customer.id}
+                href={`/crm/${row.customer.id}`}
+                className="group rounded-box border border-base-300 bg-base-100 p-4 transition hover:border-primary/40 hover:shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold group-hover:text-primary">
+                      {row.customer.customer_name}
+                    </p>
+                    <p className="text-xs text-base-content/60">
+                      {row.customer.industry ?? "IT account"}
+                    </p>
+                  </div>
+                  <StatusBadge status={row.health.scoreLabel} />
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg bg-base-200/70 px-2 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-base-content/50">
+                      MRR
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {formatCurrency(row.health.mrr)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-base-200/70 px-2 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-base-content/50">
+                      Tickets
+                    </p>
+                    <p className="text-sm font-semibold">{row.health.openTickets}</p>
+                  </div>
+                  <div className="rounded-lg bg-base-200/70 px-2 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-base-content/50">
+                      AR
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {formatCurrency(row.health.arBalance)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-1">
+                  {row.health.riskFlags.length === 0 ? (
+                    <span className="text-xs text-success">No active risk flags</span>
+                  ) : (
+                    row.health.riskFlags.map((flag) => (
+                      <span key={flag} className="badge badge-warning badge-xs">
+                        {flag}
+                      </span>
+                    ))
+                  )}
+                </div>
+                <p className="mt-2 text-xs text-base-content/50">
+                  Renewal {formatDate(row.health.nextRenewal)}
+                </p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

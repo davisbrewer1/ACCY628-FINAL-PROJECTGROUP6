@@ -39,8 +39,8 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/crm",
-    label: "CRM / Accounts",
-    icon: "Contact",
+    label: "Account Health",
+    icon: "Activity",
     roles: ["administrator", "service_manager", "account_manager"],
   },
   {
