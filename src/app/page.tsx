@@ -9,6 +9,7 @@ import {
   Shield,
 } from "lucide-react";
 import { MarketingHeader } from "@/components/marketing/MarketingHeader";
+import { MarketingChatAssistant } from "@/components/marketing/MarketingChatAssistant";
 import { PortalLoginMenu } from "@/components/marketing/PortalLoginMenu";
 
 const SERVICES = [
@@ -243,6 +244,8 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
+
+      <MarketingChatAssistant />
     </div>
   );
 }

@@ -105,9 +105,19 @@ export async function createPortalTicket(
     return { success: false, message: "Ticket title is required." };
   }
 
-  const requestType = String(formData.get("request_type") ?? "support").trim();
+  const requestCategory = String(formData.get("issue_category") ?? "").trim();
+  const requestTypeFromCategory =
+    requestCategory === "AI Issue"
+      ? "ai"
+      : requestCategory === "Security Concern"
+        ? "security"
+        : "support";
+  const requestType =
+    String(formData.get("request_type") ?? "").trim() || requestTypeFromCategory;
+
+  const subcategory = String(formData.get("category") ?? "").trim();
   const category =
-    String(formData.get("category") ?? "").trim() ||
+    subcategory ||
     (requestType === "ai"
       ? "AI Assistance"
       : requestType === "security"
@@ -158,8 +168,6 @@ export async function createPortalTicket(
   revalidatePath("/portal");
   revalidatePath("/end-user");
   revalidatePath("/end-user/support");
-  revalidatePath("/end-user/ai-concern");
-  revalidatePath("/end-user/security-concern");
   return { success: true, message: "Support request submitted." };
 }
 

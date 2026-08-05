@@ -82,7 +82,7 @@ export default function EndUserPage() {
     <div className="space-y-6">
       <PageHeader
         title="End user portal"
-        description={`Welcome${profile.full_name ? `, ${profile.full_name}` : ""}. View company announcements and use the menu for support tickets and other concerns.`}
+        description={`Welcome${profile.full_name ? `, ${profile.full_name}` : ""}. View company announcements and use the menu for support tickets, billing, and other concerns.`}
       />
 
       <div className="card border bg-base-100 shadow-sm">
@@ -115,7 +115,8 @@ export default function EndUserPage() {
         <div className="card-body gap-3">
           <h2 className="card-title text-base">Need help?</h2>
           <p className="text-sm text-base-content/70">
-            Open the menu (three lines) to submit a support ticket, report an AI issue, or raise a security concern.
+            Open Support Tickets for AI issues, security concerns, or software/hardware
+            problems. You can also review devices and billing from the menu.
           </p>
           <div className="flex flex-wrap gap-2">
             <Link href="/end-user/support" className="btn btn-primary btn-sm">
@@ -124,11 +125,11 @@ export default function EndUserPage() {
             <Link href="/end-user/devices" className="btn btn-outline btn-sm">
               My Devices
             </Link>
-            <Link href="/end-user/ai-concern" className="btn btn-outline btn-sm">
-              AI Issue
+            <Link href="/end-user/billing" className="btn btn-outline btn-sm">
+              Billing
             </Link>
-            <Link href="/end-user/security-concern" className="btn btn-outline btn-sm">
-              Security Concern
+            <Link href="/end-user/contracts" className="btn btn-outline btn-sm">
+              My Contracts
             </Link>
           </div>
         </div>

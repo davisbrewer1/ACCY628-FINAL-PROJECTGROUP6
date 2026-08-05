@@ -14,6 +14,8 @@ const STATUS_STYLES: Record<string, string> = {
   "Pending Approval": "badge-warning",
   Issued: "badge-info",
   "Partially Paid": "badge-warning",
+  Partial: "badge-warning",
+  Unpaid: "badge-warning",
   Paid: "badge-success",
   "Past Due": "badge-error",
   Disputed: "badge-error",

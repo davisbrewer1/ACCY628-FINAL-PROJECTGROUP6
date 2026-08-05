@@ -129,18 +129,6 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["client_user"],
   },
   {
-    href: "/end-user/ai-concern",
-    label: "AI Issue",
-    icon: "Brain",
-    roles: ["client_user"],
-  },
-  {
-    href: "/end-user/security-concern",
-    label: "Security Concern",
-    icon: "Shield",
-    roles: ["client_user"],
-  },
-  {
     href: "/end-user/devices",
     label: "My Devices",
     icon: "Monitor",
@@ -150,6 +138,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/end-user/contracts",
     label: "My Contracts",
     icon: "FileText",
+    roles: ["client_user"],
+  },
+  {
+    href: "/end-user/billing",
+    label: "Billing",
+    icon: "Receipt",
     roles: ["client_user"],
   },
 ];

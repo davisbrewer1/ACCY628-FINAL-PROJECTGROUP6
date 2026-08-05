@@ -15,10 +15,17 @@ import { useToast } from "@/components/Toast";
 import { formatDate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import {
-  TICKET_CATEGORIES,
+  buildTicketLiveSteps,
+  formatLiveStepTime,
+  getActiveLiveSummary,
+} from "@/lib/ticket-live-status";
+import {
+  SUPPORT_ISSUE_CATEGORIES,
+  SUPPORT_ISSUE_SUBCATEGORIES,
   type HardwareAsset,
   type Profile,
   type ServiceTicket,
+  type SupportIssueCategory,
   type Technician,
   type TicketPriority,
   type WorkEntry,
@@ -48,49 +55,10 @@ function deviceLabel(asset: HardwareAsset): string {
   return parts.join(" — ");
 }
 
-function dispatchSummary(ticket: ServiceTicket, technicianName: string | null): string {
-  const method = (ticket.service_method ?? "").toLowerCase();
-  const status = ticket.status ?? "New";
-
-  if (status === "New" && !ticket.assigned_technician_id) {
-    return "Your request was received. A technician has not been assigned yet.";
-  }
-  if (status === "Assigned" || (ticket.assigned_technician_id && status === "New")) {
-    return technicianName
-      ? `${technicianName} has been assigned and will begin work soon.`
-      : "A technician has been assigned and will begin work soon.";
-  }
-  if (status === "In Progress") {
-    if (method.includes("onsite") || method.includes("on-site") || method.includes("on site")) {
-      return technicianName
-        ? `${technicianName} is actively working this request and may be sent onsite.`
-        : "A technician is actively working this request and may be sent onsite.";
-    }
-    if (method.includes("remote")) {
-      return technicianName
-        ? `${technicianName} is actively working on this remotely.`
-        : "A technician is actively working on this remotely.";
-    }
-    return technicianName
-      ? `${technicianName} is actively working to resolve this ticket.`
-      : "A technician is actively working to resolve this ticket.";
-  }
-  if (status === "Waiting on Customer") {
-    return "Nexus is waiting on information or approval from your team.";
-  }
-  if (status === "Waiting on Vendor") {
-    return "Work is paused while Nexus waits on a vendor response.";
-  }
-  if (status === "Waiting on Approval") {
-    return "Additional work is pending approval before continuing.";
-  }
-  if (status === "Escalated") {
-    return "This ticket has been escalated for higher-priority attention.";
-  }
-  if (status === "Completed" || status === "Closed") {
-    return "This ticket has been resolved.";
-  }
-  return "Your ticket is being tracked by the Nexus support team.";
+function issueTypeLabel(ticket: ServiceTicket): string {
+  if (ticket.ai_involved) return "AI Issue";
+  if (ticket.cybersecurity_incident) return "Security Concern";
+  return "Software/Hardware Issue";
 }
 
 export default function EndUserSupportPage() {
@@ -106,6 +74,7 @@ export default function EndUserSupportPage() {
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+  const [issueCategory, setIssueCategory] = useState<SupportIssueCategory | "">("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -219,6 +188,30 @@ export default function EndUserSupportPage() {
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   }, [workEntries, selectedTicket]);
 
+  const selectedTech = useMemo(() => {
+    if (!selectedTicket?.assigned_technician_id) return null;
+    return techById.get(selectedTicket.assigned_technician_id) ?? null;
+  }, [selectedTicket, techById]);
+
+  const selectedAsset = useMemo(() => {
+    if (!selectedTicket?.hardware_asset_id) return undefined;
+    return assetById.get(selectedTicket.hardware_asset_id);
+  }, [selectedTicket, assetById]);
+
+  const liveSteps = useMemo(() => {
+    if (!selectedTicket) return [];
+    return buildTicketLiveSteps(
+      selectedTicket,
+      selectedTech?.technician_name ?? null,
+      selectedUpdates,
+    );
+  }, [selectedTicket, selectedTech, selectedUpdates]);
+
+  const liveSummary = useMemo(
+    () => getActiveLiveSummary(liveSteps),
+    [liveSteps],
+  );
+
   function openTicketDetails(ticketId: string) {
     setSelectedTicketId(ticketId);
     if (profile?.customer_id) {
@@ -242,6 +235,7 @@ export default function EndUserSupportPage() {
               <th>Title</th>
               <th>Employee</th>
               <th>Category</th>
+              <th>Subcategory</th>
               <th>Device</th>
               <th>Priority</th>
               <th>Status</th>
@@ -291,6 +285,7 @@ export default function EndUserSupportPage() {
                       {ticket.requester_email ?? ""}
                     </div>
                   </td>
+                  <td className="text-sm">{issueTypeLabel(ticket)}</td>
                   <td>{ticket.category ?? "—"}</td>
                   <td className="text-sm">
                     {linkedAsset ? deviceLabel(linkedAsset) : "—"}
@@ -313,17 +308,31 @@ export default function EndUserSupportPage() {
 
   function openDialog() {
     setError(null);
+    setIssueCategory("");
     dialogRef.current?.showModal();
   }
 
   function handleSubmit(formData: FormData) {
     if (!profile?.customer_id) return;
-    formData.set("request_type", "support");
+    if (!issueCategory) {
+      setError("Please select a category for this support ticket.");
+      return;
+    }
+    formData.set("issue_category", issueCategory);
+    formData.set(
+      "request_type",
+      issueCategory === "AI Issue"
+        ? "ai"
+        : issueCategory === "Security Concern"
+          ? "security"
+          : "support",
+    );
     setError(null);
     startTransition(async () => {
       const result = await createPortalTicket(formData, profile.customer_id!);
       if (result.success) {
         showToast(result.message);
+        setIssueCategory("");
         dialogRef.current?.close();
         await loadData(profile.customer_id!);
       } else {
@@ -359,18 +368,11 @@ export default function EndUserSupportPage() {
     );
   }
 
-  const selectedTech = selectedTicket?.assigned_technician_id
-    ? techById.get(selectedTicket.assigned_technician_id) ?? null
-    : null;
-  const selectedAsset = selectedTicket?.hardware_asset_id
-    ? assetById.get(selectedTicket.hardware_asset_id)
-    : undefined;
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Support tickets"
-        description="Submit a support ticket and click an open ticket to see live status updates."
+        description="Submit AI, security, or software/hardware support tickets. Click an open ticket to see live status updates."
         action={
           <button type="button" className="btn btn-primary btn-sm" onClick={openDialog}>
             <Plus className="size-4" />
@@ -447,22 +449,81 @@ export default function EndUserSupportPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-primary">
                   Live status
                 </p>
-                <p className="mt-1 text-sm">
-                  {dispatchSummary(selectedTicket, selectedTech?.technician_name ?? null)}
-                </p>
+                <p className="mt-1 text-sm font-medium">{liveSummary}</p>
                 <p className="mt-2 text-xs text-base-content/60">
                   Auto-refreshes every 10 seconds
                   {lastRefreshedAt
                     ? ` · Last updated ${lastRefreshedAt.toLocaleTimeString()}`
                     : ""}
                 </p>
+
+                <ol className="mt-4 space-y-3">
+                  {liveSteps.map((step) => {
+                    const timestamp = formatLiveStepTime(step.at);
+                    return (
+                      <li key={step.id} className="flex gap-3">
+                        <span
+                          className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                            step.state === "complete"
+                              ? "bg-success text-success-content"
+                              : step.state === "active"
+                                ? "bg-primary text-primary-content"
+                                : "bg-base-300 text-base-content/60"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {step.state === "complete" ? "✓" : step.state === "active" ? "●" : ""}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <p
+                              className={`text-sm font-semibold ${
+                                step.state === "upcoming" ? "text-base-content/50" : ""
+                              }`}
+                            >
+                              {step.label}
+                              {step.state === "active" ? (
+                                <span className="badge badge-primary badge-xs ml-2">Now</span>
+                              ) : null}
+                            </p>
+                            {timestamp ? (
+                              <p className="text-xs text-base-content/50">{timestamp}</p>
+                            ) : null}
+                          </div>
+                          <p
+                            className={`mt-0.5 text-sm ${
+                              step.state === "upcoming"
+                                ? "text-base-content/45"
+                                : "text-base-content/75"
+                            }`}
+                          >
+                            {step.detail}
+                          </p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-box border border-base-300 p-3">
+                  <p className="text-xs uppercase tracking-wide text-base-content/60">Category</p>
+                  <p className="mt-1 font-medium">{issueTypeLabel(selectedTicket)}</p>
+                </div>
+                <div className="rounded-box border border-base-300 p-3">
+                  <p className="text-xs uppercase tracking-wide text-base-content/60">
+                    Subcategory
+                  </p>
+                  <p className="mt-1 font-medium">{selectedTicket.category ?? "—"}</p>
+                </div>
+                <div className="rounded-box border border-base-300 p-3">
                   <p className="text-xs uppercase tracking-wide text-base-content/60">Technician</p>
                   <p className="mt-1 font-medium">
-                    {selectedTech?.technician_name ?? "Not assigned yet"}
+                    {selectedTech?.technician_name ??
+                      (selectedTicket.assigned_technician_id
+                        ? "Technician assigned"
+                        : "Not assigned yet")}
                   </p>
                   {selectedTech?.specialty ? (
                     <p className="text-xs text-base-content/60">{selectedTech.specialty}</p>
@@ -591,7 +652,50 @@ export default function EndUserSupportPage() {
             </div>
           ) : null}
           <form action={handleSubmit} className="form-grid mt-4 grid gap-4">
-            <input type="hidden" name="request_type" value="support" />
+            <FormField label="Category" htmlFor="issue_category" required>
+              <select
+                id="issue_category"
+                name="issue_category"
+                className="select select-bordered w-full"
+                value={issueCategory}
+                onChange={(event) =>
+                  setIssueCategory(event.target.value as SupportIssueCategory | "")
+                }
+                required
+              >
+                <option value="" disabled>
+                  Select a category
+                </option>
+                {SUPPORT_ISSUE_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            <FormField label="Subcategory of issue" htmlFor="category" required>
+              <select
+                id="category"
+                name="category"
+                className="select select-bordered w-full"
+                defaultValue=""
+                key={issueCategory || "none"}
+                required
+                disabled={!issueCategory}
+              >
+                <option value="" disabled>
+                  {issueCategory ? "Select a subcategory" : "Select a category first"}
+                </option>
+                {issueCategory
+                  ? SUPPORT_ISSUE_SUBCATEGORIES[issueCategory].map((subcategory) => (
+                      <option key={subcategory} value={subcategory}>
+                        {subcategory}
+                      </option>
+                    ))
+                  : null}
+              </select>
+            </FormField>
 
             <FormField label="Ticket title" htmlFor="title" required>
               <input
@@ -646,25 +750,6 @@ export default function EndUserSupportPage() {
               />
             </FormField>
 
-            <FormField label="Category of issue" htmlFor="category" required>
-              <select
-                id="category"
-                name="category"
-                className="select select-bordered w-full"
-                defaultValue=""
-                required
-              >
-                <option value="" disabled>
-                  Select a category
-                </option>
-                {TICKET_CATEGORIES.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-
             <FormField
               label="Related company device (optional)"
               htmlFor="hardware_asset_id"
@@ -689,7 +774,8 @@ export default function EndUserSupportPage() {
                 id="urgency"
                 name="urgency"
                 className="select select-bordered w-full"
-                defaultValue="Medium"
+                defaultValue={issueCategory === "Security Concern" ? "High" : "Medium"}
+                key={`urgency-${issueCategory || "none"}`}
                 required
               >
                 {URGENCY_OPTIONS.map((option) => (
@@ -715,7 +801,10 @@ export default function EndUserSupportPage() {
               <button
                 type="button"
                 className="btn"
-                onClick={() => dialogRef.current?.close()}
+                onClick={() => {
+                  setIssueCategory("");
+                  dialogRef.current?.close();
+                }}
               >
                 Cancel
               </button>

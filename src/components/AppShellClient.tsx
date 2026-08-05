@@ -25,10 +25,9 @@ const PAGE_TITLES: Record<string, string> = {
   "/portal": "Client Portal",
   "/end-user": "End User Portal",
   "/end-user/support": "Support Tickets",
-  "/end-user/ai-concern": "AI Issue",
-  "/end-user/security-concern": "Security Concern",
   "/end-user/devices": "My Devices",
   "/end-user/contracts": "My Contracts",
+  "/end-user/billing": "Billing",
 };
 
 function resolvePageTitle(pathname: string): string {
