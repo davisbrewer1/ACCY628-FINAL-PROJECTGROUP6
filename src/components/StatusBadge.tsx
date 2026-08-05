@@ -28,6 +28,8 @@ const STATUS_STYLES: Record<string, string> = {
   Pending: "badge-warning",
   Approved: "badge-success",
   Denied: "badge-error",
+  Rejected: "badge-error",
+  "Needs more information": "badge-neutral",
   "Approval Required": "badge-warning",
   "No Approval Needed": "badge-ghost",
   Included: "badge-success",

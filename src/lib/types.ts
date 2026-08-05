@@ -274,9 +274,15 @@ export interface KnowledgeBaseArticle {
 export interface InventoryPart {
   id: string;
   part_name: string;
-  sku: string | null;
+  sku: string;
   unit_cost: number;
   active: boolean;
+  quantity: number;
+  low_stock_threshold: number;
+  category: string;
+  compatible_assets: string;
+  updated_at: string;
+  last_restocked_at: string | null;
   created_at: string;
 }
 
@@ -437,6 +443,7 @@ export interface HardwareAsset {
   id: string;
   asset_number: string;
   customer_id: string;
+  quantity: number;
   location: string | null;
   category: HardwareCategory | string;
   manufacturer: string | null;
@@ -542,6 +549,35 @@ export interface AssetPhoto {
   file_size: number | null;
   mime_type: string | null;
   created_at: string;
+}
+
+export type AssetOrderTicketStatus =
+  | "Pending"
+  | "Approved"
+  | "Rejected"
+  | "Needs more information";
+
+export interface AssetOrderTicket {
+  id: string;
+  ticket_number: string;
+  asset_id: string;
+  customer_id: string;
+  requested_by: string;
+  replacement_manufacturer: string;
+  replacement_model: string;
+  requested_quantity: number;
+  priority: "Low" | "Medium" | "High" | "Urgent";
+  business_justification: string;
+  technical_requirements: string | null;
+  preferred_vendor: string | null;
+  estimated_unit_cost: number | null;
+  needed_by: string | null;
+  status: AssetOrderTicketStatus;
+  admin_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SecurityScore {
