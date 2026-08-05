@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Plus } from "lucide-react";
-import { createCustomer } from "@/app/actions/customers";
+import { Plus, Trash2 } from "lucide-react";
+import { createCustomer, deleteCustomer } from "@/app/actions/customers";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
+import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -25,10 +26,18 @@ interface CustomerRow extends Customer {
   oldestArDays: number | null;
   nextRenewal: string | null;
   accountManagerName: string;
+  portalEmail: string | null;
   riskFlags: string[];
 }
 
+const MANAGER_ROLES = new Set([
+  "administrator",
+  "service_manager",
+  "account_manager",
+]);
+
 export default function CustomersPage() {
+  const { activeRole } = useDemoRole();
   const { showToast } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
@@ -39,7 +48,12 @@ export default function CustomersPage() {
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [createdCreds, setCreatedCreds] = useState<{
+    email: string;
+    password: string;
+  } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const canManage = MANAGER_ROLES.has(activeRole);
 
   async function loadData() {
     const supabase = createClient();
@@ -66,6 +80,18 @@ export default function CustomersPage() {
 
   const rows: CustomerRow[] = useMemo(() => {
     const profileMap = new Map(profiles.map((p) => [p.id, p.full_name ?? p.email ?? "—"]));
+    const portalByCustomer = new Map<string, string>();
+    for (const profile of profiles) {
+      if (
+        profile.customer_id &&
+        (profile.role === "client_admin" || profile.role === "client_user") &&
+        profile.email
+      ) {
+        if (!portalByCustomer.has(profile.customer_id)) {
+          portalByCustomer.set(profile.customer_id, profile.email);
+        }
+      }
+    }
     const pastDueCustomers = new Set(getPastDueInvoices(invoices).map((i) => i.customer_id));
     const renewingSoon = new Set(getRenewalsInDays(contracts, 30).map((c) => c.customer_id));
 
@@ -136,6 +162,8 @@ export default function CustomersPage() {
         accountManagerName: customer.account_manager_id
           ? profileMap.get(customer.account_manager_id) ?? "Assigned"
           : "Unassigned",
+        portalEmail:
+          portalByCustomer.get(customer.id) ?? customer.contact_email ?? null,
         riskFlags,
       };
     });
@@ -143,14 +171,41 @@ export default function CustomersPage() {
 
   function handleSubmit(formData: FormData) {
     setError(null);
+    setCreatedCreds(null);
     startTransition(async () => {
       const result = await createCustomer(formData);
       if (result.success) {
         showToast(result.message);
+        if (result.portalEmail && result.portalPassword) {
+          setCreatedCreds({
+            email: result.portalEmail,
+            password: result.portalPassword,
+          });
+        }
         dialogRef.current?.close();
         await loadData();
       } else {
         setError(result.message);
+      }
+    });
+  }
+
+  function handleDelete(customer: CustomerRow) {
+    if (
+      !confirm(
+        `Delete customer "${customer.customer_name}"?\n\nThis removes their contracts, tickets, invoices, and related records. Portal logins for this customer will be deactivated.`,
+      )
+    ) {
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await deleteCustomer(customer.id);
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+      } else {
+        showToast(result.message, "error");
       }
     });
   }
@@ -167,31 +222,58 @@ export default function CustomersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Customer accounts"
-        description="Health, MRR, renewals, and receivables — prioritized for account action."
+        description="Managers approve new customers and create their portal login. Only management-created accounts should access the client portal."
         action={
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => dialogRef.current?.showModal()}
-          >
-            <Plus className="size-4" />
-            Add Customer
-          </button>
+          canManage ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                setError(null);
+                dialogRef.current?.showModal();
+              }}
+            >
+              <Plus className="size-4" />
+              Add Customer
+            </button>
+          ) : null
         }
       />
+
+      {createdCreds ? (
+        <div className="alert alert-success text-sm">
+          <div>
+            <p className="font-semibold">Portal login ready</p>
+            <p>
+              Email: <span className="font-mono">{createdCreds.email}</span>
+            </p>
+            <p>
+              Password: <span className="font-mono">{createdCreds.password}</span>
+            </p>
+            <p className="mt-1 opacity-80">
+              Share these with the customer contact. They can sign in at Portal sign-in as Client Admin.
+            </p>
+          </div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreatedCreds(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
 
       {rows.length === 0 ? (
         <EmptyState
           title="No customers yet"
-          description="Add your first business customer to begin managing contracts and service work."
+          description="Add and approve your first business customer to create their login."
           action={
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => dialogRef.current?.showModal()}
-            >
-              Add Customer
-            </button>
+            canManage ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => dialogRef.current?.showModal()}
+              >
+                Add Customer
+              </button>
+            ) : null
           }
         />
       ) : (
@@ -201,6 +283,7 @@ export default function CustomersPage() {
               <thead>
                 <tr>
                   <th>Customer</th>
+                  <th>Portal login</th>
                   <th>Health</th>
                   <th>Account manager</th>
                   <th className="text-right">MRR</th>
@@ -208,6 +291,7 @@ export default function CustomersPage() {
                   <th className="text-right">Open tickets</th>
                   <th className="text-right">AR / age</th>
                   <th>Flags</th>
+                  {canManage ? <th /> : null}
                 </tr>
               </thead>
               <tbody>
@@ -219,6 +303,9 @@ export default function CustomersPage() {
                         {row.primary_contact_name ?? "No contact"}
                         {row.industry ? ` · ${row.industry}` : ""}
                       </div>
+                    </td>
+                    <td className="font-mono text-xs">
+                      {row.portalEmail ?? "—"}
                     </td>
                     <td>
                       {row.technology_health_score != null ? (
@@ -264,6 +351,20 @@ export default function CustomersPage() {
                         ))}
                       </div>
                     </td>
+                    {canManage ? (
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs text-error"
+                          disabled={isPending}
+                          onClick={() => handleDelete(row)}
+                          aria-label={`Delete ${row.customer_name}`}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Delete
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -274,7 +375,11 @@ export default function CustomersPage() {
 
       <dialog ref={dialogRef} className="modal">
         <div className="modal-box max-w-2xl">
-          <h3 className="text-lg font-bold">Add Customer</h3>
+          <h3 className="text-lg font-bold">Approve &amp; add customer</h3>
+          <p className="mt-1 text-sm text-base-content/70">
+            Creates the customer record and a Client Admin portal login (password{" "}
+            <span className="font-mono">DemoPass123!</span>).
+          </p>
           {error ? (
             <div className="alert alert-error mt-4 text-sm">
               <span>{error}</span>
@@ -297,8 +402,15 @@ export default function CustomersPage() {
             <FormField label="Primary contact" htmlFor="primary_contact_name">
               <input id="primary_contact_name" name="primary_contact_name" className="input input-bordered w-full" />
             </FormField>
-            <FormField label="Contact email" htmlFor="contact_email">
-              <input id="contact_email" name="contact_email" type="email" className="input input-bordered w-full" />
+            <FormField label="Portal / contact email" htmlFor="contact_email" required>
+              <input
+                id="contact_email"
+                name="contact_email"
+                type="email"
+                className="input input-bordered w-full"
+                required
+                placeholder="customer@company.com"
+              />
             </FormField>
             <FormField label="Contact phone" htmlFor="contact_phone">
               <input id="contact_phone" name="contact_phone" className="input input-bordered w-full" />
@@ -323,7 +435,7 @@ export default function CustomersPage() {
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary" disabled={isPending}>
-                {isPending ? <span className="loading loading-spinner loading-sm" /> : "Save Customer"}
+                {isPending ? <span className="loading loading-spinner loading-sm" /> : "Approve & create login"}
               </button>
             </div>
           </form>
