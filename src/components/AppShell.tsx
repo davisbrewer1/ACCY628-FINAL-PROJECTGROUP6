@@ -16,6 +16,7 @@ import {
   Monitor,
   Package,
   Receipt,
+  Settings,
   Shield,
   Ticket,
   UserRound,
@@ -91,6 +92,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Brain,
   Lightbulb,
   UserRound,
+  Settings,
 };
 
 interface AppShellProps {

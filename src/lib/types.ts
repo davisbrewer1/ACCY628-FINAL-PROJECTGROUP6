@@ -69,6 +69,38 @@ export interface Profile {
   customer_id: string | null;
   active: boolean;
   created_at: string;
+  phone: string | null;
+  notification_preferences: NotificationPreferences | Record<string, unknown> | null;
+  communication_preferences: CommunicationPreferences | Record<string, unknown> | null;
+}
+
+export interface NotificationPreferences {
+  ticket_updates?: boolean;
+  security_alerts?: boolean;
+  billing_notices?: boolean;
+  announcements?: boolean;
+  email_enabled?: boolean;
+  sms_enabled?: boolean;
+}
+
+export interface CommunicationPreferences {
+  preferred_channel?: "email" | "phone" | "sms" | string;
+  best_time?: string;
+  language?: string;
+  marketing_opt_in?: boolean;
+}
+
+export interface ClientContact {
+  id: string;
+  profile_id: string;
+  customer_id: string | null;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  relationship: string | null;
+  preferred_contact: boolean;
+  notes: string | null;
+  created_at: string;
 }
 
 export interface Customer {

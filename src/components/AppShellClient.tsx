@@ -28,6 +28,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/end-user/devices": "My Devices",
   "/end-user/contracts": "My Contracts",
   "/end-user/billing": "Billing",
+  "/end-user/settings": "Profile / Settings",
 };
 
 function resolvePageTitle(pathname: string): string {

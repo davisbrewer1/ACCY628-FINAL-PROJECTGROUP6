@@ -146,6 +146,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: "Receipt",
     roles: ["client_user"],
   },
+  {
+    href: "/end-user/settings",
+    label: "Profile / Settings",
+    icon: "Settings",
+    roles: ["client_user"],
+  },
 ];
 
 const DEFAULT_DASHBOARDS: Record<UserRole, string> = {

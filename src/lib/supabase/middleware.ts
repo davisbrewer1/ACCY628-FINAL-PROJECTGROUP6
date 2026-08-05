@@ -27,7 +27,15 @@ export async function updateSession(request: NextRequest) {
 
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+
+  // Stale/invalid refresh tokens can flip auth state between requests and cause
+  // a login ↔ dashboard redirect loop that freezes the browser.
+  if (error) {
+    await supabase.auth.signOut();
+    return { supabaseResponse, user: null, supabase };
+  }
 
   return { supabaseResponse, user, supabase };
 }
