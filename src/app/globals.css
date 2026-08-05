@@ -74,3 +74,9 @@ body {
   border-color: #06b6d4;
   color: #020617;
 }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
