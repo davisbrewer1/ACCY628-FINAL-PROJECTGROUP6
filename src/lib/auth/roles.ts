@@ -121,6 +121,36 @@ export const NAV_ITEMS: NavItem[] = [
     icon: "UserRound",
     roles: ["client_user"],
   },
+  {
+    href: "/end-user/support",
+    label: "Support Tickets",
+    icon: "Ticket",
+    roles: ["client_user"],
+  },
+  {
+    href: "/end-user/ai-concern",
+    label: "AI Issue",
+    icon: "Brain",
+    roles: ["client_user"],
+  },
+  {
+    href: "/end-user/security-concern",
+    label: "Security Concern",
+    icon: "Shield",
+    roles: ["client_user"],
+  },
+  {
+    href: "/end-user/devices",
+    label: "My Devices",
+    icon: "Monitor",
+    roles: ["client_user"],
+  },
+  {
+    href: "/end-user/contracts",
+    label: "My Contracts",
+    icon: "FileText",
+    roles: ["client_user"],
+  },
 ];
 
 const DEFAULT_DASHBOARDS: Record<UserRole, string> = {

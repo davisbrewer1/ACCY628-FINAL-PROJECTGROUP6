@@ -24,6 +24,11 @@ const PAGE_TITLES: Record<string, string> = {
   "/recommendations": "Recommendations",
   "/portal": "Client Portal",
   "/end-user": "End User Portal",
+  "/end-user/support": "Support Tickets",
+  "/end-user/ai-concern": "AI Issue",
+  "/end-user/security-concern": "Security Concern",
+  "/end-user/devices": "My Devices",
+  "/end-user/contracts": "My Contracts",
 };
 
 function resolvePageTitle(pathname: string): string {
@@ -31,9 +36,9 @@ function resolvePageTitle(pathname: string): string {
     return PAGE_TITLES[pathname];
   }
 
-  const match = Object.entries(PAGE_TITLES).find(
-    ([path]) => pathname.startsWith(`${path}/`),
-  );
+  const match = Object.entries(PAGE_TITLES)
+    .filter(([path]) => pathname.startsWith(`${path}/`))
+    .sort((a, b) => b[0].length - a[0].length)[0];
 
   return match?.[1] ?? "Nexus Technology Solutions";
 }

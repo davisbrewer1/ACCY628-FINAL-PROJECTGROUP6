@@ -62,12 +62,26 @@ export async function createServiceTicket(
   return { success: true, message: `Ticket ${ticketNumber} created.` };
 }
 
+function resolvePriorityFromUrgency(urgency: string): string {
+  switch (urgency) {
+    case "Critical":
+    case "High":
+    case "Medium":
+    case "Low":
+      return urgency;
+    default:
+      return "Medium";
+  }
+}
+
 export async function createPortalTicket(
   formData: FormData,
   customerId: string,
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const title = String(formData.get("title") ?? "").trim();
+  const requesterName = String(formData.get("requester_name") ?? "").trim() || null;
+  const requesterEmail = String(formData.get("requester_email") ?? "").trim() || null;
 
   if (!title) {
     return { success: false, message: "Ticket title is required." };
@@ -82,6 +96,12 @@ export async function createPortalTicket(
         ? "Cybersecurity"
         : null);
 
+  const urgency = String(
+    formData.get("urgency") ?? formData.get("severity") ?? formData.get("priority") ?? "Medium",
+  ).trim();
+  const priority = resolvePriorityFromUrgency(urgency);
+  const hardwareAssetId = String(formData.get("hardware_asset_id") ?? "").trim() || null;
+
   const ticketNumber = `TKT-${Date.now().toString().slice(-8)}`;
 
   const {
@@ -94,11 +114,14 @@ export async function createPortalTicket(
     title,
     description: String(formData.get("description") ?? "").trim() || null,
     category,
-    priority: String(formData.get("priority") ?? "Medium").trim(),
+    priority,
     service_method: String(formData.get("service_method") ?? "").trim() || null,
     location: String(formData.get("location") ?? "").trim() || null,
-    requester_name: String(formData.get("requester_name") ?? "").trim() || null,
-    severity: String(formData.get("severity") ?? "").trim() || null,
+    requester_name: requesterName,
+    requester_email: requesterEmail,
+    requester_phone: String(formData.get("requester_phone") ?? "").trim() || null,
+    hardware_asset_id: hardwareAssetId,
+    severity: priority,
     ai_involved:
       requestType === "ai" || formData.get("ai_involved") === "true",
     cybersecurity_incident:
@@ -116,6 +139,9 @@ export async function createPortalTicket(
 
   revalidatePath("/portal");
   revalidatePath("/end-user");
+  revalidatePath("/end-user/support");
+  revalidatePath("/end-user/ai-concern");
+  revalidatePath("/end-user/security-concern");
   return { success: true, message: "Support request submitted." };
 }
 

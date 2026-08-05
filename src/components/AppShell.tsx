@@ -77,8 +77,15 @@ function NavLinks({
     <ul className="menu menu-sm gap-1 px-2">
       {items.map((item) => {
         const Icon = ICON_MAP[item.icon] ?? LayoutDashboard;
+        const hasMoreSpecificMatch = items.some(
+          (other) =>
+            other.href !== item.href &&
+            other.href.startsWith(`${item.href}/`) &&
+            (pathname === other.href || pathname.startsWith(`${other.href}/`)),
+        );
         const isActive =
-          pathname === item.href || pathname.startsWith(`${item.href}/`);
+          pathname === item.href ||
+          (pathname.startsWith(`${item.href}/`) && !hasMoreSpecificMatch);
 
         return (
           <li key={item.href}>

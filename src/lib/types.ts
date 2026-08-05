@@ -158,6 +158,9 @@ export interface ServiceTicket {
   created_at: string;
   location: string | null;
   requester_name: string | null;
+  requester_email: string | null;
+  requester_phone: string | null;
+  hardware_asset_id: string | null;
   severity: string | null;
   resolution_notes: string | null;
   ai_involved: boolean | null;
