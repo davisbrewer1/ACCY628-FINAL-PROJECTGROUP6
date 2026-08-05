@@ -3,7 +3,6 @@ import {
   Activity,
   BarChart3,
   Bell,
-  BookOpen,
   Brain,
   Building2,
   Clock,
@@ -37,22 +36,6 @@ import {
   type NavItem,
 } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
-
-const KnowledgeBasePanel = dynamic(
-  () =>
-    import("@/components/KnowledgeBasePanel").then(
-      (mod) => mod.KnowledgeBasePanel,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <button type="button" className="btn btn-ghost btn-sm gap-2" disabled>
-        <BookOpen className="size-4" aria-hidden="true" />
-        <span className="hidden sm:inline">Knowledge Base</span>
-      </button>
-    ),
-  },
-);
 
 const NotificationCenter = dynamic(
   () =>
@@ -361,18 +344,9 @@ export function AppShell({
             {techTheme ? (
               <TechnicianHeaderTools technicianId={technicianId} />
             ) : null}
-            {activeRole === "technician" ||
-            activeRole === "administrator" ||
+            {activeRole === "administrator" ||
             activeRole === "service_manager" ? (
-              <>
-                <KnowledgeBasePanel
-                  canEdit={
-                    activeRole === "administrator" ||
-                    activeRole === "service_manager"
-                  }
-                />
-                <NotificationCenter />
-              </>
+              <NotificationCenter />
             ) : null}
           </div>
         </header>

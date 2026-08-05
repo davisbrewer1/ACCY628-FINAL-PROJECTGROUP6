@@ -131,62 +131,76 @@ export default function TechnicianWorkspacePage() {
   const [isPending, startTransition] = useTransition();
 
   const loadData = useCallback(async () => {
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    if (!user) {
+      if (!user) {
+        setTechnician(null);
+        setTickets([]);
+        setWorkEntries([]);
+        setPtoRequests([]);
+        setInventoryParts([]);
+        return;
+      }
+
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      setProfile(profileData);
+
+      const { data: techData } = await supabase
+        .from("technicians")
+        .select("*")
+        .eq("profile_id", user.id)
+        .maybeSingle();
+
+      setTechnician(techData);
+
+      if (techData) {
+        const [t, w, p, parts] = await Promise.all([
+          supabase
+            .from("service_tickets")
+            .select("*")
+            .eq("assigned_technician_id", techData.id)
+            .order("opened_at", { ascending: false }),
+          supabase
+            .from("work_entries")
+            .select("*")
+            .eq("technician_id", techData.id)
+            .order("work_date", { ascending: false }),
+          supabase
+            .from("technician_pto_requests")
+            .select("*")
+            .eq("technician_id", techData.id)
+            .order("start_date", { ascending: false }),
+          supabase
+            .from("inventory_parts")
+            .select("*")
+            .eq("active", true)
+            .order("part_name"),
+        ]);
+        setTickets(t.data ?? []);
+        setWorkEntries(w.data ?? []);
+        setPtoRequests(p.data ?? []);
+        setInventoryParts((parts.data ?? []) as InventoryPart[]);
+      } else {
+        setTickets([]);
+        setWorkEntries([]);
+        setPtoRequests([]);
+        setInventoryParts([]);
+      }
+    } catch (loadError) {
+      console.error("technician loadData failed:", loadError);
+      setError("Could not load technician workspace. Refresh and try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    setProfile(profileData);
-
-    const { data: techData } = await supabase
-      .from("technicians")
-      .select("*")
-      .eq("profile_id", user.id)
-      .maybeSingle();
-
-    setTechnician(techData);
-
-    if (techData) {
-      const [t, w, p, parts] = await Promise.all([
-        supabase
-          .from("service_tickets")
-          .select("*")
-          .eq("assigned_technician_id", techData.id)
-          .order("opened_at", { ascending: false }),
-        supabase
-          .from("work_entries")
-          .select("*")
-          .eq("technician_id", techData.id)
-          .order("work_date", { ascending: false }),
-        supabase
-          .from("technician_pto_requests")
-          .select("*")
-          .eq("technician_id", techData.id)
-          .order("start_date", { ascending: false }),
-        supabase
-          .from("inventory_parts")
-          .select("*")
-          .eq("active", true)
-          .order("part_name"),
-      ]);
-      setTickets(t.data ?? []);
-      setWorkEntries(w.data ?? []);
-      setPtoRequests(p.data ?? []);
-      setInventoryParts((parts.data ?? []) as InventoryPart[]);
-    }
-
-    setLoading(false);
   }, []);
 
   useEffect(() => {
