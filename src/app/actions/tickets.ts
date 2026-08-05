@@ -167,5 +167,39 @@ export async function updateTicketStatus(
 
   revalidatePath("/technician");
   revalidatePath("/service-tickets");
+  revalidatePath("/operations");
   return { success: true, message: "Ticket status updated." };
+}
+
+export async function assignTickets(
+  ticketIds: string[],
+  technicianId: string,
+): Promise<ActionResult> {
+  if (ticketIds.length === 0) {
+    return { success: false, message: "Select at least one ticket to assign." };
+  }
+  if (!technicianId) {
+    return { success: false, message: "Select a technician." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("service_tickets")
+    .update({
+      assigned_technician_id: technicianId,
+      status: "Assigned",
+    })
+    .in("id", ticketIds);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidatePath("/service-tickets");
+  revalidatePath("/technician");
+  revalidatePath("/operations");
+  return {
+    success: true,
+    message: `Assigned ${ticketIds.length} ticket${ticketIds.length === 1 ? "" : "s"}.`,
+  };
 }

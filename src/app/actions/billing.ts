@@ -77,6 +77,8 @@ export async function createInvoice(formData: FormData): Promise<ActionResult> {
 
   revalidatePath("/billing");
   revalidatePath("/portal");
+  revalidatePath("/operations");
+  revalidatePath("/reports");
   return { success: true, message: "Invoice created successfully." };
 }
 

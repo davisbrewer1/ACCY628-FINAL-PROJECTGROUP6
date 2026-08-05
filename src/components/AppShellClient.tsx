@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Executive Dashboard",
-  "/operations": "Operations Dashboard",
+  "/operations": "Manager Command Center",
   "/customers": "Customers",
   "/contracts": "Contracts",
   "/service-catalog": "Service Catalog",
@@ -21,7 +21,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/technician": "My Work",
   "/cybersecurity": "Cybersecurity",
   "/ai-governance": "AI Governance",
-  "/recommendations": "Recommendations",
+  "/recommendations": "Recommendations & Risk",
   "/portal": "Client Portal",
   "/end-user": "End User Portal",
   "/end-user/support": "Support Tickets",

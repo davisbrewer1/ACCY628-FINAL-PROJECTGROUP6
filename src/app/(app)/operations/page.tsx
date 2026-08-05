@@ -1,17 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { calcSlaStatus } from "@/lib/calculations";
-import { isOpenTicket } from "@/lib/dashboard-stats";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
@@ -19,10 +10,31 @@ import { PriorityBadge } from "@/components/PriorityBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatCurrency, formatDate, formatDateTime, formatHours } from "@/lib/format";
+import {
+  buildAccountHealthRows,
+  cashCollectedMtd,
+  computeContractHoursBurns,
+  getAwaitingSendInvoices,
+  getNewRecommendations,
+  getOpenArInvoices,
+  getOpenTickets,
+  getPastDueInvoices,
+  getReadyToInvoiceEntries,
+  getRenewalsInDays,
+  getSlaAtRiskTickets,
+  getUnassignedTickets,
+} from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, ServiceTicket, Technician } from "@/lib/types";
-import { addDays, isBefore, parseISO } from "date-fns";
+import type {
+  Contract,
+  Customer,
+  Invoice,
+  Payment,
+  Recommendation,
+  ServiceTicket,
+  WorkEntry,
+} from "@/lib/types";
 
 export default function OperationsPage() {
   const { activeRole } = useDemoRole();
@@ -30,21 +42,37 @@ export default function OperationsPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+
+  const isServiceManager = activeRole === "service_manager";
+  const isAccountManager = activeRole === "account_manager";
+  const isAdmin = activeRole === "administrator";
 
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const [c, co, t, tech] = await Promise.all([
+      const [c, co, t, w, i, p, r] = await Promise.all([
         supabase.from("customers").select("*"),
         supabase.from("contracts").select("*"),
-        supabase.from("service_tickets").select("*").order("opened_at", { ascending: false }),
-        supabase.from("technicians").select("*").eq("active", true),
+        supabase
+          .from("service_tickets")
+          .select("*")
+          .order("opened_at", { ascending: false }),
+        supabase.from("work_entries").select("*"),
+        supabase.from("invoices").select("*"),
+        supabase.from("payments").select("*"),
+        supabase.from("recommendations").select("*"),
       ]);
       setCustomers(c.data ?? []);
       setContracts(co.data ?? []);
       setTickets(t.data ?? []);
-      setTechnicians(tech.data ?? []);
+      setWorkEntries(w.data ?? []);
+      setInvoices(i.data ?? []);
+      setPayments(p.data ?? []);
+      setRecommendations(r.data ?? []);
       setLoading(false);
     }
     load();
@@ -54,65 +82,76 @@ export default function OperationsPage() {
     () => new Map(customers.map((c) => [c.id, c.customer_name])),
     [customers],
   );
-
-  const openTickets = useMemo(
-    () => tickets.filter((t) => isOpenTicket(t.status)),
-    [tickets],
+  const contractMap = useMemo(
+    () => new Map(contracts.map((c) => [c.id, c])),
+    [contracts],
   );
 
+  const openTickets = useMemo(() => getOpenTickets(tickets), [tickets]);
   const criticalOpen = useMemo(
     () => openTickets.filter((t) => t.priority === "Critical"),
     [openTickets],
   );
-
-  const slaAtRisk = useMemo(
+  const slaAtRisk = useMemo(() => getSlaAtRiskTickets(tickets), [tickets]);
+  const unassigned = useMemo(() => getUnassignedTickets(tickets), [tickets]);
+  const renewals30 = useMemo(() => getRenewalsInDays(contracts, 30), [contracts]);
+  const renewals90 = useMemo(() => getRenewalsInDays(contracts, 90), [contracts]);
+  const burns = useMemo(
+    () => computeContractHoursBurns(contracts, workEntries),
+    [contracts, workEntries],
+  );
+  const overHours = useMemo(() => burns.filter((b) => b.isOver), [burns]);
+  const readyToInvoice = useMemo(
+    () => getReadyToInvoiceEntries(workEntries),
+    [workEntries],
+  );
+  const readyToInvoiceAmount = useMemo(
     () =>
-      openTickets.filter((t) => {
-        const sla = calcSlaStatus({
-          status: t.status,
-          targetResolutionAt: t.target_resolution_at,
-          completedAt: t.completed_at,
-        });
-        return sla === "Approaching Deadline" || sla === "Overdue";
-      }),
-    [openTickets],
+      readyToInvoice.reduce((sum, e) => {
+        const contract = e.contract_id ? contractMap.get(e.contract_id) : null;
+        const hours = e.hours_worked ?? 0;
+        return (
+          sum +
+          hours * (contract?.additional_hourly_rate ?? 0) +
+          (e.parts_cost ?? 0) +
+          (e.software_cost ?? 0) +
+          (e.equipment_cost ?? 0) +
+          (e.travel_cost ?? 0) +
+          (e.other_cost ?? 0)
+        );
+      }, 0),
+    [readyToInvoice, contractMap],
   );
-
-  const unassigned = useMemo(
-    () => openTickets.filter((t) => !t.assigned_technician_id),
-    [openTickets],
+  const openAr = useMemo(() => getOpenArInvoices(invoices), [invoices]);
+  const pastDue = useMemo(() => getPastDueInvoices(invoices), [invoices]);
+  const awaitingSend = useMemo(
+    () => getAwaitingSendInvoices(invoices),
+    [invoices],
   );
-
-  const renewalsSoon = useMemo(() => {
-    const cutoff = addDays(new Date(), 90);
-    return contracts.filter((c) => {
-      if (c.contract_status !== "Active" || !c.renewal_date) return false;
-      const renewal = parseISO(c.renewal_date);
-      return isBefore(renewal, cutoff);
-    });
-  }, [contracts]);
-
-  const workloadByTech = useMemo(() => {
-    const techMap = new Map(technicians.map((t) => [t.id, t.technician_name]));
-    const counts = new Map<string, number>();
-    for (const ticket of openTickets) {
-      if (!ticket.assigned_technician_id) continue;
-      const name = techMap.get(ticket.assigned_technician_id) ?? "Unknown";
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
-    return Array.from(counts.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [openTickets, technicians]);
-
-  const ticketsByStatus = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const t of openTickets) {
-      const status = t.status ?? "Unknown";
-      map.set(status, (map.get(status) ?? 0) + 1);
-    }
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [openTickets]);
+  const openArTotal = useMemo(
+    () => openAr.reduce((sum, i) => sum + (i.remaining_balance ?? 0), 0),
+    [openAr],
+  );
+  const pastDueTotal = useMemo(
+    () => pastDue.reduce((sum, i) => sum + (i.remaining_balance ?? 0), 0),
+    [pastDue],
+  );
+  const cashMtd = useMemo(() => cashCollectedMtd(payments), [payments]);
+  const newRecs = useMemo(
+    () => getNewRecommendations(recommendations),
+    [recommendations],
+  );
+  const accountHealth = useMemo(
+    () =>
+      buildAccountHealthRows(
+        customers,
+        contracts,
+        tickets,
+        workEntries,
+        invoices,
+      ),
+    [customers, contracts, tickets, workEntries, invoices],
+  );
 
   if (
     activeRole !== "administrator" &&
@@ -122,7 +161,7 @@ export default function OperationsPage() {
     return (
       <AlertBanner
         tone="info"
-        title="Operations dashboard"
+        title="Manager command center"
         message="This dashboard is designed for service and account managers. Use the Demo Role Switcher to preview this view."
       />
     );
@@ -136,163 +175,278 @@ export default function OperationsPage() {
     );
   }
 
+  const focusLabel = isAccountManager
+    ? "Focus: renewals, overages, AR, and cash."
+    : isServiceManager
+      ? "Focus: SLA risk, assignments, hours burn, and delivery capacity."
+      : "Admin view of delivery and contract-to-cash queues.";
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Operations dashboard"
-        description="Day-to-day service delivery — tickets, SLA compliance, technician workload, and upcoming renewals."
+        title="Manager command center"
+        description={`Contract-to-cash for MSP delivery. ${focusLabel}`}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard title="Open tickets" value={openTickets.length} tone="warning" />
-        <StatCard title="Critical open" value={criticalOpen.length} tone="danger" />
-        <StatCard title="SLA at risk" value={slaAtRisk.length} tone="warning" />
-        <StatCard title="Unassigned" value={unassigned.length} tone={unassigned.length > 0 ? "danger" : "success"} />
-        <StatCard title="Renewals (90 days)" value={renewalsSoon.length} tone="info" />
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ChartCard title="Open tickets by status">
-          {ticketsByStatus.length === 0 ? (
-            <EmptyState title="No open tickets" description="Ticket status breakdown will appear here." />
-          ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={ticketsByStatus}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" fill="#2563eb" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
-
-        <ChartCard title="Technician workload (open tickets)">
-          {workloadByTech.length === 0 ? (
-            <EmptyState title="No assignments" description="Technician workload will appear once tickets are assigned." />
-          ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={workloadByTech} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" allowDecimals={false} />
-                <YAxis type="category" dataKey="name" width={100} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#0891b2" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <div className="card border bg-base-100 shadow-sm">
-          <div className="card-body">
-            <h2 className="card-title text-base">SLA at risk</h2>
-            {slaAtRisk.length === 0 ? (
-              <EmptyState title="All on track" description="No tickets are approaching or past SLA deadlines." />
-            ) : (
-              <div className="space-y-2">
-                {slaAtRisk.slice(0, 8).map((ticket) => (
-                  <div key={ticket.id} className="rounded-box border border-base-300 p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="font-medium">{ticket.title}</p>
-                        <p className="text-xs text-base-content/60">
-                          {ticket.ticket_number} · {customerMap.get(ticket.customer_id)}
-                        </p>
-                      </div>
-                      <PriorityBadge priority={ticket.priority ?? "Medium"} />
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <StatusBadge
-                        status={calcSlaStatus({
-                          status: ticket.status,
-                          targetResolutionAt: ticket.target_resolution_at,
-                          completedAt: ticket.completed_at,
-                        })}
-                      />
-                      <span className="text-xs text-base-content/60">
-                        Due {formatDateTime(ticket.target_resolution_at)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+            Contract-to-cash pipeline
+          </h2>
+          <p className="text-xs text-base-content/50">Click any tile to act</p>
         </div>
-
-        <div className="card border bg-base-100 shadow-sm">
-          <div className="card-body">
-            <h2 className="card-title text-base">Upcoming renewals</h2>
-            {renewalsSoon.length === 0 ? (
-              <EmptyState title="No renewals soon" description="Contracts renewing within 90 days will appear here." />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>Contract</th>
-                      <th>Customer</th>
-                      <th>Renewal</th>
-                      <th>Auto-renew</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {renewalsSoon.map((contract) => (
-                      <tr key={contract.id}>
-                        <td className="font-medium">{contract.contract_name}</td>
-                        <td>{customerMap.get(contract.customer_id) ?? "—"}</td>
-                        <td>{formatDate(contract.renewal_date)}</td>
-                        <td>{contract.automatic_renewal ? "Yes" : "No"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <StatCard
+            title="Renewals due (30d)"
+            value={renewals30.length}
+            hint="Contracts needing attention"
+            tone={renewals30.length > 0 ? "warning" : "success"}
+            href="/contracts?filter=renewals"
+          />
+          <StatCard
+            title="Hours over included"
+            value={overHours.length}
+            hint={`${formatCurrency(overHours.reduce((s, b) => s + b.overageEstimate, 0))} est. overage`}
+            tone={overHours.length > 0 ? "warning" : "success"}
+            href="/contracts?filter=over-hours"
+          />
+          <StatCard
+            title="Ready to invoice"
+            value={readyToInvoice.length}
+            hint={formatCurrency(readyToInvoiceAmount)}
+            tone={readyToInvoice.length > 0 ? "info" : "default"}
+            href="/time-costs?filter=ready"
+          />
+          <StatCard
+            title="Open AR / past due"
+            value={formatCurrency(openArTotal)}
+            hint={`${formatCurrency(pastDueTotal)} past due · ${awaitingSend.length} awaiting send`}
+            tone={pastDueTotal > 0 ? "danger" : "default"}
+            href="/billing?filter=past-due"
+          />
+          <StatCard
+            title="Cash collected (MTD)"
+            value={formatCurrency(cashMtd)}
+            hint="Payments this month"
+            tone="success"
+            href="/billing?filter=cash"
+          />
         </div>
-      </div>
+      </section>
 
-      <div className="card border bg-base-100 shadow-sm">
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+          Today&apos;s delivery pulse
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <StatCard
+            title="Open tickets"
+            value={openTickets.length}
+            tone="warning"
+            href="/service-tickets?filter=open"
+          />
+          <StatCard
+            title="Critical open"
+            value={criticalOpen.length}
+            tone={criticalOpen.length > 0 ? "danger" : "success"}
+            href="/service-tickets?filter=critical"
+          />
+          <StatCard
+            title="SLA at risk"
+            value={slaAtRisk.length}
+            tone={slaAtRisk.length > 0 ? "warning" : "success"}
+            href="/service-tickets?filter=sla"
+          />
+          <StatCard
+            title="Unassigned"
+            value={unassigned.length}
+            tone={unassigned.length > 0 ? "danger" : "success"}
+            href="/service-tickets?filter=unassigned"
+          />
+          <StatCard
+            title="Recs to approve"
+            value={newRecs.length}
+            tone={newRecs.length > 0 ? "info" : "default"}
+            href="/recommendations?filter=new"
+          />
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-3">
+        {(isServiceManager || isAdmin) && (
+          <>
+            <ActionQueue
+              title="Unassigned tickets"
+              href="/service-tickets?filter=unassigned"
+              emptyTitle="Inbox clear"
+              emptyDescription="No unassigned open tickets."
+              items={unassigned.slice(0, 6).map((ticket) => ({
+                id: ticket.id,
+                primary: ticket.title,
+                secondary: `${ticket.ticket_number} · ${customerMap.get(ticket.customer_id) ?? "—"}`,
+                meta: <PriorityBadge priority={ticket.priority ?? "Medium"} />,
+              }))}
+            />
+            <ActionQueue
+              title="SLA at risk"
+              href="/service-tickets?filter=sla"
+              emptyTitle="All on track"
+              emptyDescription="No tickets approaching or past SLA."
+              items={slaAtRisk.slice(0, 6).map((ticket) => ({
+                id: ticket.id,
+                primary: ticket.title,
+                secondary: `Due ${formatDateTime(ticket.target_resolution_at)}`,
+                meta: (
+                  <StatusBadge
+                    status={calcSlaStatus({
+                      status: ticket.status,
+                      targetResolutionAt: ticket.target_resolution_at,
+                      completedAt: ticket.completed_at,
+                    })}
+                  />
+                ),
+              }))}
+            />
+          </>
+        )}
+
+        {(isAccountManager || isAdmin) && (
+          <ActionQueue
+            title="Invoices awaiting send / payment"
+            href="/billing?filter=action"
+            emptyTitle="Nothing waiting"
+            emptyDescription="No draft, pending, or past-due invoices."
+            items={[...awaitingSend, ...pastDue]
+              .slice(0, 6)
+              .map((inv) => ({
+                id: inv.id,
+                primary: inv.invoice_number,
+                secondary: `${customerMap.get(inv.customer_id) ?? "—"} · ${formatCurrency(inv.remaining_balance ?? inv.total_amount)}`,
+                meta: <StatusBadge status={inv.status ?? "Draft"} />,
+              }))}
+          />
+        )}
+
+        <ActionQueue
+          title="Contracts renewing (90 days)"
+          href="/contracts?filter=renewals"
+          emptyTitle="No renewals soon"
+          emptyDescription="Nothing renewing in the next 90 days."
+          items={renewals90.slice(0, 6).map((contract) => ({
+            id: contract.id,
+            primary: contract.contract_name,
+            secondary: `${customerMap.get(contract.customer_id) ?? "—"} · ${formatDate(contract.renewal_date)}`,
+            meta: (
+              <span className="badge badge-ghost badge-sm">
+                {contract.automatic_renewal ? "Auto" : "Manual"}
+              </span>
+            ),
+          }))}
+        />
+
+        <ActionQueue
+          title="Over hours this month"
+          href="/contracts?filter=over-hours"
+          emptyTitle="Within allotments"
+          emptyDescription="No active contracts over included hours."
+          items={overHours.slice(0, 6).map((burn) => {
+            const contract = contractMap.get(burn.contractId);
+            return {
+              id: burn.contractId,
+              primary: contract?.contract_name ?? "Contract",
+              secondary: `${customerMap.get(burn.customerId) ?? "—"} · ${formatHours(burn.hoursUsed)} / ${formatHours(burn.includedHours)}`,
+              meta: (
+                <span className="text-xs font-medium text-warning">
+                  +{formatCurrency(burn.overageEstimate)}
+                </span>
+              ),
+            };
+          })}
+        />
+
+        <ActionQueue
+          title="Recommendations needing approve"
+          href="/recommendations?filter=new"
+          emptyTitle="Queue clear"
+          emptyDescription="No new recommendations waiting."
+          items={newRecs.slice(0, 6).map((rec) => ({
+            id: rec.id,
+            primary: rec.title,
+            secondary: `${rec.source_area} · ${rec.customer_id ? customerMap.get(rec.customer_id) ?? "Customer" : "All customers"}`,
+            meta: <PriorityBadge priority={rec.priority} />,
+          }))}
+        />
+      </section>
+
+      <section className="card border bg-base-100 shadow-sm">
         <div className="card-body">
-          <h2 className="card-title text-base">Recent tickets</h2>
-          {tickets.length === 0 ? (
-            <EmptyState title="No tickets" description="Service tickets will appear here." />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="card-title text-base">Account health (top 10)</h2>
+              <p className="text-sm text-base-content/70">
+                Ranked by risk flags, then AR and MRR — who needs a call today.
+              </p>
+            </div>
+            <Link href="/customers" className="btn btn-ghost btn-sm">
+              All customers
+            </Link>
+          </div>
+
+          {accountHealth.length === 0 ? (
+            <EmptyState
+              title="No active accounts"
+              description="Account health appears once customers and contracts exist."
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="table table-zebra">
                 <thead>
                   <tr>
-                    <th>Ticket #</th>
                     <th>Customer</th>
-                    <th>Title</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>SLA</th>
-                    <th>Opened</th>
+                    <th className="text-right">MRR</th>
+                    <th>Hours used vs included</th>
+                    <th className="text-right">Open tickets</th>
+                    <th className="text-right">AR balance</th>
+                    <th>Renewal</th>
+                    <th>Risk</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tickets.slice(0, 12).map((ticket) => (
-                    <tr key={ticket.id}>
-                      <td className="font-mono text-sm">{ticket.ticket_number}</td>
-                      <td>{customerMap.get(ticket.customer_id) ?? "—"}</td>
-                      <td className="font-medium">{ticket.title}</td>
-                      <td><PriorityBadge priority={ticket.priority ?? "Medium"} /></td>
-                      <td><StatusBadge status={ticket.status ?? "New"} /></td>
+                  {accountHealth.map((row) => (
+                    <tr key={row.customerId}>
                       <td>
-                        <StatusBadge
-                          status={calcSlaStatus({
-                            status: ticket.status,
-                            targetResolutionAt: ticket.target_resolution_at,
-                            completedAt: ticket.completed_at,
-                          })}
-                        />
+                        <div className="font-medium">{row.customerName}</div>
+                        {row.healthScore != null ? (
+                          <div className="text-xs text-base-content/60">
+                            Health {row.healthScore}
+                          </div>
+                        ) : null}
                       </td>
-                      <td>{formatDateTime(ticket.opened_at)}</td>
+                      <td className="text-right">{formatCurrency(row.mrr)}</td>
+                      <td>
+                        {formatHours(row.hoursUsed)} / {formatHours(row.includedHours)}
+                        {row.burnPercent != null ? (
+                          <div className="text-xs text-base-content/60">
+                            {row.burnPercent.toFixed(0)}% burn
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="text-right">{row.openTickets}</td>
+                      <td className="text-right">{formatCurrency(row.arBalance)}</td>
+                      <td>{formatDate(row.nextRenewal)}</td>
+                      <td>
+                        <div className="flex flex-wrap gap-1">
+                          {row.riskFlags.length === 0 ? (
+                            <span className="badge badge-success badge-sm">Stable</span>
+                          ) : (
+                            row.riskFlags.map((flag) => (
+                              <span key={flag} className="badge badge-warning badge-sm">
+                                {flag}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -300,17 +454,59 @@ export default function OperationsPage() {
             </div>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ActionQueue({
+  title,
+  href,
+  emptyTitle,
+  emptyDescription,
+  items,
+}: {
+  title: string;
+  href: string;
+  emptyTitle: string;
+  emptyDescription: string;
+  items: Array<{
+    id: string;
+    primary: string;
+    secondary: string;
+    meta?: React.ReactNode;
+  }>;
+}) {
   return (
     <div className="card border bg-base-100 shadow-sm">
       <div className="card-body">
-        <h2 className="card-title text-base">{title}</h2>
-        <div className="min-h-[260px]">{children}</div>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="card-title text-base">{title}</h2>
+          <Link href={href} className="link link-primary text-xs">
+            Open queue
+          </Link>
+        </div>
+        {items.length === 0 ? (
+          <EmptyState title={emptyTitle} description={emptyDescription} />
+        ) : (
+          <div className="space-y-2">
+            {items.map((item) => (
+              <Link
+                key={item.id}
+                href={href}
+                className="block rounded-box border border-base-300 p-3 transition hover:border-primary/40"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium">{item.primary}</p>
+                    <p className="text-xs text-base-content/60">{item.secondary}</p>
+                  </div>
+                  {item.meta}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

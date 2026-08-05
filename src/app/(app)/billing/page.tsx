@@ -1,23 +1,37 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus, Wallet } from "lucide-react";
 import { createInvoice, recordPayment } from "@/app/actions/billing";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
+import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, formatHours } from "@/lib/format";
+import {
+  cashCollectedMtd,
+  computeContractHoursBurns,
+  getArAgingBucket,
+  getOpenArInvoices,
+  getPastDueInvoices,
+  summarizeArAging,
+} from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, Invoice } from "@/lib/types";
+import type { Contract, Customer, Invoice, Payment, WorkEntry } from "@/lib/types";
 
 interface InvoiceRow extends Invoice {
   customerName: string;
   contractName: string;
+  planName: string;
+  aging: ReturnType<typeof getArAgingBucket>;
 }
 
 export default function BillingPage() {
+  const searchParams = useSearchParams();
+  const filter = searchParams.get("filter") ?? "all";
   const { showToast } = useToast();
   const invoiceDialogRef = useRef<HTMLDialogElement>(null);
   const paymentDialogRef = useRef<HTMLDialogElement>(null);
@@ -25,21 +39,29 @@ export default function BillingPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
+  const [prefillAdditional, setPrefillAdditional] = useState("");
+  const [prefillContractId, setPrefillContractId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   async function loadData() {
     const supabase = createClient();
-    const [c, co, i] = await Promise.all([
+    const [c, co, i, p, w] = await Promise.all([
       supabase.from("customers").select("*").order("customer_name"),
       supabase.from("contracts").select("*"),
       supabase.from("invoices").select("*").order("invoice_date", { ascending: false }),
+      supabase.from("payments").select("*"),
+      supabase.from("work_entries").select("*"),
     ]);
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
     setInvoices(i.data ?? []);
+    setPayments(p.data ?? []);
+    setWorkEntries(w.data ?? []);
     setLoading(false);
   }
 
@@ -52,19 +74,69 @@ export default function BillingPage() {
     [contracts, selectedCustomer],
   );
 
+  const aging = useMemo(() => summarizeArAging(invoices), [invoices]);
+  const cashMtd = useMemo(() => cashCollectedMtd(payments), [payments]);
+  const pastDue = useMemo(() => getPastDueInvoices(invoices), [invoices]);
+
+  const overageOpportunities = useMemo(() => {
+    return computeContractHoursBurns(contracts, workEntries)
+      .filter((b) => b.isOver && b.overageEstimate > 0)
+      .map((b) => {
+        const contract = contracts.find((c) => c.id === b.contractId);
+        const customer = customers.find((c) => c.id === b.customerId);
+        return {
+          ...b,
+          contractName: contract?.contract_name ?? "Contract",
+          customerName: customer?.customer_name ?? "Customer",
+          customerId: b.customerId,
+        };
+      });
+  }, [contracts, workEntries, customers]);
+
   const rows: InvoiceRow[] = useMemo(() => {
     const customerMap = new Map(customers.map((c) => [c.id, c.customer_name]));
-    const contractMap = new Map(contracts.map((c) => [c.id, c.contract_name]));
-    return invoices.map((inv) => ({
-      ...inv,
-      customerName: customerMap.get(inv.customer_id) ?? "Unknown",
-      contractName: inv.contract_id
-        ? contractMap.get(inv.contract_id) ?? "—"
-        : "—",
-    }));
+    const contractMap = new Map(contracts.map((c) => [c.id, c]));
+    return invoices.map((inv) => {
+      const contract = inv.contract_id ? contractMap.get(inv.contract_id) : null;
+      return {
+        ...inv,
+        customerName: customerMap.get(inv.customer_id) ?? "Unknown",
+        contractName: contract?.contract_name ?? "—",
+        planName: contract?.service_plan_name ?? contract?.billing_frequency ?? "—",
+        aging: getArAgingBucket(inv),
+      };
+    });
   }, [invoices, customers, contracts]);
 
+  const filteredRows = useMemo(() => {
+    if (filter === "past-due") {
+      const ids = new Set(pastDue.map((i) => i.id));
+      return rows.filter((r) => ids.has(r.id));
+    }
+    if (filter === "action") {
+      return rows.filter(
+        (r) =>
+          r.status === "Draft" ||
+          r.status === "Pending Approval" ||
+          ((r.remaining_balance ?? 0) > 0 &&
+            (r.status === "Past Due" || r.aging !== "current")),
+      );
+    }
+    if (filter === "cash") {
+      return rows.filter((r) => (r.amount_paid ?? 0) > 0);
+    }
+    return rows;
+  }, [rows, filter, pastDue]);
+
   const selectedInvoice = invoices.find((i) => i.id === selectedInvoiceId);
+
+  function openOverageInvoice(item: (typeof overageOpportunities)[number]) {
+    setSelectedCustomer(item.customerId);
+    setPrefillContractId(item.contractId);
+    setPrefillAdditional(item.overageEstimate.toFixed(2));
+    setError(null);
+    invoiceDialogRef.current?.showModal();
+  }
 
   function handleCreateInvoice(formData: FormData) {
     setError(null);
@@ -73,6 +145,8 @@ export default function BillingPage() {
       if (result.success) {
         showToast(result.message);
         invoiceDialogRef.current?.close();
+        setPrefillAdditional("");
+        setPrefillContractId("");
         await loadData();
       } else {
         setError(result.message);
@@ -105,8 +179,8 @@ export default function BillingPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Billing & accounts receivable"
-        description="Review invoices, balances, and record simulated payments."
+        title="Billing & AR"
+        description="Aging, cash, and one-click overage invoices with contract context."
         action={
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn btn-primary btn-sm" onClick={() => invoiceDialogRef.current?.showModal()}>
@@ -121,9 +195,71 @@ export default function BillingPage() {
         }
       />
 
-      {rows.length === 0 ? (
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard title="Current" value={formatCurrency(aging.current)} />
+        <StatCard title="1–30 days" value={formatCurrency(aging.d30)} tone={aging.d30 > 0 ? "warning" : "default"} />
+        <StatCard title="31–60 days" value={formatCurrency(aging.d60)} tone={aging.d60 > 0 ? "warning" : "default"} />
+        <StatCard title="61–90+ days" value={formatCurrency(aging.d90)} tone={aging.d90 > 0 ? "danger" : "default"} />
+        <StatCard title="Cash collected (MTD)" value={formatCurrency(cashMtd)} tone="success" />
+      </div>
+
+      {overageOpportunities.length > 0 ? (
+        <div className="card border border-warning/30 bg-warning/5 shadow-sm">
+          <div className="card-body gap-3">
+            <h2 className="card-title text-base">Invoice from overages</h2>
+            <p className="text-sm text-base-content/70">
+              Active contracts over included hours this month — create an invoice with estimated overage charges.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Contract</th>
+                    <th>Hours</th>
+                    <th className="text-right">Est. overage</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {overageOpportunities.map((item) => (
+                    <tr key={item.contractId}>
+                      <td>{item.customerName}</td>
+                      <td>{item.contractName}</td>
+                      <td>
+                        {formatHours(item.hoursUsed)} / {formatHours(item.includedHours)}
+                      </td>
+                      <td className="text-right font-medium">
+                        {formatCurrency(item.overageEstimate)}
+                      </td>
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-xs"
+                          onClick={() => openOverageInvoice(item)}
+                        >
+                          Create invoice
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {filter !== "all" ? (
+        <div className="alert alert-info text-sm py-2">
+          <span>Filtered billing view: {filter}</span>
+          <a href="/billing" className="link">Clear</a>
+        </div>
+      ) : null}
+
+      {filteredRows.length === 0 ? (
         <EmptyState
-          title="No invoices"
+          title="No invoices in this view"
           description="Create an invoice to track recurring fees and additional billable charges."
           action={
             <button type="button" className="btn btn-primary" onClick={() => invoiceDialogRef.current?.showModal()}>
@@ -138,31 +274,39 @@ export default function BillingPage() {
               <thead>
                 <tr>
                   <th>Invoice #</th>
-                  <th>Customer</th>
-                  <th>Contract</th>
-                  <th>Date</th>
+                  <th>Customer / contract</th>
                   <th>Due</th>
-                  <th>Recurring</th>
-                  <th>Additional</th>
-                  <th>Total</th>
-                  <th>Paid</th>
-                  <th>Balance</th>
+                  <th>Aging</th>
+                  <th className="text-right">Total</th>
+                  <th className="text-right">Balance</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {filteredRows.map((row) => (
                   <tr key={row.id}>
                     <td className="font-mono text-sm">{row.invoice_number}</td>
-                    <td>{row.customerName}</td>
-                    <td>{row.contractName}</td>
-                    <td>{formatDate(row.invoice_date)}</td>
-                    <td>{formatDate(row.due_date)}</td>
-                    <td>{formatCurrency(row.recurring_service_fee)}</td>
-                    <td>{formatCurrency(row.additional_support_charges)}</td>
-                    <td className="font-medium">{formatCurrency(row.total_amount)}</td>
-                    <td>{formatCurrency(row.amount_paid)}</td>
-                    <td>{formatCurrency(row.remaining_balance)}</td>
+                    <td>
+                      <div className="font-medium">{row.customerName}</div>
+                      <div className="text-xs text-base-content/60">
+                        {row.contractName} · {row.planName}
+                      </div>
+                    </td>
+                    <td>
+                      <div>{formatDate(row.due_date)}</div>
+                      <div className="text-xs text-base-content/60">
+                        Issued {formatDate(row.invoice_date)}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="badge badge-outline badge-sm uppercase">
+                        {row.aging === "current" ? "Current" : row.aging.replace("d", "") + "d"}
+                      </span>
+                    </td>
+                    <td className="text-right">{formatCurrency(row.total_amount)}</td>
+                    <td className="text-right font-medium">
+                      {formatCurrency(row.remaining_balance)}
+                    </td>
                     <td><StatusBadge status={row.status ?? "Draft"} /></td>
                   </tr>
                 ))}
@@ -196,7 +340,14 @@ export default function BillingPage() {
               </select>
             </FormField>
             <FormField label="Contract" htmlFor="contract_id" required>
-              <select id="contract_id" name="contract_id" className="select select-bordered w-full" required defaultValue="">
+              <select
+                id="contract_id"
+                name="contract_id"
+                className="select select-bordered w-full"
+                required
+                value={prefillContractId}
+                onChange={(e) => setPrefillContractId(e.target.value)}
+              >
                 <option value="" disabled>Select contract</option>
                 {customerContracts.map((c) => (
                   <option key={c.id} value={c.id}>{c.contract_name}</option>
@@ -213,7 +364,16 @@ export default function BillingPage() {
               <input id="recurring_service_fee" name="recurring_service_fee" type="number" min="0" step="0.01" className="input input-bordered w-full" />
             </FormField>
             <FormField label="Additional support charges" htmlFor="additional_support_charges">
-              <input id="additional_support_charges" name="additional_support_charges" type="number" min="0" step="0.01" className="input input-bordered w-full" />
+              <input
+                id="additional_support_charges"
+                name="additional_support_charges"
+                type="number"
+                min="0"
+                step="0.01"
+                className="input input-bordered w-full"
+                value={prefillAdditional}
+                onChange={(e) => setPrefillAdditional(e.target.value)}
+              />
             </FormField>
             <FormField label="Software charges" htmlFor="software_charges">
               <input id="software_charges" name="software_charges" type="number" min="0" step="0.01" className="input input-bordered w-full" />
@@ -253,13 +413,11 @@ export default function BillingPage() {
                 onChange={(e) => setSelectedInvoiceId(e.target.value)}
               >
                 <option value="" disabled>Select invoice</option>
-                {invoices
-                  .filter((i) => (i.remaining_balance ?? 0) > 0)
-                  .map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.invoice_number} — Balance {formatCurrency(i.remaining_balance)}
-                    </option>
-                  ))}
+                {getOpenArInvoices(invoices).map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.invoice_number} — Balance {formatCurrency(i.remaining_balance)}
+                  </option>
+                ))}
               </select>
             </FormField>
             {selectedInvoice ? (

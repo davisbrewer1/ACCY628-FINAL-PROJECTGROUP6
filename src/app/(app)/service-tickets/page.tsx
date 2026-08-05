@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
-import { createServiceTicket } from "@/app/actions/tickets";
+import { assignTickets, createServiceTicket } from "@/app/actions/tickets";
 import { calcSlaStatus } from "@/lib/calculations";
+import { isOpenTicket } from "@/lib/dashboard-stats";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
@@ -19,9 +21,12 @@ interface TicketRow extends ServiceTicket {
   customerName: string;
   technicianName: string;
   slaStatus: ReturnType<typeof calcSlaStatus>;
+  slaSort: number;
 }
 
 export default function ServiceTicketsPage() {
+  const searchParams = useSearchParams();
+  const filter = searchParams.get("filter") ?? "all";
   const { showToast } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
@@ -30,6 +35,8 @@ export default function ServiceTicketsPage() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [assignTechId, setAssignTechId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -45,6 +52,7 @@ export default function ServiceTicketsPage() {
     setContracts(co.data ?? []);
     setTechnicians(tech.data ?? []);
     setTickets(t.data ?? []);
+    setSelectedIds([]);
     setLoading(false);
   }
 
@@ -60,19 +68,77 @@ export default function ServiceTicketsPage() {
   const rows: TicketRow[] = useMemo(() => {
     const customerMap = new Map(customers.map((c) => [c.id, c.customer_name]));
     const techMap = new Map(technicians.map((t) => [t.id, t.technician_name]));
-    return tickets.map((ticket) => ({
-      ...ticket,
-      customerName: customerMap.get(ticket.customer_id) ?? "Unknown",
-      technicianName: ticket.assigned_technician_id
-        ? techMap.get(ticket.assigned_technician_id) ?? "Unassigned"
-        : "Unassigned",
-      slaStatus: calcSlaStatus({
+    return tickets.map((ticket) => {
+      const slaStatus = calcSlaStatus({
         status: ticket.status,
         targetResolutionAt: ticket.target_resolution_at,
         completedAt: ticket.completed_at,
-      }),
-    }));
+      });
+      const target = ticket.target_resolution_at
+        ? new Date(ticket.target_resolution_at).getTime()
+        : Number.MAX_SAFE_INTEGER;
+      return {
+        ...ticket,
+        customerName: customerMap.get(ticket.customer_id) ?? "Unknown",
+        technicianName: ticket.assigned_technician_id
+          ? techMap.get(ticket.assigned_technician_id) ?? "Unassigned"
+          : "Unassigned",
+        slaStatus,
+        slaSort: target,
+      };
+    });
   }, [tickets, customers, technicians]);
+
+  const filteredRows = useMemo(() => {
+    let list = [...rows];
+    if (filter === "open") {
+      list = list.filter((r) => isOpenTicket(r.status));
+    } else if (filter === "critical") {
+      list = list.filter((r) => isOpenTicket(r.status) && r.priority === "Critical");
+    } else if (filter === "sla") {
+      list = list.filter(
+        (r) =>
+          isOpenTicket(r.status) &&
+          (r.slaStatus === "Approaching Deadline" || r.slaStatus === "Overdue"),
+      );
+    } else if (filter === "unassigned") {
+      list = list.filter((r) => isOpenTicket(r.status) && !r.assigned_technician_id);
+    }
+
+    return list.sort((a, b) => {
+      const aOpen = isOpenTicket(a.status) ? 0 : 1;
+      const bOpen = isOpenTicket(b.status) ? 0 : 1;
+      if (aOpen !== bOpen) return aOpen - bOpen;
+      return a.slaSort - b.slaSort;
+    });
+  }, [rows, filter]);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
+
+  function toggleAllVisible() {
+    const ids = filteredRows.map((r) => r.id);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? selectedIds.filter((id) => !ids.includes(id)) : [
+      ...new Set([...selectedIds, ...ids]),
+    ]);
+  }
+
+  function handleBulkAssign() {
+    startTransition(async () => {
+      const result = await assignTickets(selectedIds, assignTechId);
+      if (result.success) {
+        showToast(result.message);
+        setAssignTechId("");
+        await loadData();
+      } else {
+        showToast(result.message, "error");
+      }
+    });
+  }
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -96,11 +162,18 @@ export default function ServiceTicketsPage() {
     );
   }
 
+  const filterLabels: Record<string, string> = {
+    open: "Open tickets",
+    critical: "Critical open tickets",
+    sla: "SLA at risk",
+    unassigned: "Unassigned tickets",
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Service tickets"
-        description="Create, assign, and monitor support tickets with SLA tracking."
+        description="Assign work, chase SLAs, and keep billable flags out of the way until needed."
         action={
           <button type="button" className="btn btn-primary btn-sm" onClick={() => dialogRef.current?.showModal()}>
             <Plus className="size-4" />
@@ -109,10 +182,64 @@ export default function ServiceTicketsPage() {
         }
       />
 
-      {rows.length === 0 ? (
+      <div className="flex flex-wrap items-center gap-2">
+        {[
+          ["all", "All"],
+          ["open", "Open"],
+          ["unassigned", "Unassigned"],
+          ["sla", "SLA at risk"],
+          ["critical", "Critical"],
+        ].map(([value, label]) => (
+          <a
+            key={value}
+            href={value === "all" ? "/service-tickets" : `/service-tickets?filter=${value}`}
+            className={`btn btn-sm ${filter === value || (value === "all" && filter === "all") ? "btn-primary" : "btn-ghost"}`}
+          >
+            {label}
+          </a>
+        ))}
+      </div>
+
+      {filter !== "all" && filterLabels[filter] ? (
+        <div className="alert alert-info text-sm py-2">
+          <span>Filtered: {filterLabels[filter]} · Sorted by SLA deadline</span>
+        </div>
+      ) : null}
+
+      {selectedIds.length > 0 ? (
+        <div className="flex flex-wrap items-end gap-3 rounded-box border border-primary/30 bg-primary/5 p-3">
+          <p className="text-sm font-medium">{selectedIds.length} selected</p>
+          <label className="form-control w-full max-w-xs">
+            <span className="label-text text-xs">Assign to technician</span>
+            <select
+              className="select select-bordered select-sm"
+              value={assignTechId}
+              onChange={(e) => setAssignTechId(e.target.value)}
+            >
+              <option value="">Select technician</option>
+              {technicians.map((t) => (
+                <option key={t.id} value={t.id}>{t.technician_name}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={!assignTechId || isPending}
+            onClick={handleBulkAssign}
+          >
+            {isPending ? <span className="loading loading-spinner loading-sm" /> : "Assign selected"}
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedIds([])}>
+            Clear
+          </button>
+        </div>
+      ) : null}
+
+      {filteredRows.length === 0 ? (
         <EmptyState
-          title="No service tickets"
-          description="Create a ticket to track customer support requests and technician assignments."
+          title="No matching tickets"
+          description="Create a ticket or clear the active filter."
           action={
             <button type="button" className="btn btn-primary" onClick={() => dialogRef.current?.showModal()}>
               Add Ticket
@@ -125,43 +252,63 @@ export default function ServiceTicketsPage() {
             <table className="table table-zebra">
               <thead>
                 <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-sm"
+                      checked={
+                        filteredRows.length > 0 &&
+                        filteredRows.every((r) => selectedIds.includes(r.id))
+                      }
+                      onChange={toggleAllVisible}
+                      aria-label="Select all visible tickets"
+                    />
+                  </th>
                   <th>Ticket #</th>
                   <th>Customer</th>
                   <th>Title</th>
                   <th>Priority</th>
-                  <th>Location</th>
                   <th>Technician</th>
                   <th>Status</th>
-                  <th>Flags</th>
-                  <th>Opened</th>
                   <th>SLA deadline</th>
-                  <th>SLA status</th>
+                  <th>SLA</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {filteredRows.map((row) => (
                   <tr key={row.id}>
-                    <td className="font-mono text-sm">{row.ticket_number}</td>
+                    <td>
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        checked={selectedIds.includes(row.id)}
+                        onChange={() => toggleSelected(row.id)}
+                        aria-label={`Select ${row.ticket_number}`}
+                      />
+                    </td>
+                    <td className="font-mono text-sm">
+                      <div>{row.ticket_number}</div>
+                      {(row.ai_involved || row.cybersecurity_incident) && (
+                        <div className="mt-1 flex gap-1">
+                          {row.ai_involved ? (
+                            <span className="badge badge-ghost badge-xs">AI</span>
+                          ) : null}
+                          {row.cybersecurity_incident ? (
+                            <span className="badge badge-ghost badge-xs">Security</span>
+                          ) : null}
+                        </div>
+                      )}
+                    </td>
                     <td>{row.customerName}</td>
-                    <td className="font-medium">{row.title}</td>
+                    <td className="font-medium">
+                      <div>{row.title}</div>
+                      {row.location ? (
+                        <div className="text-xs text-base-content/60">{row.location}</div>
+                      ) : null}
+                    </td>
                     <td><PriorityBadge priority={row.priority ?? "Medium"} /></td>
-                    <td>{row.location ?? "—"}</td>
                     <td>{row.technicianName}</td>
                     <td><StatusBadge status={row.status ?? "New"} /></td>
-                    <td>
-                      <div className="flex flex-wrap gap-1">
-                        {row.ai_involved ? (
-                          <span className="badge badge-info badge-xs">AI</span>
-                        ) : null}
-                        {row.cybersecurity_incident ? (
-                          <span className="badge badge-warning badge-xs">Security</span>
-                        ) : null}
-                        {!row.ai_involved && !row.cybersecurity_incident ? (
-                          <span className="text-xs text-base-content/50">—</span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>{formatDateTime(row.opened_at)}</td>
                     <td>{formatDateTime(row.target_resolution_at)}</td>
                     <td><StatusBadge status={row.slaStatus} /></td>
                   </tr>
@@ -240,15 +387,6 @@ export default function ServiceTicketsPage() {
             <FormField label="Requester" htmlFor="requester_name">
               <input id="requester_name" name="requester_name" className="input input-bordered w-full" />
             </FormField>
-            <FormField label="Severity" htmlFor="severity">
-              <select id="severity" name="severity" className="select select-bordered w-full" defaultValue="">
-                <option value="">Not specified</option>
-                <option value="Critical">Critical</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </FormField>
             <FormField label="Status" htmlFor="status">
               <select id="status" name="status" className="select select-bordered w-full" defaultValue="New">
                 <option value="New">New</option>
@@ -256,29 +394,11 @@ export default function ServiceTicketsPage() {
                 <option value="In Progress">In Progress</option>
               </select>
             </FormField>
-            <FormField label="Date opened" htmlFor="opened_at">
-              <input id="opened_at" name="opened_at" type="datetime-local" className="input input-bordered w-full" />
-            </FormField>
-            <FormField label="Target response" htmlFor="target_response_at">
-              <input id="target_response_at" name="target_response_at" type="datetime-local" className="input input-bordered w-full" />
-            </FormField>
             <FormField label="Target resolution" htmlFor="target_resolution_at">
               <input id="target_resolution_at" name="target_resolution_at" type="datetime-local" className="input input-bordered w-full" />
             </FormField>
             <FormField label="Description" htmlFor="description" className="sm:col-span-2">
               <textarea id="description" name="description" className="textarea textarea-bordered w-full" rows={3} />
-            </FormField>
-            <FormField label="Customer approval required" htmlFor="customer_approval_required">
-              <select id="customer_approval_required" name="customer_approval_required" className="select select-bordered w-full" defaultValue="false">
-                <option value="false">No</option>
-                <option value="true">Yes</option>
-              </select>
-            </FormField>
-            <FormField label="Additional work suspected" htmlFor="additional_work_suspected">
-              <select id="additional_work_suspected" name="additional_work_suspected" className="select select-bordered w-full" defaultValue="false">
-                <option value="false">No</option>
-                <option value="true">Yes</option>
-              </select>
             </FormField>
             <FormField label="AI involved" htmlFor="ai_involved">
               <select id="ai_involved" name="ai_involved" className="select select-bordered w-full" defaultValue="false">
@@ -291,9 +411,6 @@ export default function ServiceTicketsPage() {
                 <option value="false">No</option>
                 <option value="true">Yes</option>
               </select>
-            </FormField>
-            <FormField label="Notes" htmlFor="notes" className="sm:col-span-2">
-              <textarea id="notes" name="notes" className="textarea textarea-bordered w-full" rows={2} />
             </FormField>
             <div className="modal-action sm:col-span-2">
               <button type="button" className="btn" onClick={() => dialogRef.current?.close()}>Cancel</button>
