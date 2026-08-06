@@ -1,3 +1,6 @@
+import { buildServicesChatAnswer } from "@/lib/ui-config";
+import type { ServiceFamily } from "@/lib/types";
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -7,7 +10,7 @@ export interface ChatMessage {
 interface KnowledgeEntry {
   id: string;
   keywords: string[];
-  answer: string;
+  answer: string | ((enabledServices?: readonly ServiceFamily[]) => string);
 }
 
 const KNOWLEDGE: KnowledgeEntry[] = [
@@ -35,8 +38,17 @@ const KNOWLEDGE: KnowledgeEntry[] = [
       "deployment",
       "retirement",
     ],
-    answer:
-      "Nexus manages technology services end to end:\n\n• Hardware Procurement & Lifecycle\n• Software & Cloud Management\n• Managed IT Support\n• Cybersecurity Monitoring\n• AI Governance\n• Deployment & Retirement\n\nYou can review each offering in the Products & services section on this page.",
+    answer: (enabledServices) =>
+      buildServicesChatAnswer(
+        enabledServices ?? [
+          "Hardware Procurement & Lifecycle",
+          "Software & Cloud Management",
+          "Managed IT Support",
+          "Cybersecurity Monitoring",
+          "AI Governance",
+          "Deployment & Retirement",
+        ],
+      ),
   },
   {
     id: "how-it-works",
@@ -137,7 +149,10 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-export function answerMarketingQuestion(question: string): string {
+export function answerMarketingQuestion(
+  question: string,
+  enabledServices?: readonly ServiceFamily[],
+): string {
   const normalized = normalize(question);
   if (!normalized) {
     return "Ask me anything about Nexus — our services, portal access, billing, or how to get started.";
@@ -157,7 +172,11 @@ export function answerMarketingQuestion(question: string): string {
     }
   }
 
-  return best ? best.entry.answer : FALLBACK;
+  if (!best) return FALLBACK;
+  const answer = best.entry.answer;
+  return typeof answer === "function"
+    ? answer(enabledServices)
+    : answer;
 }
 
 export function createWelcomeMessage(): ChatMessage {

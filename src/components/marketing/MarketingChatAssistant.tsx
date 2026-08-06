@@ -7,8 +7,13 @@ import {
   createWelcomeMessage,
   type ChatMessage,
 } from "@/lib/marketing-chat";
+import type { ServiceFamily } from "@/lib/types";
 
-export function MarketingChatAssistant() {
+export function MarketingChatAssistant({
+  enabledServices,
+}: {
+  enabledServices?: readonly ServiceFamily[];
+}) {
   const panelTitleId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -51,7 +56,7 @@ export function MarketingChatAssistant() {
       const reply: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
-        content: answerMarketingQuestion(question),
+        content: answerMarketingQuestion(question, enabledServices),
       };
       setMessages((prev) => [...prev, reply]);
       setPending(false);

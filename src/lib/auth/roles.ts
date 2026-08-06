@@ -80,6 +80,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "service_manager"],
   },
   {
+    href: "/ui-configuration",
+    label: "UI Configuration",
+    icon: "Settings",
+    roles: ["administrator", "service_manager"],
+  },
+  {
     href: "/billing",
     label: "Billing",
     icon: "Receipt",
@@ -203,6 +209,7 @@ export const PROTECTED_ROUTE_PREFIXES = [
   "/technicians",
   "/time-costs",
   "/revenue-expenses",
+  "/ui-configuration",
   "/billing",
   "/reports",
   "/technician",

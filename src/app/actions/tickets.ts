@@ -18,6 +18,11 @@ import {
 import { allocateNextTicketNumber } from "@/lib/ticket-numbers";
 import { buildApprovedPtoDateSet } from "@/lib/technician-pto";
 import type { Contract } from "@/lib/types";
+import {
+  fetchEnabledLandingServices,
+  getEnabledSupportCategories,
+  isPortalTicketSelectionAllowed,
+} from "@/lib/ui-config";
 
 async function loadActiveContractsForCustomer(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -197,6 +202,7 @@ export async function createPortalTicket(
   const primaryContract = pickPrimaryActiveContract(activeContracts);
 
   const requestType = String(formData.get("request_type") ?? "support").trim();
+  const issueCategory = String(formData.get("issue_category") ?? "").trim();
   const category =
     String(formData.get("category") ?? "").trim() ||
     (requestType === "ai"
@@ -204,6 +210,62 @@ export async function createPortalTicket(
       : requestType === "security"
         ? "Cybersecurity"
         : null);
+
+  const enabledServices = await fetchEnabledLandingServices(supabase);
+  const categories = getEnabledSupportCategories(enabledServices);
+
+  if (issueCategory) {
+    const allowed = isPortalTicketSelectionAllowed(
+      enabledServices,
+      issueCategory,
+      category,
+    );
+    if (!allowed.ok) {
+      return { success: false, message: allowed.message };
+    }
+  } else if (requestType === "ai") {
+    if (!categories.includes("AI Issue")) {
+      return {
+        success: false,
+        message:
+          "AI Governance is not currently offered. AI Issue tickets are unavailable.",
+      };
+    }
+  } else if (requestType === "security") {
+    if (!categories.includes("Security Concern")) {
+      return {
+        success: false,
+        message:
+          "Cybersecurity Monitoring is not currently offered. Security Concern tickets are unavailable.",
+      };
+    }
+  } else if (category) {
+    // Client admin free-text category — block disabled service themes.
+    if (/ai|governance/i.test(category) && !categories.includes("AI Issue")) {
+      return {
+        success: false,
+        message:
+          "AI Governance is not currently offered. Choose a different category.",
+      };
+    }
+    if (
+      /security|phish|malware|ransomware/i.test(category) &&
+      !categories.includes("Security Concern")
+    ) {
+      return {
+        success: false,
+        message:
+          "Cybersecurity Monitoring is not currently offered. Choose a different category.",
+      };
+    }
+    if (categories.length === 0) {
+      return {
+        success: false,
+        message:
+          "No client ticket categories are available for the current service catalog.",
+      };
+    }
+  }
 
   const ticketNumber = await allocateNextTicketNumber(supabase);
 

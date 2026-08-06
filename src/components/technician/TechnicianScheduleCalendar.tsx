@@ -737,9 +737,9 @@ function UnscheduledTray({
             const minRequest = currentMax + 1;
 
             return (
-              <li key={ticket.id} className="max-w-sm">
+              <li key={ticket.id} className="w-full max-w-md sm:w-auto sm:min-w-[20rem]">
                 <div
-                  className={`flex flex-col gap-2 rounded-lg border px-2.5 py-2 transition ${
+                  className={`flex flex-col gap-2 overflow-visible rounded-lg border px-3 py-2.5 transition ${
                     dragging
                       ? "opacity-50"
                       : selected
@@ -747,7 +747,7 @@ function UnscheduledTray({
                         : "border-teal-500 bg-[#456b78]"
                   }`}
                 >
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-start gap-3">
                     <button
                       type="button"
                       draggable={weekMode && !busy}
@@ -830,12 +830,12 @@ function UnscheduledTray({
                         </span>
                       </span>
                     </button>
-                    <label className="flex shrink-0 flex-col gap-0.5">
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                    <label className="flex shrink-0 flex-col gap-0.5 self-start">
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-teal-100/80">
                         Hours
                       </span>
                       <select
-                        className="select select-bordered select-xs w-[4.5rem] border-slate-600 bg-slate-950"
+                        className="select select-bordered select-sm h-9 min-w-[5.75rem] border-slate-500 bg-slate-950 px-2 pr-9 text-sm font-semibold leading-none text-white"
                         value={hours}
                         disabled={busy}
                         onClick={(event) => event.stopPropagation()}
@@ -890,11 +890,11 @@ function UnscheduledTray({
                       </p>
                       <div className="flex flex-wrap items-end gap-2">
                         <label className="flex flex-col gap-0.5">
-                          <span className="text-[10px] uppercase text-slate-500">
+                          <span className="text-[10px] uppercase text-slate-300">
                             Request
                           </span>
                           <select
-                            className="select select-bordered select-xs w-[4.5rem] border-slate-600 bg-slate-950"
+                            className="select select-bordered select-sm h-9 min-w-[5.75rem] border-slate-500 bg-slate-950 px-2 pr-9 text-sm font-semibold leading-none text-white"
                             value={extendHours}
                             onChange={(e) => setExtendHours(e.target.value)}
                           >

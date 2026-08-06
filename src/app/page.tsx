@@ -1,55 +1,14 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  Brain,
-  Cloud,
-  HardDrive,
-  LifeBuoy,
-  RefreshCw,
-  Shield,
-} from "lucide-react";
+import { ArrowRight, Brain, LifeBuoy, Shield } from "lucide-react";
 import { MarketingHeader } from "@/components/marketing/MarketingHeader";
 import { MarketingChatAssistant } from "@/components/marketing/MarketingChatAssistant";
 import { PortalLoginMenu } from "@/components/marketing/PortalLoginMenu";
-
-const SERVICES = [
-  {
-    title: "Hardware Procurement & Lifecycle",
-    problem: "Buy, deploy, warranty-track, and retire devices on a predictable schedule.",
-    includes: "Laptops, servers, network gear, imaging, refresh planning",
-    icon: HardDrive,
-  },
-  {
-    title: "Software & Cloud Management",
-    problem: "Keep Microsoft 365, identity, and cloud workspaces configured and supported.",
-    includes: "License admin, mailbox support, identity hygiene",
-    icon: Cloud,
-  },
-  {
-    title: "Managed IT Support",
-    problem: "Give employees a reliable service desk with clear SLA visibility.",
-    includes: "Ticketing, remote support, escalation, billable overage tracking",
-    icon: LifeBuoy,
-  },
-  {
-    title: "Cybersecurity Monitoring",
-    problem: "See endpoint, patch, backup, and firewall risk before it becomes an outage.",
-    includes: "Alert triage, recommended remediations",
-    icon: Shield,
-  },
-  {
-    title: "AI Governance",
-    problem: "Govern existing AI platforms for cost, policy, and risk — without building a chatbot.",
-    includes: "Platform inventory, policies, compliance, unused-license insights",
-    icon: Brain,
-  },
-  {
-    title: "Deployment & Retirement",
-    problem: "Run rollouts and end-of-life retirements without losing asset control.",
-    includes: "Staging, deployment days, data wipe, retirement records",
-    icon: RefreshCw,
-  },
-] as const;
+import { createAnonAuthClient } from "@/lib/supabase/anon";
+import {
+  DEFAULT_ENABLED_LANDING_SERVICES,
+  fetchEnabledLandingServices,
+  filterLandingCatalog,
+} from "@/lib/ui-config";
 
 const LIFECYCLE = [
   "Customer need",
@@ -60,7 +19,15 @@ const LIFECYCLE = [
   "Bill & renew",
 ] as const;
 
-export default function HomePage() {
+export default async function HomePage() {
+  let enabledServices = [...DEFAULT_ENABLED_LANDING_SERVICES];
+  try {
+    const supabase = createAnonAuthClient();
+    enabledServices = await fetchEnabledLandingServices(supabase);
+  } catch {
+    // Fall back to defaults if settings are unavailable.
+  }
+  const services = filterLandingCatalog(enabledServices);
   return (
     <div className="min-h-screen bg-base-100 text-base-content">
       <MarketingHeader />
@@ -121,7 +88,13 @@ export default function HomePage() {
             delivered.
           </p>
           <div className="mt-10 grid gap-6 overflow-visible sm:grid-cols-2 lg:grid-cols-3">
-            {SERVICES.map((service) => {
+            {services.length === 0 ? (
+              <p className="text-sm text-base-content/70 sm:col-span-2 lg:col-span-3">
+                Service offerings are being updated. Contact Nexus through Portal
+                for the current catalog.
+              </p>
+            ) : (
+              services.map((service) => {
               const Icon = service.icon;
               return (
                 <article
@@ -158,7 +131,8 @@ export default function HomePage() {
                   </div>
                 </article>
               );
-            })}
+            })
+            )}
           </div>
         </div>
       </section>
@@ -294,7 +268,7 @@ export default function HomePage() {
         </div>
       </footer>
 
-      <MarketingChatAssistant />
+      <MarketingChatAssistant enabledServices={enabledServices} />
     </div>
   );
 }

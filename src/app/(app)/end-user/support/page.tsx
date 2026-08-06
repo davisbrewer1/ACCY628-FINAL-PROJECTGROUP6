@@ -31,10 +31,9 @@ import {
 } from "@/lib/ticket-live-status";
 import { formatLockedServiceDateLabel } from "@/lib/technician-schedule";
 import {
-  SUPPORT_ISSUE_CATEGORIES,
-  SUPPORT_ISSUE_SUBCATEGORIES,
   type HardwareAsset,
   type Profile,
+  type ServiceFamily,
   type ServiceTicket,
   type SupportIssueCategory,
   type Technician,
@@ -42,6 +41,12 @@ import {
   type TicketRating,
   type WorkEntry,
 } from "@/lib/types";
+import {
+  DEFAULT_ENABLED_LANDING_SERVICES,
+  fetchEnabledLandingServices,
+  getEnabledSupportCategories,
+  getEnabledSupportSubcategories,
+} from "@/lib/ui-config";
 
 const PRIORITY_RANK: Record<string, number> = {
   Critical: 0,
@@ -84,6 +89,9 @@ export default function EndUserSupportPage() {
   const [ratingTicketId, setRatingTicketId] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [issueCategory, setIssueCategory] = useState<SupportIssueCategory | "">("");
+  const [enabledServices, setEnabledServices] = useState<ServiceFamily[]>([
+    ...DEFAULT_ENABLED_LANDING_SERVICES,
+  ]);
   const [ratingValue, setRatingValue] = useState(5);
   const [ratingComment, setRatingComment] = useState("");
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
@@ -93,7 +101,7 @@ export default function EndUserSupportPage() {
 
   async function loadData(customerId: string, silent = false) {
     const supabase = createClient();
-    const [t, a, tech, work, ratingRes] = await Promise.all([
+    const [t, a, tech, work, ratingRes, services] = await Promise.all([
       supabase
         .from("service_tickets")
         .select("*")
@@ -115,12 +123,14 @@ export default function EndUserSupportPage() {
         .select("*")
         .eq("customer_id", customerId)
         .order("created_at", { ascending: false }),
+      fetchEnabledLandingServices(supabase),
     ]);
     setTickets(t.data ?? []);
     setAssets(a.data ?? []);
     setTechnicians(tech.data ?? []);
     setWorkEntries(work.data ?? []);
     setRatings((ratingRes.data ?? []) as TicketRating[]);
+    setEnabledServices(services);
     setLastRefreshedAt(new Date());
     if (!silent) setLoading(false);
   }
@@ -185,6 +195,18 @@ export default function EndUserSupportPage() {
         return String(b.opened_at ?? "").localeCompare(String(a.opened_at ?? ""));
       });
   }, [tickets]);
+
+  const availableIssueCategories = useMemo(
+    () => getEnabledSupportCategories(enabledServices),
+    [enabledServices],
+  );
+  const availableSubcategories = useMemo(
+    () =>
+      issueCategory
+        ? getEnabledSupportSubcategories(enabledServices, issueCategory)
+        : [],
+    [enabledServices, issueCategory],
+  );
 
   const assetById = useMemo(
     () => new Map(assets.map((asset) => [asset.id, asset])),
@@ -1104,11 +1126,17 @@ export default function EndUserSupportPage() {
                 <option value="" disabled>
                   Select a category
                 </option>
-                {SUPPORT_ISSUE_CATEGORIES.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
+                {availableIssueCategories.length === 0 ? (
+                  <option value="" disabled>
+                    No services currently available
                   </option>
-                ))}
+                ) : (
+                  availableIssueCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))
+                )}
               </select>
             </FormField>
 
@@ -1120,18 +1148,20 @@ export default function EndUserSupportPage() {
                 defaultValue=""
                 key={issueCategory || "none"}
                 required
-                disabled={!issueCategory}
+                disabled={!issueCategory || availableSubcategories.length === 0}
               >
                 <option value="" disabled>
-                  {issueCategory ? "Select a subcategory" : "Select a category first"}
+                  {issueCategory
+                    ? availableSubcategories.length === 0
+                      ? "No subcategories for offered services"
+                      : "Select a subcategory"
+                    : "Select a category first"}
                 </option>
-                {issueCategory
-                  ? SUPPORT_ISSUE_SUBCATEGORIES[issueCategory].map((subcategory) => (
+                {availableSubcategories.map((subcategory) => (
                       <option key={subcategory} value={subcategory}>
                         {subcategory}
                       </option>
-                    ))
-                  : null}
+                    ))}
               </select>
             </FormField>
 
