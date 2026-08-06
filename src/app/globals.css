@@ -159,6 +159,18 @@ body {
   color: #e2e8f0;
 }
 
+/* Keep long Billing option labels inside the select control */
+.expense-billing-select {
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.expense-billing-select option {
+  white-space: normal;
+}
+
 /* Hardware assets page — muted base-content text is unreadable on the dark
    technician shell. Modals keep the light base-100 surface, so exclude them. */
 .tech-shell .hardware-page :is(.text-base-content\/70, .text-base-content\/60):not(dialog *) {
