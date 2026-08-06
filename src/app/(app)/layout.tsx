@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AppShellClient } from "@/components/AppShellClient";
 import { DemoRoleProvider } from "@/components/providers/DemoRoleProvider";
+import { SessionKeepAlive } from "@/components/SessionKeepAlive";
 import { ToastProvider } from "@/components/Toast";
 import { getAuthenticatedProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
@@ -24,6 +25,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <DemoRoleProvider realRole={auth.profile.role}>
       <ToastProvider>
+        <SessionKeepAlive />
         <AppShellClient
           profile={auth.profile}
           userEmail={auth.email}

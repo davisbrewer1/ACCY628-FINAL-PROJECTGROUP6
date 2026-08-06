@@ -30,10 +30,11 @@ export async function updateSession(request: NextRequest) {
     error,
   } = await supabase.auth.getUser();
 
-  // Stale/invalid refresh tokens can flip auth state between requests and cause
-  // a login ↔ dashboard redirect loop that freezes the browser.
-  if (error) {
-    await supabase.auth.signOut();
+  // Do not auto-sign-out on getUser failures. Idle tabs often hit a transient
+  // refresh race when the access token expires; signing out here is what made
+  // users appear "logged out for inactivity." Treat the request as anonymous
+  // and leave cookies alone so the next successful refresh can recover.
+  if (error || !user) {
     return { supabaseResponse, user: null, supabase };
   }
 
