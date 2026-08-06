@@ -106,10 +106,10 @@ export function buildTicketLiveSteps(
     },
     {
       id: "reviewed",
-      label: "Technician reviewed the problem",
+      label: "Manager reviewed the problem",
       detail: hasReviewSignal
         ? `Support has reviewed the reported issue${ticket.responded_at ? " and acknowledged the ticket" : ""}.`
-        : "Waiting for a technician to review the problem details.",
+        : "Waiting for a manager to review the problem details.",
       state: hasReviewSignal ? "complete" : "active",
       at: ticket.responded_at,
     },
