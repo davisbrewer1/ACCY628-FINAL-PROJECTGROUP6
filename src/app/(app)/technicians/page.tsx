@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { endOfWeek, isSameDay, startOfWeek } from "date-fns";
+import { isSameDay } from "date-fns";
 import { Plus, Star, Trash2 } from "lucide-react";
 import {
   createTechnician,
@@ -21,28 +21,20 @@ import {
   formatResponseDuration,
   formatStarRating,
 } from "@/lib/technician-metrics";
-import { sumHoursInRange } from "@/lib/technician-payroll";
 import {
   getWorkWeekDays,
   parseScheduledSlot,
 } from "@/lib/technician-schedule";
-import type { ServiceTicket, Technician, TicketRating, WorkEntry } from "@/lib/types";
+import type { ServiceTicket, Technician, TicketRating } from "@/lib/types";
 
 /** Standard weekly capacity for utilization (8 hrs × 5 days). */
 const WEEKLY_CAPACITY_HOURS = 40;
-/**
- * When a tech has no calendar schedule, treat this many concurrent open
- * tickets as a full weekly load for utilization.
- */
-const FULL_LOAD_OPEN_TICKETS = 8;
 
 interface TechCard extends Technician {
   openLoad: number;
   criticalLoad: number;
-  weekHours: number;
   scheduledHours: number;
   utilizationRate: number;
-  utilizationSource: "schedule" | "open_load";
   avgRating: number | null;
   avgResponseHours: number | null;
   responseSampleSize: number;
@@ -63,7 +55,6 @@ export default function TechniciansPage() {
   const [loading, setLoading] = useState(true);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
-  const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [ticketRatings, setTicketRatings] = useState<TicketRating[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -71,10 +62,9 @@ export default function TechniciansPage() {
 
   async function loadData() {
     const supabase = createClient();
-    const [tech, t, w, ratingsRes] = await Promise.all([
+    const [tech, t, ratingsRes] = await Promise.all([
       supabase.from("technicians").select("*").order("technician_name"),
       supabase.from("service_tickets").select("*"),
-      supabase.from("work_entries").select("*"),
       supabase
         .from("ticket_ratings")
         .select("*")
@@ -82,7 +72,6 @@ export default function TechniciansPage() {
     ]);
     setTechnicians(tech.data ?? []);
     setTickets(t.data ?? []);
-    setWorkEntries(w.data ?? []);
     setTicketRatings((ratingsRes.data ?? []) as TicketRating[]);
     setLoading(false);
   }
@@ -93,34 +82,23 @@ export default function TechniciansPage() {
 
   const cards: TechCard[] = useMemo(() => {
     const open = getOpenTickets(tickets);
-    const now = new Date();
-    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
-    const weekDays = getWorkWeekDays(now);
+    const weekDays = getWorkWeekDays(new Date());
 
     return technicians.map((tech) => {
-      const assigned = open.filter((t) => t.assigned_technician_id === tech.id);
-      const weekHours = sumHoursInRange(
-        workEntries.filter((e) => e.technician_id === tech.id),
-        weekStart,
-        weekEnd,
+      const assignedOpen = open.filter((t) => t.assigned_technician_id === tech.id);
+      const assignedAll = tickets.filter(
+        (t) => t.assigned_technician_id === tech.id,
       );
-      const scheduledHours = assigned.reduce((sum, ticket) => {
+
+      // Utilization = scheduled hours this work week ÷ 40.
+      const scheduledHours = assignedAll.reduce((sum, ticket) => {
         const parsed = parseScheduledSlot(ticket);
         if (!parsed) return sum;
         if (!weekDays.some((day) => isSameDay(day, parsed.day))) return sum;
         return sum + parsed.durationHours;
       }, 0);
 
-      // Prefer this week's assigned calendar load. If nothing is scheduled,
-      // fall back to open-ticket load vs a concurrent capacity of 8.
-      const utilizationSource =
-        scheduledHours > 0 ? ("schedule" as const) : ("open_load" as const);
-      const loadHours =
-        utilizationSource === "schedule"
-          ? scheduledHours
-          : (assigned.length / FULL_LOAD_OPEN_TICKETS) * WEEKLY_CAPACITY_HOURS;
-      const utilizationRate = (loadHours / WEEKLY_CAPACITY_HOURS) * 100;
+      const utilizationRate = (scheduledHours / WEEKLY_CAPACITY_HOURS) * 100;
 
       const performance = computeTechnicianPerformance(
         tech.id,
@@ -142,12 +120,11 @@ export default function TechniciansPage() {
 
       return {
         ...tech,
-        openLoad: assigned.length,
-        criticalLoad: assigned.filter((t) => t.priority === "Critical").length,
-        weekHours,
+        openLoad: assignedOpen.length,
+        criticalLoad: assignedOpen.filter((t) => t.priority === "Critical")
+          .length,
         scheduledHours,
         utilizationRate,
-        utilizationSource,
         avgRating: performance.avgRating,
         avgResponseHours: performance.avgResponseHours,
         responseSampleSize: performance.responseSampleSize,
@@ -155,7 +132,7 @@ export default function TechniciansPage() {
         recentComments,
       };
     });
-  }, [technicians, tickets, workEntries, ticketRatings]);
+  }, [technicians, tickets, ticketRatings]);
 
   const unassignedCount = useMemo(
     () => getOpenTickets(tickets).filter((t) => !t.assigned_technician_id).length,
@@ -270,7 +247,7 @@ export default function TechniciansPage() {
             </p>
             <p className="text-2xl font-semibold">{formatPercent(teamUtilization)}</p>
             <p className="mt-1 text-xs text-base-content/60">
-              Assigned weekly load ÷ {WEEKLY_CAPACITY_HOURS} hr capacity
+              Scheduled hours this week ÷ {WEEKLY_CAPACITY_HOURS} hr capacity
             </p>
           </div>
         ) : null}
@@ -393,11 +370,8 @@ export default function TechniciansPage() {
                     max={100}
                   />
                   <p className="mt-1 text-xs text-base-content/60">
-                    {tech.utilizationSource === "schedule"
-                      ? `${formatHours(tech.scheduledHours)} scheduled this week`
-                      : `${tech.openLoad} open assigned ÷ ${FULL_LOAD_OPEN_TICKETS} capacity`}
-                    {" · "}
-                    {formatHours(tech.weekHours)} logged this week
+                    {formatHours(tech.scheduledHours)} scheduled /{" "}
+                    {formatHours(WEEKLY_CAPACITY_HOURS)} capacity
                   </p>
                 </div>
 
