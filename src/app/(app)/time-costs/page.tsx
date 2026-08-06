@@ -233,26 +233,33 @@ export default function TimeCostsPage() {
 
       <div className="card border bg-base-100 shadow-sm">
         <div className="card-body grid gap-3 py-4 sm:grid-cols-2">
-          <label className="form-control">
+          <label className="form-control min-w-0">
             <span className="label-text mb-1 text-xs">Ticket / project</span>
             <select
-              className="select select-bordered select-sm"
+              className="expense-ticket-select select select-bordered select-sm w-full min-w-0"
               value={expenseTicketId}
               onChange={(e) => setExpenseTicketId(e.target.value)}
             >
               <option value="">Select ticket</option>
-              {expenseTicketOptions.map((ticket) => (
-                <option key={ticket.id} value={ticket.id}>
-                  {ticket.ticket_number} — {ticket.title}
-                </option>
-              ))}
+              {expenseTicketOptions.map((ticket) => {
+                const fullLabel = `${ticket.ticket_number} — ${ticket.title}`;
+                const label =
+                  fullLabel.length > 56
+                    ? `${fullLabel.slice(0, 53).trimEnd()}…`
+                    : fullLabel;
+                return (
+                  <option key={ticket.id} value={ticket.id} title={fullLabel}>
+                    {label}
+                  </option>
+                );
+              })}
             </select>
           </label>
 
-          <label className="form-control">
+          <label className="form-control min-w-0">
             <span className="label-text mb-1 text-xs">Technician</span>
             <select
-              className="select select-bordered select-sm"
+              className="select select-bordered select-sm w-full min-w-0"
               value={expenseTechnicianId}
               onChange={(e) => setExpenseTechnicianId(e.target.value)}
             >
