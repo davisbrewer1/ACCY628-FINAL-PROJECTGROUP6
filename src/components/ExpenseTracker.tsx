@@ -353,11 +353,11 @@ export function ExpenseTracker({
           </p>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
-          <label className="form-control lg:col-span-1">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
+          <label className="form-control min-w-0 lg:col-span-2">
             <span className="label-text mb-1 text-xs">Type</span>
             <select
-              className="select select-bordered select-sm"
+              className="select select-bordered select-sm w-full min-w-0"
               value={type}
               disabled={busy}
               onChange={(e) => setType(e.target.value as ExpenseType)}
@@ -370,10 +370,10 @@ export function ExpenseTracker({
             </select>
           </label>
 
-          <label className="form-control lg:col-span-1">
+          <label className="form-control min-w-0 sm:col-span-2 lg:col-span-3">
             <span className="label-text mb-1 text-xs">Billing</span>
             <select
-              className="select select-bordered select-sm"
+              className="expense-billing-select select select-bordered select-sm w-full min-w-0"
               value={expenseTag}
               disabled={busy}
               onChange={(e) => setExpenseTag(e.target.value as ExpenseTag)}
@@ -385,19 +385,19 @@ export function ExpenseTracker({
               ))}
             </select>
             {expenseTag === "Billable to Customer" ? (
-              <span className="mt-1 text-[11px] text-base-content/55">
+              <span className="mt-1 block text-[11px] leading-snug text-base-content/55">
                 Sends to management for invoice approval
               </span>
             ) : null}
           </label>
 
-          <label className="form-control">
+          <label className="form-control min-w-0 lg:col-span-2">
             <span className="label-text mb-1 text-xs">Amount</span>
             <input
               type="number"
               min="0.01"
               step="0.01"
-              className="input input-bordered input-sm"
+              className="input input-bordered input-sm w-full min-w-0"
               placeholder="0.00"
               value={amount}
               disabled={busy}
@@ -405,11 +405,11 @@ export function ExpenseTracker({
             />
           </label>
 
-          <label className="form-control lg:col-span-2">
+          <label className="form-control min-w-0 sm:col-span-2 lg:col-span-3">
             <span className="label-text mb-1 text-xs">Description</span>
             <input
               type="text"
-              className="input input-bordered input-sm"
+              className="input input-bordered input-sm w-full min-w-0"
               placeholder="Optional note"
               value={description}
               disabled={busy}
@@ -417,11 +417,11 @@ export function ExpenseTracker({
             />
           </label>
 
-          <label className="form-control">
+          <label className="form-control min-w-0 lg:col-span-2">
             <span className="label-text mb-1 text-xs">Date</span>
             <input
               type="date"
-              className="input input-bordered input-sm"
+              className="input input-bordered input-sm w-full min-w-0"
               value={date}
               disabled={busy}
               onChange={(e) => setDate(e.target.value)}
@@ -591,7 +591,7 @@ export function ExpenseTracker({
                         </td>
                         <td>
                           <select
-                            className="select select-bordered select-xs min-w-[10rem]"
+                            className="expense-billing-select select select-bordered select-xs w-full min-w-[12rem] max-w-[16rem]"
                             value={editExpenseTag}
                             onChange={(e) =>
                               setEditExpenseTag(e.target.value as ExpenseTag)

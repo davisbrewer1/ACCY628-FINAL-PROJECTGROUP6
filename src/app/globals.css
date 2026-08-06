@@ -158,3 +158,15 @@ body {
   background: rgba(15, 23, 42, 0.9);
   color: #e2e8f0;
 }
+
+/* Keep long Billing option labels inside the select control */
+.expense-billing-select {
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.expense-billing-select option {
+  white-space: normal;
+}
