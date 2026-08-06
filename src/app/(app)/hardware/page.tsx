@@ -1403,7 +1403,7 @@ export default function HardwarePage() {
                   <tr
                     className={
                       isTechnicianView
-                        ? "border-b border-slate-700 bg-slate-950 text-slate-300 [&_th]:!bg-slate-950 [&_th]:!text-slate-300"
+                        ? "border-b border-slate-700 [&_th]:!bg-slate-950 [&_th]:!text-slate-300"
                         : undefined
                     }
                   >
@@ -1432,12 +1432,14 @@ export default function HardwarePage() {
                       key={row.id}
                       className={
                         isTechnicianView
-                          ? "cursor-pointer border-b border-slate-700/70 !bg-slate-900 !text-slate-100 hover:!bg-slate-800"
+                          ? "cursor-pointer border-b border-slate-700/70 !bg-slate-900 hover:!bg-slate-800"
                           : "cursor-pointer hover:bg-base-200/80"
                       }
                       onClick={() => onAssetClick(row.id)}
                     >
-                      <td className="font-mono text-sm">{row.asset_number}</td>
+                      <td>
+                        <div className="font-medium">{row.asset_number}</div>
+                      </td>
                       <td>{row.customerName}</td>
                       <td>{row.category}</td>
                       <td>{row.quantity}</td>
@@ -2046,6 +2048,11 @@ export default function HardwarePage() {
 
       <AssetDetailDrawer
         assetId={drawerAssetId}
+        seedAsset={
+          drawerAssetId
+            ? (assets.find((asset) => asset.id === drawerAssetId) ?? null)
+            : null
+        }
         customerName={
           drawerAssetId
             ? rows.find((r) => r.id === drawerAssetId)?.customerName

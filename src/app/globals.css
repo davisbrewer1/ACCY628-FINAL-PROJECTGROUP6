@@ -180,6 +180,92 @@ body {
   white-space: normal;
 }
 
+/* Modals inherit the technician shell's near-white base-content on top of a
+   light base-100 surface, hiding headings, field labels, and divider text.
+   Darken the surface to match the shell and pin the ink it derives. */
+.tech-shell .hardware-page dialog .modal-box {
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid rgba(6, 182, 212, 0.2);
+}
+
+.tech-shell .hardware-page dialog .modal-box :is(h3, h4, .divider, .label-text) {
+  color: #f1f5f9;
+}
+
+.tech-shell .hardware-page dialog .modal-box
+  :is(.text-base-content\/70, .text-base-content\/60, .text-base-content\/50) {
+  color: #cbd5e1;
+}
+
+.tech-shell .hardware-page dialog .modal-box .rounded-box {
+  border-color: #475569;
+}
+
+.tech-shell .hardware-page dialog .modal-box .text-error {
+  color: #fca5a5;
+}
+
+/* Dropdown lists paint on the OS popup surface, so the theme's near-white
+   option ink disappears. Disabled entries need the color set explicitly. */
+.tech-shell .hardware-page dialog .modal-box option,
+.tech-shell .hardware-page dialog .modal-box option:disabled {
+  background: #020617;
+  color: #f1f5f9;
+}
+
+/* Asset detail drawer uses the same light base-100 surface as modals, so it
+   inherits near-white shell text and labels disappear. Match the dark shell. */
+.tech-shell .asset-detail-drawer {
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+}
+
+.tech-shell .asset-detail-drawer
+  :is(.text-base-content\/70, .text-base-content\/60, .text-base-content\/55, .text-base-content\/50) {
+  color: #cbd5e1 !important;
+}
+
+.tech-shell .asset-detail-drawer :is(.border-base-300, .border-t, .border-b, .border-l) {
+  border-color: #334155;
+}
+
+.tech-shell .asset-detail-drawer .btn-ghost {
+  color: #cbd5e1;
+}
+
+.tech-shell .asset-detail-drawer .btn:not(.btn-primary):not(.btn-error):not(.btn-warning):not(.btn-success):not(.btn-info) {
+  background: #1e293b;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.tech-shell .asset-detail-drawer .input,
+.tech-shell .asset-detail-drawer .select,
+.tech-shell .asset-detail-drawer .textarea {
+  background: #020617;
+  border-color: #475569;
+  color: #f1f5f9;
+}
+
+.tech-shell .asset-detail-drawer .bg-base-200,
+.tech-shell .asset-detail-drawer .bg-base-300 {
+  background: #1e293b;
+}
+
+.tech-shell .asset-detail-drawer .asset-detail-actions {
+  background: rgba(15, 23, 42, 0.97) !important;
+  color: #e2e8f0;
+  border-color: #334155 !important;
+}
+
+.tech-shell .asset-detail-drawer .badge-ghost {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
 /* Hardware assets page — muted base-content text is unreadable on the dark
    technician shell. Modals keep the light base-100 surface, so exclude them. */
 .tech-shell .hardware-page :is(.text-base-content\/70, .text-base-content\/60):not(dialog *) {

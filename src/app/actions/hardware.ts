@@ -146,7 +146,11 @@ export async function fetchAssetDetail(
     .eq("id", assetId)
     .maybeSingle();
 
-  if (error || !asset) {
+  if (error) {
+    console.error("fetchAssetDetail:", error.message);
+    return empty;
+  }
+  if (!asset) {
     return empty;
   }
 
