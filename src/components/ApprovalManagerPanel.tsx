@@ -6,11 +6,23 @@ import { useApprovalWorkflow } from "@/hooks/useApprovalWorkflow";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { isInternalOverLimitApproval } from "@/lib/ticket-expense-budgets";
 import type { Approval, ServiceTicket, Technician } from "@/lib/types";
 
 interface ApprovalManagerPanelProps {
   tickets?: ServiceTicket[];
   technicians?: Technician[];
+}
+
+function approvalTypeLabel(approval: Approval): string {
+  if (approval.ticket_expense_id) {
+    return isInternalOverLimitApproval(approval.reason)
+      ? "Over-limit internal"
+      : "Billable expense";
+  }
+  if (approval.work_entry_id) return "Work entry";
+  if (approval.cost_entry_id) return "Cost entry";
+  return "Request";
 }
 
 export function ApprovalManagerPanel({
@@ -71,11 +83,12 @@ export function ApprovalManagerPanel({
           <div>
             <h2 className="card-title text-base">
               <ShieldAlert className="size-4" aria-hidden="true" />
-              Billable expense approvals
+              Expense approvals
             </h2>
             <p className="text-sm text-base-content/60">
-              Approve Expense Tracker items marked Billable to Customer before
-              they can be invoiced. Deny returns them to internal (not billed).
+              Approve billable Expense Tracker items before invoicing, or
+              over-limit internal expenses. Deny billable returns them to
+              internal; deny over-limit excludes them from spend and P&amp;L.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -158,13 +171,7 @@ export function ApprovalManagerPanel({
                           : "—"}
                       </td>
                       <td className="whitespace-nowrap text-xs">
-                        {approval.ticket_expense_id
-                          ? "Billable expense"
-                          : approval.work_entry_id
-                            ? "Work entry"
-                            : approval.cost_entry_id
-                              ? "Cost entry"
-                              : "Request"}
+                        {approvalTypeLabel(approval)}
                       </td>
                       <td>{formatCurrency(approval.total_cost)}</td>
                       <td className="max-w-[16rem] text-sm">

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { calcSlaStatus } from "@/lib/calculations";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
@@ -13,26 +13,32 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate, formatDateTime, formatHours } from "@/lib/format";
 import {
   buildAccountHealthRows,
-  cashCollectedMtd,
   computeContractHoursBurns,
+  computeTechnicianLoads,
   getAwaitingSendInvoices,
+  getDisputedWorkEntries,
+  getLateTickets,
   getOpenArInvoices,
   getOpenTickets,
   getPastDueInvoices,
+  getPendingApprovalEntries,
   getReadyToInvoiceEntries,
   getRenewalsInDays,
   getSlaAtRiskTickets,
   getUnassignedTickets,
+  getUnprofitableContracts,
 } from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/client";
 import type {
   Contract,
   Customer,
   Invoice,
-  Payment,
   ServiceTicket,
+  Technician,
   WorkEntry,
 } from "@/lib/types";
+
+type Tone = "default" | "success" | "warning" | "danger" | "info";
 
 export default function OperationsPage() {
   const { activeRole } = useDemoRole();
@@ -42,16 +48,12 @@ export default function OperationsPage() {
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-
-  const isServiceManager = activeRole === "service_manager";
-  const isAccountManager = activeRole === "account_manager";
-  const isAdmin = activeRole === "administrator";
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
 
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const [c, co, t, w, i, p] = await Promise.all([
+      const [c, co, t, w, i, tech] = await Promise.all([
         supabase.from("customers").select("*"),
         supabase.from("contracts").select("*"),
         supabase
@@ -60,17 +62,17 @@ export default function OperationsPage() {
           .order("opened_at", { ascending: false }),
         supabase.from("work_entries").select("*"),
         supabase.from("invoices").select("*"),
-        supabase.from("payments").select("*"),
+        supabase.from("technicians").select("*").eq("active", true),
       ]);
       setCustomers(c.data ?? []);
       setContracts(co.data ?? []);
       setTickets(t.data ?? []);
       setWorkEntries(w.data ?? []);
       setInvoices(i.data ?? []);
-      setPayments(p.data ?? []);
+      setTechnicians(tech.data ?? []);
       setLoading(false);
     }
-    load();
+    void load();
   }, []);
 
   const customerMap = useMemo(
@@ -81,6 +83,10 @@ export default function OperationsPage() {
     () => new Map(contracts.map((c) => [c.id, c])),
     [contracts],
   );
+  const techMap = useMemo(
+    () => new Map(technicians.map((t) => [t.id, t.technician_name])),
+    [technicians],
+  );
 
   const openTickets = useMemo(() => getOpenTickets(tickets), [tickets]);
   const criticalOpen = useMemo(
@@ -88,14 +94,16 @@ export default function OperationsPage() {
     [openTickets],
   );
   const slaAtRisk = useMemo(() => getSlaAtRiskTickets(tickets), [tickets]);
+  const lateTickets = useMemo(() => getLateTickets(tickets), [tickets]);
   const unassigned = useMemo(() => getUnassignedTickets(tickets), [tickets]);
-  const renewals30 = useMemo(() => getRenewalsInDays(contracts, 30), [contracts]);
-  const renewals90 = useMemo(() => getRenewalsInDays(contracts, 90), [contracts]);
-  const burns = useMemo(
-    () => computeContractHoursBurns(contracts, workEntries),
-    [contracts, workEntries],
+  const pendingApprovals = useMemo(
+    () => getPendingApprovalEntries(workEntries),
+    [workEntries],
   );
-  const overHours = useMemo(() => burns.filter((b) => b.isOver), [burns]);
+  const disputedWork = useMemo(
+    () => getDisputedWorkEntries(workEntries),
+    [workEntries],
+  );
   const readyToInvoice = useMemo(
     () => getReadyToInvoiceEntries(workEntries),
     [workEntries],
@@ -104,7 +112,7 @@ export default function OperationsPage() {
     () =>
       readyToInvoice.reduce((sum, e) => {
         const contract = e.contract_id ? contractMap.get(e.contract_id) : null;
-        const hours = e.hours_worked ?? 0;
+        const hours = e.included_in_contract ? 0 : (e.hours_worked ?? 0);
         return (
           sum +
           hours * (contract?.additional_hourly_rate ?? 0) +
@@ -117,21 +125,38 @@ export default function OperationsPage() {
       }, 0),
     [readyToInvoice, contractMap],
   );
-  const openAr = useMemo(() => getOpenArInvoices(invoices), [invoices]);
   const pastDue = useMemo(() => getPastDueInvoices(invoices), [invoices]);
+  const openAr = useMemo(() => getOpenArInvoices(invoices), [invoices]);
   const awaitingSend = useMemo(
     () => getAwaitingSendInvoices(invoices),
     [invoices],
-  );
-  const openArTotal = useMemo(
-    () => openAr.reduce((sum, i) => sum + (i.remaining_balance ?? 0), 0),
-    [openAr],
   );
   const pastDueTotal = useMemo(
     () => pastDue.reduce((sum, i) => sum + (i.remaining_balance ?? 0), 0),
     [pastDue],
   );
-  const cashMtd = useMemo(() => cashCollectedMtd(payments), [payments]);
+  const openArTotal = useMemo(
+    () => openAr.reduce((sum, i) => sum + (i.remaining_balance ?? 0), 0),
+    [openAr],
+  );
+  const burns = useMemo(
+    () => computeContractHoursBurns(contracts, workEntries),
+    [contracts, workEntries],
+  );
+  const overHours = useMemo(() => burns.filter((b) => b.isOver), [burns]);
+  const techLoads = useMemo(
+    () => computeTechnicianLoads(technicians, tickets),
+    [technicians, tickets],
+  );
+  const overloadedTechs = useMemo(
+    () => techLoads.filter((row) => row.openTickets >= 5 || row.criticalTickets >= 2),
+    [techLoads],
+  );
+  const renewals30 = useMemo(() => getRenewalsInDays(contracts, 30), [contracts]);
+  const unprofitable = useMemo(
+    () => getUnprofitableContracts(contracts, workEntries),
+    [contracts, workEntries],
+  );
   const accountHealth = useMemo(
     () =>
       buildAccountHealthRows(
@@ -143,6 +168,20 @@ export default function OperationsPage() {
       ),
     [customers, contracts, tickets, workEntries, invoices],
   );
+  const atRiskAccounts = useMemo(
+    () => accountHealth.filter((row) => row.riskFlags.length > 0).slice(0, 8),
+    [accountHealth],
+  );
+
+  const actNowCount =
+    unassigned.length +
+    slaAtRisk.length +
+    criticalOpen.length +
+    pendingApprovals.length;
+  const moneyRiskCount =
+    readyToInvoice.length + disputedWork.length + pastDue.length + awaitingSend.length;
+  const deliveryCount =
+    lateTickets.length + overHours.length + overloadedTechs.length;
 
   if (
     activeRole !== "administrator" &&
@@ -166,272 +205,422 @@ export default function OperationsPage() {
     );
   }
 
-  const focusLabel = isAccountManager
-    ? "Focus: renewals, overages, AR, and cash."
-    : isServiceManager
-      ? "Focus: SLA risk, assignments, hours burn, and delivery capacity."
-      : "Admin view of delivery and contract-to-cash queues.";
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       <PageHeader
         title="Manager command center"
-        description={`Contract-to-cash for MSP delivery. ${focusLabel}`}
+        description="Service delivery control board. Every tile opens the queue where you can resolve the issue."
       />
 
-      <section className="space-y-3">
-        <div className="flex items-end justify-between gap-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-            Contract-to-cash pipeline
-          </h2>
-          <p className="text-xs text-base-content/50">Click any tile to act</p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard
-            title="Renewals due (30d)"
-            value={renewals30.length}
-            hint="Contracts needing attention"
-            tone={renewals30.length > 0 ? "warning" : "success"}
-            href="/contracts?filter=renewals"
-          />
-          <StatCard
-            title="Hours over included"
-            value={overHours.length}
-            hint={`${formatCurrency(overHours.reduce((s, b) => s + b.overageEstimate, 0))} est. overage`}
-            tone={overHours.length > 0 ? "warning" : "success"}
-            href="/contracts?filter=over-hours"
-          />
-          <StatCard
-            title="Ready to invoice"
-            value={readyToInvoice.length}
-            hint={formatCurrency(readyToInvoiceAmount)}
-            tone={readyToInvoice.length > 0 ? "info" : "default"}
-            href="/time-costs?filter=ready"
-          />
-          <StatCard
-            title="Open AR / past due"
-            value={formatCurrency(openArTotal)}
-            hint={`${formatCurrency(pastDueTotal)} past due · ${awaitingSend.length} awaiting send`}
-            tone={pastDueTotal > 0 ? "danger" : "default"}
-            href="/billing?filter=past-due"
-          />
-          <StatCard
-            title="Cash collected (MTD)"
-            value={formatCurrency(cashMtd)}
-            hint="Payments this month"
-            tone="success"
-            href="/billing?filter=cash"
-          />
-        </div>
-      </section>
+      <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-base-content/65">
+        <span>
+          <strong className="text-base-content">{actNowCount}</strong> need action now
+        </span>
+        <span>
+          <strong className="text-base-content">{moneyRiskCount}</strong> money signals
+        </span>
+        <span>
+          <strong className="text-base-content">{deliveryCount}</strong> delivery watches
+        </span>
+        <span>
+          <strong className="text-base-content">{renewals30.length}</strong> renewals in 30 days
+        </span>
+      </div>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-          Today&apos;s delivery pulse
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      {/* ---------- Act now ---------- */}
+      <CommandZone
+        id="act-now"
+        eyebrow="Zone 1"
+        title="Act now"
+        summary="Operational risks that stall delivery today. Assign work, clear SLA pressure, and approve logged time."
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
-            title="Open tickets"
-            value={openTickets.length}
-            tone="warning"
-            href="/service-tickets?filter=open"
-          />
-          <StatCard
-            title="Critical open"
-            value={criticalOpen.length}
-            tone={criticalOpen.length > 0 ? "danger" : "success"}
-            href="/service-tickets?filter=critical"
+            title="Unassigned tickets"
+            value={unassigned.length}
+            hint="Open tickets with no owner"
+            tone={toneForCount(unassigned.length, "danger")}
+            href="/service-tickets?filter=unassigned"
           />
           <StatCard
             title="SLA at risk"
             value={slaAtRisk.length}
-            tone={slaAtRisk.length > 0 ? "warning" : "success"}
+            hint="Approaching deadline or overdue"
+            tone={toneForCount(slaAtRisk.length, "warning")}
             href="/service-tickets?filter=sla"
           />
           <StatCard
-            title="Unassigned"
-            value={unassigned.length}
-            tone={unassigned.length > 0 ? "danger" : "success"}
-            href="/service-tickets?filter=unassigned"
+            title="Critical open"
+            value={criticalOpen.length}
+            hint="Highest priority delivery work"
+            tone={toneForCount(criticalOpen.length, "danger")}
+            href="/service-tickets?filter=critical"
+          />
+          <StatCard
+            title="Unapproved work"
+            value={pendingApprovals.length}
+            hint="Technician time waiting on you"
+            tone={toneForCount(pendingApprovals.length, "warning")}
+            href="/time-costs?filter=queue"
           />
         </div>
-      </section>
 
-      <section className="grid gap-4 xl:grid-cols-3">
-        {(isServiceManager || isAdmin) && (
-          <>
-            <ActionQueue
-              title="Unassigned tickets"
-              href="/service-tickets?filter=unassigned"
-              emptyTitle="Inbox clear"
-              emptyDescription="No unassigned open tickets."
-              items={unassigned.slice(0, 6).map((ticket) => ({
-                id: ticket.id,
-                primary: ticket.title,
-                secondary: `${ticket.ticket_number} · ${customerMap.get(ticket.customer_id) ?? "—"}`,
-                meta: <PriorityBadge priority={ticket.priority ?? "Medium"} />,
-              }))}
-            />
-            <ActionQueue
-              title="SLA at risk"
-              href="/service-tickets?filter=sla"
-              emptyTitle="All on track"
-              emptyDescription="No tickets approaching or past SLA."
-              items={slaAtRisk.slice(0, 6).map((ticket) => ({
-                id: ticket.id,
-                primary: ticket.title,
-                secondary: `Due ${formatDateTime(ticket.target_resolution_at)}`,
-                meta: (
-                  <StatusBadge
-                    status={calcSlaStatus({
-                      status: ticket.status,
-                      targetResolutionAt: ticket.target_resolution_at,
-                      completedAt: ticket.completed_at,
-                    })}
-                  />
-                ),
-              }))}
-            />
-          </>
-        )}
-
-        {(isAccountManager || isAdmin) && (
-          <ActionQueue
-            title="Invoices awaiting send / payment"
-            href="/billing?filter=action"
-            emptyTitle="Nothing waiting"
-            emptyDescription="No draft, pending, or past-due invoices."
-            items={[...awaitingSend, ...pastDue]
-              .slice(0, 6)
-              .map((inv) => ({
-                id: inv.id,
-                primary: inv.invoice_number,
-                secondary: `${customerMap.get(inv.customer_id) ?? "—"} · ${formatCurrency(inv.remaining_balance ?? inv.total_amount)}`,
-                meta: <StatusBadge status={inv.status ?? "Draft"} />,
-              }))}
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <TraceQueue
+            title="Assign these tickets"
+            href="/service-tickets?filter=unassigned"
+            emptyTitle="Assignment backlog clear"
+            emptyDescription="Every open ticket has an owner."
+            items={unassigned.slice(0, 5).map((ticket) => ({
+              id: ticket.id,
+              href: "/service-tickets?filter=unassigned",
+              primary: ticket.title,
+              secondary: `${ticket.ticket_number} · ${customerMap.get(ticket.customer_id) ?? "Customer"}`,
+              meta: <PriorityBadge priority={ticket.priority ?? "Medium"} />,
+            }))}
           />
-        )}
+          <TraceQueue
+            title="Approve technician time"
+            href="/time-costs?filter=queue"
+            emptyTitle="No pending approvals"
+            emptyDescription="Nothing waiting in Work & Billing."
+            items={pendingApprovals.slice(0, 5).map((entry) => ({
+              id: entry.id,
+              href: "/time-costs?filter=queue",
+              primary: entry.work_performed || "Work entry",
+              secondary: `${formatDate(entry.work_date)} · ${formatHours(entry.hours_worked)} · ${techMap.get(entry.technician_id) ?? "Technician"}`,
+              meta: <StatusBadge status={entry.approval_status ?? "Pending"} />,
+            }))}
+          />
+        </div>
+      </CommandZone>
 
-        <ActionQueue
-          title="Contracts renewing (90 days)"
-          href="/contracts?filter=renewals"
-          emptyTitle="No renewals soon"
-          emptyDescription="Nothing renewing in the next 90 days."
-          items={renewals90.slice(0, 6).map((contract) => ({
-            id: contract.id,
-            primary: contract.contract_name,
-            secondary: `${customerMap.get(contract.customer_id) ?? "—"} · ${formatDate(contract.renewal_date)}`,
-            meta: (
-              <span className="badge badge-ghost badge-sm">
-                {contract.automatic_renewal ? "Auto" : "Manual"}
-              </span>
-            ),
-          }))}
-        />
+      {/* ---------- Money at risk ---------- */}
+      <CommandZone
+        id="money-at-risk"
+        eyebrow="Zone 2"
+        title="Money at risk"
+        summary="Billing leakage and collections. Push approved overages to invoice, resolve disputes, and chase past-due balances."
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            title="Ready to invoice"
+            value={readyToInvoice.length}
+            hint={formatCurrency(readyToInvoiceAmount)}
+            tone={readyToInvoice.length > 0 ? "info" : "success"}
+            href="/time-costs?filter=ready"
+          />
+          <StatCard
+            title="Disputed charges"
+            value={disputedWork.length}
+            hint="Returned time needing correction"
+            tone={toneForCount(disputedWork.length, "danger")}
+            href="/time-costs?filter=returned"
+          />
+          <StatCard
+            title="Past-due invoices"
+            value={formatCurrency(pastDueTotal)}
+            hint={`${pastDue.length} invoice${pastDue.length === 1 ? "" : "s"}`}
+            tone={pastDueTotal > 0 ? "danger" : "success"}
+            href="/billing?filter=past-due"
+          />
+          <StatCard
+            title="Drafts awaiting send"
+            value={awaitingSend.length}
+            hint={`${formatCurrency(openArTotal)} open AR total`}
+            tone={awaitingSend.length > 0 ? "warning" : "default"}
+            href="/billing?filter=action"
+          />
+        </div>
 
-        <ActionQueue
-          title="Over hours this month"
-          href="/contracts?filter=over-hours"
-          emptyTitle="Within allotments"
-          emptyDescription="No active contracts over included hours."
-          items={overHours.slice(0, 6).map((burn) => {
-            const contract = contractMap.get(burn.contractId);
-            return {
-              id: burn.contractId,
-              primary: contract?.contract_name ?? "Contract",
-              secondary: `${customerMap.get(burn.customerId) ?? "—"} · ${formatHours(burn.hoursUsed)} / ${formatHours(burn.includedHours)}`,
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <TraceQueue
+            title="Bill this work"
+            href="/time-costs?filter=ready"
+            emptyTitle="No unbilled approved work"
+            emptyDescription="Approved billable entries will appear here."
+            items={readyToInvoice.slice(0, 5).map((entry) => {
+              const contract = entry.contract_id
+                ? contractMap.get(entry.contract_id)
+                : null;
+              return {
+                id: entry.id,
+                href: "/time-costs?filter=ready",
+                primary: entry.work_performed || "Approved work entry",
+                secondary: `${customerMap.get(entry.customer_id) ?? "Customer"} · ${formatHours(entry.hours_worked)} · ${contract?.contract_name ?? "No contract"}`,
+                meta: <StatusBadge status={entry.billing_status ?? "Ready to Invoice"} />,
+              };
+            })}
+          />
+          <TraceQueue
+            title="Collect past-due invoices"
+            href="/billing?filter=past-due"
+            emptyTitle="No past-due invoices"
+            emptyDescription="Open AR that is past due will show here."
+            items={pastDue.slice(0, 5).map((invoice) => ({
+              id: invoice.id,
+              href: "/billing?filter=past-due",
+              primary: invoice.invoice_number,
+              secondary: `${customerMap.get(invoice.customer_id) ?? "Customer"} · due ${formatDate(invoice.due_date)}`,
               meta: (
-                <span className="text-xs font-medium text-warning">
-                  +{formatCurrency(burn.overageEstimate)}
+                <span className="text-sm font-semibold text-error">
+                  {formatCurrency(invoice.remaining_balance ?? invoice.total_amount)}
                 </span>
               ),
-            };
-          })}
-        />
-      </section>
-
-      <section className="card border bg-base-100 shadow-sm">
-        <div className="card-body">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="card-title text-base">Account health (top 10)</h2>
-              <p className="text-sm text-base-content/70">
-                Ranked by risk flags, then AR and MRR — who needs a call today.
-              </p>
-            </div>
-            <Link href="/customers" className="btn btn-ghost btn-sm">
-              All customers
-            </Link>
-          </div>
-
-          {accountHealth.length === 0 ? (
-            <EmptyState
-              title="No active accounts"
-              description="Account health appears once customers and contracts exist."
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="table table-zebra">
-                <thead>
-                  <tr>
-                    <th>Customer</th>
-                    <th className="text-right">MRR</th>
-                    <th>Hours used vs included</th>
-                    <th className="text-right">Open tickets</th>
-                    <th className="text-right">AR balance</th>
-                    <th>Renewal</th>
-                    <th>Risk</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {accountHealth.map((row) => (
-                    <tr key={row.customerId}>
-                      <td>
-                        <div className="font-medium">{row.customerName}</div>
-                        {row.healthScore != null ? (
-                          <div className="text-xs text-base-content/60">
-                            Health {row.healthScore}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="text-right">{formatCurrency(row.mrr)}</td>
-                      <td>
-                        {formatHours(row.hoursUsed)} / {formatHours(row.includedHours)}
-                        {row.burnPercent != null ? (
-                          <div className="text-xs text-base-content/60">
-                            {row.burnPercent.toFixed(0)}% burn
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="text-right">{row.openTickets}</td>
-                      <td className="text-right">{formatCurrency(row.arBalance)}</td>
-                      <td>{formatDate(row.nextRenewal)}</td>
-                      <td>
-                        <div className="flex flex-wrap gap-1">
-                          {row.riskFlags.length === 0 ? (
-                            <span className="badge badge-success badge-sm">Stable</span>
-                          ) : (
-                            row.riskFlags.map((flag) => (
-                              <span key={flag} className="badge badge-warning badge-sm">
-                                {flag}
-                              </span>
-                            ))
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+            }))}
+          />
         </div>
-      </section>
+      </CommandZone>
+
+      {/* ---------- Delivery health ---------- */}
+      <CommandZone
+        id="delivery-health"
+        eyebrow="Zone 3"
+        title="Delivery health"
+        summary="Capacity and overrun signals. Catch late tickets, contracts burning past included hours, and overloaded technicians."
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            title="Late projects"
+            value={lateTickets.length}
+            hint="Open tickets past SLA target"
+            tone={toneForCount(lateTickets.length, "danger")}
+            href="/service-tickets?filter=sla"
+          />
+          <StatCard
+            title="Over-budget contracts"
+            value={overHours.length}
+            hint={`${formatCurrency(overHours.reduce((s, b) => s + b.overageEstimate, 0))} est. overage`}
+            tone={toneForCount(overHours.length, "warning")}
+            href="/contracts?filter=over-hours"
+          />
+          <StatCard
+            title="Heavy tech load"
+            value={overloadedTechs.length}
+            hint="5+ open or 2+ critical assigned"
+            tone={toneForCount(overloadedTechs.length, "warning")}
+            href="/technicians"
+          />
+          <StatCard
+            title="Open delivery load"
+            value={openTickets.length}
+            hint={`${formatHours(workEntries.filter((e) => isCurrentMonth(e.work_date)).reduce((s, e) => s + (e.hours_worked ?? 0), 0))} hrs logged MTD`}
+            tone="info"
+            href="/service-tickets?filter=open"
+          />
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <TraceQueue
+            title="Late tickets to stabilize"
+            href="/service-tickets?filter=sla"
+            emptyTitle="No overdue tickets"
+            emptyDescription="Nothing is past its resolution target."
+            items={lateTickets.slice(0, 5).map((ticket) => ({
+              id: ticket.id,
+              href: "/service-tickets?filter=sla",
+              primary: ticket.title,
+              secondary: `${ticket.ticket_number} · due ${formatDateTime(ticket.target_resolution_at)}`,
+              meta: (
+                <StatusBadge
+                  status={calcSlaStatus({
+                    status: ticket.status,
+                    targetResolutionAt: ticket.target_resolution_at,
+                    completedAt: ticket.completed_at,
+                  })}
+                />
+              ),
+            }))}
+          />
+          <TraceQueue
+            title="Contracts over included hours"
+            href="/contracts?filter=over-hours"
+            emptyTitle="Within hour allotments"
+            emptyDescription="No active contracts have burned past included hours this month."
+            items={overHours.slice(0, 5).map((burn) => {
+              const contract = contractMap.get(burn.contractId);
+              return {
+                id: burn.contractId,
+                href: "/contracts?filter=over-hours",
+                primary: contract?.contract_name ?? "Contract",
+                secondary: `${customerMap.get(burn.customerId) ?? "Customer"} · ${formatHours(burn.hoursUsed)} / ${formatHours(burn.includedHours)}`,
+                meta: (
+                  <span className="text-xs font-semibold text-warning">
+                    +{formatCurrency(burn.overageEstimate)}
+                  </span>
+                ),
+              };
+            })}
+          />
+        </div>
+      </CommandZone>
+
+      {/* ---------- Portfolio watch ---------- */}
+      <CommandZone
+        id="portfolio-watch"
+        eyebrow="Zone 4"
+        title="Portfolio watch"
+        summary="Account and contract outlook. Renewals, margin pressure, and customers carrying risk flags."
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            title="Renewals (30 days)"
+            value={renewals30.length}
+            hint="Active contracts renewing soon"
+            tone={toneForCount(renewals30.length, "warning")}
+            href="/contracts?filter=renewals"
+          />
+          <StatCard
+            title="Unprofitable contracts"
+            value={unprofitable.length}
+            hint="Month cost above MRR"
+            tone={toneForCount(unprofitable.length, "warning")}
+            href="/contracts"
+          />
+          <StatCard
+            title="Accounts with risk flags"
+            value={atRiskAccounts.length}
+            hint="SLA, hours, AR, or renewal pressure"
+            tone={toneForCount(atRiskAccounts.length, "warning")}
+            href="/customers"
+          />
+          <StatCard
+            title="Open AR"
+            value={formatCurrency(openArTotal)}
+            hint="Balances still owed"
+            tone={openArTotal > 0 ? "info" : "success"}
+            href="/billing?filter=action"
+          />
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <TraceQueue
+            title="Upcoming renewals"
+            href="/contracts?filter=renewals"
+            emptyTitle="No renewals in 30 days"
+            emptyDescription="Nothing needing a renewal conversation this month."
+            items={renewals30.slice(0, 5).map((contract) => ({
+              id: contract.id,
+              href: "/contracts?filter=renewals",
+              primary: contract.contract_name,
+              secondary: `${customerMap.get(contract.customer_id) ?? "Customer"} · ${formatDate(contract.renewal_date)}`,
+              meta: (
+                <span className="badge badge-ghost badge-sm">
+                  {contract.automatic_renewal ? "Auto" : "Manual"}
+                </span>
+              ),
+            }))}
+          />
+          <TraceQueue
+            title="Accounts to review"
+            href="/customers"
+            emptyTitle="No flagged accounts"
+            emptyDescription="Account health looks stable across the portfolio."
+            items={atRiskAccounts.map((row) => ({
+              id: row.customerId,
+              href: "/customers",
+              primary: row.customerName,
+              secondary: `${formatCurrency(row.arBalance)} AR · ${row.openTickets} open tickets · renews ${formatDate(row.nextRenewal)}`,
+              meta: (
+                <div className="flex flex-wrap justify-end gap-1">
+                  {row.riskFlags.slice(0, 3).map((flag) => (
+                    <span key={flag} className="badge badge-warning badge-sm">
+                      {flag}
+                    </span>
+                  ))}
+                </div>
+              ),
+            }))}
+          />
+        </div>
+
+        {unprofitable.length > 0 ? (
+          <div className="mt-4 overflow-x-auto rounded-box border border-base-300">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Contract</th>
+                  <th>Customer</th>
+                  <th className="text-right">MRR</th>
+                  <th className="text-right">Month direct cost</th>
+                  <th className="text-right">Shortfall</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {unprofitable.slice(0, 6).map((row) => (
+                  <tr key={row.contractId}>
+                    <td className="font-medium">{row.contractName}</td>
+                    <td>{customerMap.get(row.customerId) ?? "—"}</td>
+                    <td className="text-right">{formatCurrency(row.mrr)}</td>
+                    <td className="text-right">
+                      {formatCurrency(row.monthDirectCost)}
+                    </td>
+                    <td className="text-right font-semibold text-warning">
+                      {formatCurrency(row.shortfall)}
+                    </td>
+                    <td className="text-right">
+                      <Link href="/contracts" className="link link-primary text-sm">
+                        Open contracts
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </CommandZone>
     </div>
   );
 }
 
-function ActionQueue({
+function isCurrentMonth(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
+  );
+}
+
+function toneForCount(count: number, alertTone: Tone): Tone {
+  return count > 0 ? alertTone : "success";
+}
+
+function CommandZone({
+  id,
+  eyebrow,
+  title,
+  summary,
+  children,
+}: {
+  id: string;
+  eyebrow: string;
+  title: string;
+  summary: string;
+  children: ReactNode;
+}) {
+  return (
+    <section id={id} className="scroll-mt-24 space-y-4">
+      <div className="max-w-3xl border-b border-base-300 pb-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-base-content/50">
+          {eyebrow}
+        </p>
+        <h2 className="mt-1 text-xl font-semibold tracking-tight text-base-content">
+          {title}
+        </h2>
+        <p className="mt-1 text-sm leading-relaxed text-base-content/65">
+          {summary}
+        </p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function TraceQueue({
   title,
   href,
   emptyTitle,
@@ -444,42 +633,46 @@ function ActionQueue({
   emptyDescription: string;
   items: Array<{
     id: string;
+    href: string;
     primary: string;
     secondary: string;
-    meta?: React.ReactNode;
+    meta?: ReactNode;
   }>;
 }) {
   return (
-    <div className="card border bg-base-100 shadow-sm">
-      <div className="card-body">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="card-title text-base">{title}</h2>
-          <Link href={href} className="link link-primary text-xs">
-            Open queue
-          </Link>
-        </div>
-        {items.length === 0 ? (
-          <EmptyState title={emptyTitle} description={emptyDescription} />
-        ) : (
-          <div className="space-y-2">
-            {items.map((item) => (
-              <Link
-                key={item.id}
-                href={href}
-                className="block rounded-box border border-base-300 p-3 transition hover:border-primary/40"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium">{item.primary}</p>
-                    <p className="text-xs text-base-content/60">{item.secondary}</p>
-                  </div>
-                  {item.meta}
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
+    <div className="rounded-box border border-base-300 bg-base-100">
+      <div className="flex items-center justify-between gap-3 border-b border-base-300 px-4 py-3">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <Link href={href} className="text-xs font-medium text-primary hover:underline">
+          Open full queue →
+        </Link>
       </div>
+      {items.length === 0 ? (
+        <div className="p-4">
+          <EmptyState title={emptyTitle} description={emptyDescription} />
+        </div>
+      ) : (
+        <ul className="divide-y divide-base-300">
+          {items.map((item) => (
+            <li key={item.id}>
+              <Link
+                href={item.href}
+                className="flex items-start justify-between gap-3 px-4 py-3 transition hover:bg-base-200/60"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-base-content">
+                    {item.primary}
+                  </p>
+                  <p className="mt-0.5 text-xs text-base-content/60">
+                    {item.secondary}
+                  </p>
+                </div>
+                <div className="shrink-0">{item.meta}</div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

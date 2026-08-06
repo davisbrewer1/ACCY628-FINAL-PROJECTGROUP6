@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { createInvoicesFromApprovedExpenses, sendWorkAndExpensesToBilling } from "@/app/actions/billing";
+import { updateTechnicianExpenseBudget } from "@/app/actions/ticket-expenses";
 import { updateWorkEntryApproval } from "@/app/actions/work-entries";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
@@ -23,12 +24,14 @@ import {
 } from "@/lib/manager-ops";
 import { allocateOverageHours } from "@/lib/plan-pricing";
 import { isOpenTicket, isThisMonth } from "@/lib/dashboard-stats";
+import { DEFAULT_EXPENSE_MONTHLY_LIMIT, sumAcceptedInternalMtd } from "@/lib/ticket-expense-budgets";
 import { createClient } from "@/lib/supabase/client";
 import type {
   Contract,
   Customer,
   ServiceTicket,
   Technician,
+  TechnicianExpenseBudget,
   TicketExpense,
   WorkEntry,
 } from "@/lib/types";
@@ -84,6 +87,12 @@ export default function WorkBillingPage() {
   const [disputeNotes, setDisputeNotes] = useState<Record<string, string>>({});
   const [expenseTicketId, setExpenseTicketId] = useState("");
   const [expenseTechnicianId, setExpenseTechnicianId] = useState("");
+  const [expenseBudgets, setExpenseBudgets] = useState<TechnicianExpenseBudget[]>(
+    [],
+  );
+  const [expenseBudgetDrafts, setExpenseBudgetDrafts] = useState<
+    Record<string, string>
+  >({});
   const [isPending, startTransition] = useTransition();
 
   const canManage = MANAGER_ROLES.has(activeRole);
@@ -94,7 +103,7 @@ export default function WorkBillingPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    const [w, tech, c, co, t, ex] = await Promise.all([
+    const [w, tech, c, co, t, ex, budgets] = await Promise.all([
       supabase.from("work_entries").select("*").order("work_date", { ascending: false }),
       supabase.from("technicians").select("*").order("technician_name"),
       supabase.from("customers").select("*"),
@@ -107,6 +116,7 @@ export default function WorkBillingPage() {
         .from("ticket_expenses")
         .select("*")
         .order("date", { ascending: false }),
+      supabase.from("technician_expense_budgets").select("*"),
     ]);
     const techRows = tech.data ?? [];
     const ticketRows = t.data ?? [];
@@ -116,6 +126,18 @@ export default function WorkBillingPage() {
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
     setTickets(ticketRows);
+    const budgetRows = (budgets.data as TechnicianExpenseBudget[]) ?? [];
+    setExpenseBudgets(budgetRows);
+    const drafts: Record<string, string> = {};
+    for (const b of budgetRows) {
+      drafts[b.technician_id] = String(b.monthly_limit);
+    }
+    for (const techRow of techRows) {
+      if (!(techRow.id in drafts)) {
+        drafts[techRow.id] = String(DEFAULT_EXPENSE_MONTHLY_LIMIT);
+      }
+    }
+    setExpenseBudgetDrafts(drafts);
     setSelectedIds([]);
 
     if (user) {
@@ -220,11 +242,51 @@ export default function WorkBillingPage() {
       ).length,
     [ticketExpenses],
   );
+  const pendingOverLimitExpenseCount = useMemo(
+    () =>
+      ticketExpenses.filter(
+        (e) =>
+          e.expense_tag === "Internal Company Expense" &&
+          e.approval_status === "Pending",
+      ).length,
+    [ticketExpenses],
+  );
   const readyExpenseTotal = useMemo(
     () =>
       readyExpenses.reduce((sum, e) => sum + Number(e.amount ?? 0), 0),
     [readyExpenses],
   );
+
+  const activeTechnicians = useMemo(
+    () => technicians.filter((t) => t.active !== false),
+    [technicians],
+  );
+
+  const expenseMtdByTech = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const tech of activeTechnicians) {
+      map.set(tech.id, sumAcceptedInternalMtd(ticketExpenses, tech.id));
+    }
+    return map;
+  }, [activeTechnicians, ticketExpenses]);
+
+  function handleSaveExpenseBudget(technicianId: string) {
+    const raw = expenseBudgetDrafts[technicianId];
+    const limit = Number(raw);
+    if (!Number.isFinite(limit) || limit < 0) {
+      showToast("Enter a valid monthly limit.", "error");
+      return;
+    }
+    startTransition(async () => {
+      const result = await updateTechnicianExpenseBudget(technicianId, limit);
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+      } else {
+        showToast(result.message, "error");
+      }
+    });
+  }
 
   const monthRollup = useMemo(() => {
     const monthEntries = entries.filter((e) => isThisMonth(e.work_date));
@@ -434,6 +496,102 @@ export default function WorkBillingPage() {
       />
 
       <ApprovalManagerPanel tickets={tickets} technicians={technicians} />
+
+      <div className="card border bg-base-100 shadow-sm">
+        <div className="card-body gap-3">
+          <h2 className="card-title text-base">
+            Technician internal expense budgets (this month)
+          </h2>
+          <p className="text-sm text-base-content/70">
+            Internal Company Expense Tracker spend under the monthly limit saves
+            automatically. Over-limit items appear in Expense approvals above
+            {pendingOverLimitExpenseCount > 0
+              ? ` (${pendingOverLimitExpenseCount} pending)`
+              : ""}
+            . Approving an over-limit expense is a one-time exception and does not
+            raise the limit.
+          </p>
+          {activeTechnicians.length === 0 ? (
+            <EmptyState
+              title="No technicians"
+              description="Active technicians will appear here with monthly internal expense budgets."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Technician</th>
+                    <th className="text-right">MTD spend</th>
+                    <th className="text-right">Monthly limit</th>
+                    <th className="text-right">Remaining</th>
+                    <th>Status</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeTechnicians.map((tech) => {
+                    const limit = Number(
+                      expenseBudgets.find((b) => b.technician_id === tech.id)
+                        ?.monthly_limit ?? DEFAULT_EXPENSE_MONTHLY_LIMIT,
+                    );
+                    const spent = expenseMtdByTech.get(tech.id) ?? 0;
+                    const remaining = Math.max(0, limit - spent);
+                    const atLimit = spent >= limit;
+                    const nearLimit =
+                      !atLimit && limit > 0 && spent / limit >= 0.8;
+                    return (
+                      <tr key={tech.id}>
+                        <td className="font-medium">{tech.technician_name}</td>
+                        <td className="text-right">{formatCurrency(spent)}</td>
+                        <td className="text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="input input-bordered input-sm w-28 text-right"
+                            value={
+                              expenseBudgetDrafts[tech.id] ?? String(limit)
+                            }
+                            onChange={(e) =>
+                              setExpenseBudgetDrafts((prev) => ({
+                                ...prev,
+                                [tech.id]: e.target.value,
+                              }))
+                            }
+                          />
+                        </td>
+                        <td className="text-right">
+                          {formatCurrency(remaining)}
+                        </td>
+                        <td>
+                          {atLimit ? (
+                            <StatusBadge status="At limit" />
+                          ) : nearLimit ? (
+                            <StatusBadge status="Near limit" />
+                          ) : (
+                            <StatusBadge status="OK" />
+                          )}
+                        </td>
+                        <td className="text-right">
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-xs"
+                            disabled={isPending}
+                            onClick={() => handleSaveExpenseBudget(tech.id)}
+                          >
+                            Save
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <button

@@ -39,14 +39,17 @@ import type {
   ServiceCatalogItem,
   ServiceTicket,
   Technician,
+  TicketExpense,
   WorkEntry,
 } from "@/lib/types";
+import { isAcceptedTicketExpense } from "@/lib/ticket-expense-budgets";
 
 export interface ReportDataset {
   customers: Customer[];
   contracts: Contract[];
   tickets: ServiceTicket[];
   workEntries: WorkEntry[];
+  ticketExpenses: TicketExpense[];
   invoices: Invoice[];
   payments: Payment[];
   hardware: HardwareAsset[];
@@ -979,18 +982,30 @@ function ContractPerformanceReport({
   dataset: ReportDataset;
 }) {
   const [tier, setTier] = useState<SimulatedTier | "All">("All");
-  const { contracts, workEntries, customers } = dataset;
+  const { contracts, workEntries, customers, tickets, ticketExpenses = [] } =
+    dataset;
   const filtered = useMemo(
     () => contractsInTier(contracts, tier),
     [contracts, tier],
   );
+  const ticketById = useMemo(
+    () => new Map(tickets.map((t) => [t.id, t])),
+    [tickets],
+  );
 
   const rows = filtered.map((contract) => {
     const entries = workEntries.filter((e) => e.contract_id === contract.id);
-    const costs = entries.reduce(
+    const workCosts = entries.reduce(
       (acc, e) => acc + (e.total_direct_cost ?? 0),
       0,
     );
+    const expenseCosts = ticketExpenses
+      .filter((expense) => {
+        if (!isAcceptedTicketExpense(expense)) return false;
+        return ticketById.get(expense.ticket_id)?.contract_id === contract.id;
+      })
+      .reduce((acc, expense) => acc + Number(expense.amount ?? 0), 0);
+    const costs = workCosts + expenseCosts;
     const labor = entries.reduce(
       (acc, e) => acc + (e.labor_cost ?? 0),
       0,

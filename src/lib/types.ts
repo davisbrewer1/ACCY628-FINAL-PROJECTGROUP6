@@ -775,6 +775,14 @@ export interface TechnicianPartsBudget {
   updated_by: string | null;
 }
 
+/** Monthly Internal Company Expense Tracker limit per technician. */
+export interface TechnicianExpenseBudget {
+  technician_id: string;
+  monthly_limit: number;
+  updated_at: string;
+  updated_by: string | null;
+}
+
 export interface InventoryPartOrder {
   id: string;
   technician_id: string;

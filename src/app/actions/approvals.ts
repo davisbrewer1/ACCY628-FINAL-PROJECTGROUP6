@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { ActionResult } from "@/app/actions/customers";
 import { insertNotification } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/server";
+import { isInternalOverLimitApproval } from "@/lib/ticket-expense-budgets";
 import type { Approval, ApprovalStatus } from "@/lib/types";
 
 function revalidateApprovalPaths() {
@@ -149,7 +150,9 @@ export async function createApprovalRequest(input: {
   return {
     success: true,
     message: expenseOnly
-      ? "Billable expense sent to management for invoice approval."
+      ? isInternalOverLimitApproval(reason)
+        ? "Over-limit internal expense sent to management for approve/deny."
+        : "Billable expense sent to management for invoice approval."
       : "Approval request submitted.",
     approvalId,
   };
@@ -224,6 +227,8 @@ export async function decideApproval(input: {
       .eq("id", approval.work_entry_id);
   }
 
+  const overLimitInternal = isInternalOverLimitApproval(approval.reason);
+
   if (approval.ticket_expense_id) {
     const expenseUpdate: {
       approval_status: string;
@@ -231,8 +236,9 @@ export async function decideApproval(input: {
     } = {
       approval_status: approvalStatus,
     };
-    // Denied billable expenses stay logged as internal company cost.
-    if (approvalStatus === "Denied") {
+    // Denied billable → stay logged as internal cost. Over-limit internal deny
+    // keeps Internal tag and Denied status (excluded from MTD / P&L).
+    if (approvalStatus === "Denied" && !overLimitInternal) {
       expenseUpdate.expense_tag = "Internal Company Expense";
     }
     await supabase
@@ -256,15 +262,23 @@ export async function decideApproval(input: {
   if (approval.technician_id) {
     try {
       const isExpense = Boolean(approval.ticket_expense_id);
-      const subject = isExpense
-        ? "billable expense"
-        : "approval request";
-      const expenseNote =
-        isExpense && approvalStatus === "Approved"
-          ? " It can be included on the customer invoice."
-          : isExpense && approvalStatus === "Denied"
-            ? " It will remain an internal company expense."
-            : "";
+      let subject = "approval request";
+      let expenseNote = "";
+      if (isExpense && overLimitInternal) {
+        subject = "over-limit internal expense";
+        expenseNote =
+          approvalStatus === "Approved"
+            ? " It is accepted as a company cost (one-time exception; monthly limit unchanged)."
+            : " It was denied and will not count toward spend or P&L.";
+      } else if (isExpense) {
+        subject = "billable expense";
+        expenseNote =
+          approvalStatus === "Approved"
+            ? " It can be included on the customer invoice."
+            : approvalStatus === "Denied"
+              ? " It will remain an internal company expense."
+              : "";
+      }
       await insertNotification(supabase, {
         technicianId: approval.technician_id,
         type: "work_approval",
@@ -292,10 +306,14 @@ export async function decideApproval(input: {
     message:
       approvalStatus === "Approved"
         ? expenseOnly
-          ? "Expense approved for customer invoice. Technician notified."
+          ? overLimitInternal
+            ? "Over-limit internal expense approved as company cost. Technician notified."
+            : "Expense approved for customer invoice. Technician notified."
           : "Approval granted. Technician notified."
         : expenseOnly
-          ? "Expense denied for invoice. Logged as internal. Technician notified."
+          ? overLimitInternal
+            ? "Over-limit internal expense denied. Technician notified."
+            : "Expense denied for invoice. Logged as internal. Technician notified."
           : "Approval denied. Technician notified.",
   };
 }
