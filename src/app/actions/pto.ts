@@ -43,6 +43,7 @@ export async function createPtoRequest(formData: FormData): Promise<ActionResult
   }
 
   revalidatePath("/technician");
+  revalidatePath("/technicians");
   return { success: true, message: "PTO request submitted." };
 }
 
@@ -58,5 +59,58 @@ export async function cancelPtoRequest(requestId: string): Promise<ActionResult>
   }
 
   revalidatePath("/technician");
+  revalidatePath("/technicians");
   return { success: true, message: "PTO request cancelled." };
+}
+
+export async function reviewPtoRequest(
+  requestId: string,
+  decision: "Approved" | "Denied",
+): Promise<ActionResult> {
+  if (!requestId) {
+    return { success: false, message: "PTO request is required." };
+  }
+  if (decision !== "Approved" && decision !== "Denied") {
+    return { success: false, message: "Choose Approve or Deny." };
+  }
+
+  const supabase = await createClient();
+  const { data: existing, error: fetchError } = await supabase
+    .from("technician_pto_requests")
+    .select("id, status")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (fetchError) {
+    return { success: false, message: fetchError.message };
+  }
+  if (!existing) {
+    return { success: false, message: "PTO request not found." };
+  }
+  if (existing.status !== "Pending") {
+    return {
+      success: false,
+      message: `This request is already ${String(existing.status).toLowerCase()}.`,
+    };
+  }
+
+  const { error } = await supabase
+    .from("technician_pto_requests")
+    .update({ status: decision })
+    .eq("id", requestId)
+    .eq("status", "Pending");
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidatePath("/technician");
+  revalidatePath("/technicians");
+  return {
+    success: true,
+    message:
+      decision === "Approved"
+        ? "PTO request approved."
+        : "PTO request denied.",
+  };
 }

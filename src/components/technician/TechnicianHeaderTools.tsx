@@ -81,7 +81,7 @@ function isCompletedTicket(status: string | null | undefined): boolean {
 /**
  * Notifications tab order:
  * 1) Past due (highest urgency first)
- * 2) Security risk (non–past-due)
+ * 2) Security risk (nonΓÇôpast-due)
  * 3) Remaining assignments by priority
  */
 function compareWorkNotifications(
@@ -139,11 +139,11 @@ function buildOverdueBody(ticket: ServiceTicket): string {
   const openDays = daysOpen(opened) ?? 0;
   const dueDays = getWorkOutstandingDueDays(ticket.priority);
   const parts = [
-    `${ticket.ticket_number} — ${ticket.title}`,
-    `${ticket.priority ?? "Medium"} priority · ${ticket.status ?? "Open"}`,
+    `${ticket.ticket_number} ΓÇö ${ticket.title}`,
+    `${ticket.priority ?? "Medium"} priority ┬╖ ${ticket.status ?? "Open"}`,
     dueDays === 0
-      ? `Due immediately · open ${openDays === 0 ? "today" : `${openDays} day${openDays === 1 ? "" : "s"}`}`
-      : `Due within ${dueDays} day${dueDays === 1 ? "" : "s"} · open ${openDays} day${openDays === 1 ? "" : "s"}`,
+      ? `Due immediately ┬╖ open ${openDays === 0 ? "today" : `${openDays} day${openDays === 1 ? "" : "s"}`}`
+      : `Due within ${dueDays} day${dueDays === 1 ? "" : "s"} ┬╖ open ${openDays} day${openDays === 1 ? "" : "s"}`,
   ];
 
   if (ticket.requester_name) {
@@ -156,7 +156,7 @@ function buildOverdueBody(ticket: ServiceTicket): string {
     parts.push("Security incident");
   }
 
-  return parts.join(" · ");
+  return parts.join(" ┬╖ ");
 }
 
 export function TechnicianHeaderTools({
@@ -270,7 +270,7 @@ export function TechnicianHeaderTools({
           title: ticket.cybersecurity_incident
             ? `Security work assigned: ${ticket.title}`
             : `New assignment: ${ticket.title}`,
-          body: `${ticket.ticket_number} · ${ticket.priority ?? "Medium"} priority · ${ticket.status}`,
+          body: `${ticket.ticket_number} ┬╖ ${ticket.priority ?? "Medium"} priority ┬╖ ${ticket.status}`,
           createdAt: new Date(receivedAtMs).toISOString(),
           receivedAtMs,
           security: Boolean(ticket.cybersecurity_incident),

@@ -27,13 +27,15 @@ import {
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { AdminTechnicianPortalSwitcher } from "@/components/admin/AdminTechnicianPortalSwitcher";
 import { NexusLogo } from "@/components/brand/NexusLogo";
 import { DemoRoleSwitcher } from "@/components/DemoRoleSwitcher";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { TechnicianHeaderTools } from "@/components/technician/TechnicianHeaderTools";
 import {
   getNavForRole,
+  NAV_ITEMS,
   ROLE_LABELS,
   type NavItem,
 } from "@/lib/auth/roles";
@@ -254,8 +256,27 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const navItems = getNavForRole(activeRole);
-  const techTheme = activeRole === "technician";
+  const navItems = useMemo(() => {
+    const base = getNavForRole(activeRole);
+    // Real admins always keep My Work in the sidebar, even when Demo Role
+    // is Manager / Executive / etc.
+    if (realRole !== "administrator") return base;
+    if (base.some((item) => item.href === "/technician")) return base;
+    const myWork = NAV_ITEMS.find((item) => item.href === "/technician");
+    if (!myWork) return base;
+    const techIdx = base.findIndex((item) => item.href === "/technicians");
+    if (techIdx >= 0) {
+      const next = [...base];
+      next.splice(techIdx + 1, 0, myWork);
+      return next;
+    }
+    return [...base, myWork];
+  }, [activeRole, realRole]);
+  const onTechnicianPortal =
+    pathname === "/technician" || pathname.startsWith("/technician/");
+  const techTheme =
+    activeRole === "technician" ||
+    (realRole === "administrator" && onTechnicianPortal);
 
   async function handleLogout() {
     const supabase = createClient();
@@ -338,7 +359,10 @@ export function AppShell({
               {pageTitle}
             </h1>
           </div>
-          <div className="flex flex-none items-center gap-1">
+          <div className="flex flex-none items-center gap-2">
+            {realRole === "administrator" && onTechnicianPortal ? (
+              <AdminTechnicianPortalSwitcher variant="header" />
+            ) : null}
             {techTheme ? (
               <TechnicianHeaderTools technicianId={technicianId} />
             ) : null}

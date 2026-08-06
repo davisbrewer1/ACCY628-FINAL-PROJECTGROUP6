@@ -13,6 +13,7 @@ import { PriorityBadge } from "@/components/PriorityBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ServiceDatePicker } from "@/components/tickets/ServiceDatePicker";
 import { useToast } from "@/components/Toast";
 import { contractsUnlockPortal } from "@/lib/customer-access";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
@@ -488,22 +489,12 @@ export default function PortalPage() {
             <FormField label="Location" htmlFor="location">
               <input id="location" name="location" className="input input-bordered w-full" />
             </FormField>
-            <FormField label="Severity" htmlFor="severity">
-              <select id="severity" name="severity" className="select select-bordered w-full" defaultValue="Medium">
-                <option value="Critical">Critical</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </FormField>
-            <FormField label="Priority requested" htmlFor="priority">
-              <select id="priority" name="priority" className="select select-bordered w-full" defaultValue="Medium">
-                <option value="Critical">Critical</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </FormField>
+            <div>
+              <p className="mb-2 text-sm font-medium">
+                When do you need service? <span className="text-error">*</span>
+              </p>
+              <ServiceDatePicker />
+            </div>
             <FormField label="Preferred contact method" htmlFor="service_method">
               <select id="service_method" name="service_method" className="select select-bordered w-full" defaultValue="Email">
                 <option value="Email">Email</option>

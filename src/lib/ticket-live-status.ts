@@ -1,6 +1,8 @@
+import { addMinutes, format } from "date-fns";
 import { formatDate, formatDateTime } from "@/lib/format";
 import {
   getWindowById,
+  parseScheduledSlot,
   parseWindowSpec,
 } from "@/lib/technician-schedule";
 import type { ServiceTicket, WorkEntry } from "@/lib/types";
@@ -13,6 +15,21 @@ export interface TicketLiveStep {
   detail: string;
   state: LiveStepState;
   at?: string | null;
+}
+
+/** How early a tech may arrive vs scheduled start. */
+export const ARRIVAL_EARLY_BUFFER_MINUTES = 15;
+/** Extra wait window after scheduled start for travel / prior-job delays. */
+export const ARRIVAL_LATE_BUFFER_MINUTES = 45;
+
+export interface ScheduledVisitExpectation {
+  scheduledStart: Date;
+  windowStart: Date;
+  windowEnd: Date;
+  durationHours: number;
+  headline: string;
+  detail: string;
+  rangeLabel: string;
 }
 
 function isOnsiteMethod(method: string | null | undefined): boolean {
@@ -57,6 +74,75 @@ export function formatTicketScheduleForClient(
   return when;
 }
 
+function formatExpectationRange(start: Date, end: Date): string {
+  const sameDay = format(start, "yyyy-MM-dd") === format(end, "yyyy-MM-dd");
+  if (sameDay) {
+    return `${format(start, "EEE, MMM d")} · ${format(start, "h:mm a")} – ${format(end, "h:mm a")}`;
+  }
+  return `${format(start, "EEE, MMM d h:mm a")} – ${format(end, "EEE, MMM d h:mm a")}`;
+}
+
+/**
+ * Client-facing arrival / start window once a technician places the job on their schedule.
+ * Includes early/late buffers for scheduling delays.
+ */
+export function getScheduledVisitExpectation(
+  ticket: ServiceTicket,
+  technicianName?: string | null,
+): ScheduledVisitExpectation | null {
+  const parsed = parseScheduledSlot(ticket);
+  if (!parsed) return null;
+
+  const scheduledStart = parsed.day
+    ? (() => {
+        const start = new Date(parsed.day);
+        start.setHours(parsed.window.startHour, 0, 0, 0);
+        return start;
+      })()
+    : new Date(ticket.scheduled_start!);
+
+  // Prefer persisted ISO start when present (more accurate than rebuilt local day).
+  const fromIso = ticket.scheduled_start
+    ? new Date(ticket.scheduled_start)
+    : null;
+  const start =
+    fromIso && !Number.isNaN(fromIso.getTime()) ? fromIso : scheduledStart;
+
+  const durationHours = Math.max(1, parsed.durationHours);
+  const windowStart = addMinutes(start, -ARRIVAL_EARLY_BUFFER_MINUTES);
+  const windowEnd = addMinutes(
+    start,
+    durationHours * 60 + ARRIVAL_LATE_BUFFER_MINUTES,
+  );
+  const rangeLabel = formatExpectationRange(windowStart, windowEnd);
+  const techName = technicianName?.trim() || "Your technician";
+  const method = ticket.service_method;
+  const onsite = isOnsiteMethod(method);
+  const remote = isRemoteMethod(method);
+
+  const headline = onsite
+    ? `Expect ${techName} on site`
+    : remote
+      ? `Expect remote support from ${techName}`
+      : `Expect ${techName}`;
+
+  const detail = onsite
+    ? `${techName} scheduled this visit for ${format(start, "h:mm a")}. Please be ready between ${rangeLabel}. This window includes a buffer for traffic and prior-job delays.`
+    : remote
+      ? `${techName} scheduled remote support starting around ${format(start, "h:mm a")}. Expect contact between ${rangeLabel}. This window includes a buffer for scheduling delays.`
+      : `${techName} scheduled this work for ${format(start, "h:mm a")}. Expect service between ${rangeLabel}. This window includes a buffer for scheduling delays.`;
+
+  return {
+    scheduledStart: start,
+    windowStart,
+    windowEnd,
+    durationHours,
+    headline,
+    detail,
+    rangeLabel,
+  };
+}
+
 /**
  * Builds a client-friendly progress timeline for an open support ticket.
  */
@@ -73,12 +159,11 @@ export function buildTicketLiveSteps(
     status === "Waiting on Approval";
   const isEscalated = status === "Escalated";
   const hasAssignment = Boolean(ticket.assigned_technician_id);
-  const scheduleLabel = formatTicketScheduleForClient(ticket);
-  const hasSchedule = Boolean(scheduleLabel);
+  const expectation = getScheduledVisitExpectation(ticket, technicianName);
+  const hasSchedule = Boolean(expectation);
   const hasReviewSignal = Boolean(
     ticket.responded_at ||
       hasAssignment ||
-      hasSchedule ||
       workEntries.length > 0 ||
       (status !== "New" && status !== "Closed"),
   );
@@ -94,7 +179,6 @@ export function buildTicketLiveSteps(
   const remote = isRemoteMethod(method);
   const techName = technicianName ?? "A technician";
   const techLabel = technicianName ?? "a technician";
-  const readyForWork = hasAssignment || hasSchedule;
 
   const steps: TicketLiveStep[] = [
     {
@@ -106,10 +190,10 @@ export function buildTicketLiveSteps(
     },
     {
       id: "reviewed",
-      label: "Manager reviewed the problem",
+      label: "Technician reviewed the problem",
       detail: hasReviewSignal
         ? `Support has reviewed the reported issue${ticket.responded_at ? " and acknowledged the ticket" : ""}.`
-        : "Waiting for a manager to review the problem details.",
+        : "Waiting for a technician to review the problem details.",
       state: hasReviewSignal ? "complete" : "active",
       at: ticket.responded_at,
     },
@@ -118,59 +202,53 @@ export function buildTicketLiveSteps(
       label: "Technician assigned",
       detail: hasAssignment
         ? `${techName} has been assigned to this ticket.`
-        : hasSchedule
-          ? "A technician has this ticket on their schedule."
-          : "A technician has not been assigned yet.",
-      state: hasAssignment || hasSchedule
+        : "A technician has not been assigned yet.",
+      state: hasAssignment
         ? "complete"
         : hasReviewSignal
           ? "active"
           : "upcoming",
-      at: hasAssignment || hasSchedule
-        ? ticket.responded_at ?? ticket.scheduled_start ?? ticket.opened_at
-        : null,
-    },
-    {
-      id: "scheduled",
-      label: hasSchedule
-        ? "Added to technician schedule"
-        : "Waiting to be scheduled",
-      detail: hasSchedule
-        ? `${techName} added this support ticket to their schedule for ${scheduleLabel}.`
-        : hasAssignment
-          ? "Your assigned technician has not added this ticket to their schedule yet."
-          : "After assignment, the technician will add this ticket to their work schedule.",
-      state: hasSchedule
-        ? hasStartedWork
-          ? "complete"
-          : "active"
-        : hasAssignment
-          ? "active"
-          : "upcoming",
-      at: hasSchedule ? ticket.scheduled_start : null,
+      at: hasAssignment ? ticket.responded_at ?? ticket.opened_at : null,
     },
   ];
 
+  if (hasSchedule && expectation) {
+    steps.push({
+      id: "scheduled",
+      label: expectation.headline,
+      detail: expectation.detail,
+      state: hasStartedWork || isResolved ? "complete" : "active",
+      at: ticket.scheduled_start,
+    });
+  }
+
   if (onsite) {
     // Onsite path: transit first, then arrived / work in progress.
+    const waitingForSchedule = hasAssignment && !hasSchedule && !hasStartedWork;
     steps.push({
       id: "en_route",
       label: "Technician on the way",
-      detail: readyForWork
-        ? hasStartedWork
-          ? `${techName} was dispatched and traveled to your location.`
-          : hasSchedule
-            ? `${techName} is scheduled and will travel to your location.`
-            : `${techName} is on the way to your location.`
-        : "After assignment, the technician will travel to your site.",
-      state: !readyForWork
+      detail: hasStartedWork
+        ? `${techName} was dispatched and traveled to your location.`
+        : hasSchedule && expectation
+          ? `${techName} will travel to your location for the scheduled visit (${expectation.rangeLabel}).`
+          : hasAssignment
+            ? `${techName} will head to your location once the visit is placed on their schedule.`
+            : "After assignment, the technician will travel to your site.",
+      state: !hasAssignment
         ? "upcoming"
         : hasStartedWork
           ? "complete"
           : hasSchedule
             ? "upcoming"
-            : "active",
-      at: readyForWork ? ticket.responded_at ?? ticket.opened_at : null,
+            : waitingForSchedule
+              ? "upcoming"
+              : "active",
+      at: hasStartedWork
+        ? ticket.responded_at ?? ticket.opened_at
+        : hasSchedule
+          ? ticket.scheduled_start
+          : null,
     });
 
     steps.push({
@@ -180,9 +258,11 @@ export function buildTicketLiveSteps(
         ? latestWork?.work_performed
           ? `${techName} has arrived on site and is working on this problem: ${latestWork.work_performed}`
           : `${techName} has arrived on site and is actively working on this problem.`
-        : readyForWork
-          ? "Work in progress begins once the technician arrives on site."
-          : "On-site work begins after the technician is assigned and arrives.",
+        : hasSchedule && expectation
+          ? `On-site work begins when ${techName} arrives. Be ready during ${expectation.rangeLabel}.`
+          : hasAssignment
+            ? "Work in progress begins once the technician arrives on site."
+            : "On-site work begins after the technician is assigned and arrives.",
       state: hasStartedWork
         ? isResolved || isWaiting || isEscalated
           ? "complete"
@@ -191,7 +271,6 @@ export function buildTicketLiveSteps(
       at: latestWork?.work_date ?? latestWork?.created_at ?? null,
     });
   } else if (remote) {
-    // Virtual path: skip "on the way".
     steps.push({
       id: "virtual_wip",
       label: "Technician working virtually",
@@ -199,20 +278,23 @@ export function buildTicketLiveSteps(
         ? latestWork?.work_performed
           ? `${techName} is virtually connected and working on this problem: ${latestWork.work_performed}`
           : `${techName} is virtually connected and actively working on this problem remotely.`
-        : readyForWork
-          ? hasSchedule
-            ? `${capitalizeName(techLabel)} has this ticket on their schedule and will begin virtual work at the scheduled time.`
-            : `${capitalizeName(techLabel)} will begin virtual work shortly.`
-          : "Virtual work begins after a technician is assigned.",
+        : hasSchedule && expectation
+          ? `${capitalizeName(techLabel)} is scheduled to begin remote support between ${expectation.rangeLabel}.`
+          : hasAssignment
+            ? `${capitalizeName(techLabel)} will begin virtual work shortly.`
+            : "Virtual work begins after a technician is assigned.",
       state: hasStartedWork
         ? isResolved || isWaiting || isEscalated
           ? "complete"
           : "active"
-        : "upcoming",
+        : hasSchedule
+          ? "upcoming"
+          : hasAssignment
+            ? "active"
+            : "upcoming",
       at: latestWork?.work_date ?? latestWork?.created_at ?? null,
     });
   } else {
-    // Method not known yet — no transit step.
     steps.push({
       id: "working",
       label: "Technician working the problem",
@@ -220,16 +302,20 @@ export function buildTicketLiveSteps(
         ? latestWork?.work_performed
           ? `${techName} is actively working on this problem: ${latestWork.work_performed}`
           : `${techName} is actively working on this problem.`
-        : readyForWork
-          ? hasSchedule
-            ? `${capitalizeName(techLabel)} has this ticket on their schedule and will begin work at the scheduled time.`
-            : `${capitalizeName(techLabel)} is preparing to begin work.`
-          : "Work begins after a technician is assigned.",
+        : hasSchedule && expectation
+          ? `${capitalizeName(techLabel)} is scheduled between ${expectation.rangeLabel}.`
+          : hasAssignment
+            ? `${capitalizeName(techLabel)} is preparing to begin work.`
+            : "Work begins after a technician is assigned.",
       state: hasStartedWork
         ? isResolved || isWaiting || isEscalated
           ? "complete"
           : "active"
-        : "upcoming",
+        : hasSchedule
+          ? "upcoming"
+          : hasAssignment
+            ? "active"
+            : "upcoming",
       at: latestWork?.work_date ?? latestWork?.created_at ?? null,
     });
   }
@@ -308,10 +394,19 @@ export function buildTicketLiveSteps(
 }
 
 export function getActiveLiveSummary(steps: TicketLiveStep[]): string {
+  const scheduled = steps.find(
+    (step) => step.id === "scheduled" && step.state === "active",
+  );
+  if (scheduled) return scheduled.detail;
   const active = steps.find((step) => step.state === "active");
   if (active) return active.detail;
-  const lastComplete = [...steps].reverse().find((step) => step.state === "complete");
-  return lastComplete?.detail ?? "Your ticket is being tracked by the Nexus support team.";
+  const lastComplete = [...steps]
+    .reverse()
+    .find((step) => step.state === "complete");
+  return (
+    lastComplete?.detail ??
+    "Your ticket is being tracked by the Nexus support team."
+  );
 }
 
 export function formatLiveStepTime(value: string | null | undefined): string | null {

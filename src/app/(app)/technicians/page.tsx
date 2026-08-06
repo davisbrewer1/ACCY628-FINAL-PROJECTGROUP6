@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Plus, Star, Trash2 } from "lucide-react";
-import {
-  createTechnician,
-  deleteTechnician,
-} from "@/app/actions/technicians";
+import { Check, Plus, Star, Trash2, X } from "lucide-react";
+import { reviewPtoRequest } from "@/app/actions/pto";
+import { createTechnician, deleteTechnician } from "@/app/actions/technicians";
+import { AdminTechnicianPortalSwitcher } from "@/components/admin/AdminTechnicianPortalSwitcher";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
@@ -13,7 +12,12 @@ import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
 import { isThisMonth } from "@/lib/dashboard-stats";
-import { formatCurrency, formatDate, formatHours, formatPercent } from "@/lib/format";
+import {
+  formatCurrency,
+  formatDate,
+  formatHours,
+  formatPercent,
+} from "@/lib/format";
 import { getOpenTickets } from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -21,8 +25,13 @@ import {
   formatResponseDuration,
   formatStarRating,
 } from "@/lib/technician-metrics";
-import type { ServiceTicket, Technician, TicketRating, WorkEntry } from "@/lib/types";
-
+import type {
+  ServiceTicket,
+  Technician,
+  TechnicianPtoRequest,
+  TicketRating,
+  WorkEntry,
+} from "@/lib/types";
 /** Standard available hours per month for utilization (8 hrs × 20 days). */
 const MONTHLY_CAPACITY_HOURS = 160;
 
@@ -38,6 +47,10 @@ interface TechCard extends Technician {
   recentComments: Array<{ rating: number; comment: string; at: string }>;
 }
 
+interface PtoRow extends TechnicianPtoRequest {
+  technicianName: string;
+}
+
 const MANAGER_ROLES = new Set([
   "administrator",
   "service_manager",
@@ -45,7 +58,7 @@ const MANAGER_ROLES = new Set([
 ]);
 
 export default function TechniciansPage() {
-  const { activeRole } = useDemoRole();
+  const { activeRole, realRole } = useDemoRole();
   const { showToast } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
@@ -53,13 +66,15 @@ export default function TechniciansPage() {
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [ticketRatings, setTicketRatings] = useState<TicketRating[]>([]);
+  const [ptoRequests, setPtoRequests] = useState<TechnicianPtoRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const canManage = MANAGER_ROLES.has(activeRole);
+  const isAdmin = realRole === "administrator";
 
   async function loadData() {
     const supabase = createClient();
-    const [tech, t, w, ratingsRes] = await Promise.all([
+    const [tech, t, w, ratingsRes, pto] = await Promise.all([
       supabase.from("technicians").select("*").order("technician_name"),
       supabase.from("service_tickets").select("*"),
       supabase.from("work_entries").select("*"),
@@ -67,17 +82,53 @@ export default function TechniciansPage() {
         .from("ticket_ratings")
         .select("*")
         .order("created_at", { ascending: false }),
+      supabase
+        .from("technician_pto_requests")
+        .select("*")
+        .order("created_at", { ascending: false }),
     ]);
     setTechnicians(tech.data ?? []);
     setTickets(t.data ?? []);
     setWorkEntries(w.data ?? []);
     setTicketRatings((ratingsRes.data ?? []) as TicketRating[]);
+    setPtoRequests((pto.data ?? []) as TechnicianPtoRequest[]);
     setLoading(false);
   }
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const techNameById = useMemo(() => {
+    const map = new Map(technicians.map((t) => [t.id, t.technician_name]));
+    return map;
+  }, [technicians]);
+
+  const ptoRows: PtoRow[] = useMemo(
+    () =>
+      ptoRequests.map((request) => ({
+        ...request,
+        technicianName:
+          techNameById.get(request.technician_id) ?? "Unknown technician",
+      })),
+    [ptoRequests, techNameById],
+  );
+
+  const pendingPto = useMemo(
+    () => ptoRows.filter((request) => request.status === "Pending"),
+    [ptoRows],
+  );
+
+  const recentPtoDecisions = useMemo(
+    () =>
+      ptoRows
+        .filter(
+          (request) =>
+            request.status === "Approved" || request.status === "Denied",
+        )
+        .slice(0, 8),
+    [ptoRows],
+  );
 
   const cards: TechCard[] = useMemo(() => {
     const open = getOpenTickets(tickets);
@@ -124,11 +175,6 @@ export default function TechniciansPage() {
       };
     });
   }, [technicians, tickets, workEntries, ticketRatings]);
-
-  const unassignedCount = useMemo(
-    () => getOpenTickets(tickets).filter((t) => !t.assigned_technician_id).length,
-    [tickets],
-  );
 
   const teamUtilization = useMemo(() => {
     const active = cards.filter((c) => c.active);
@@ -200,6 +246,21 @@ export default function TechniciansPage() {
     });
   }
 
+  function handlePtoReview(
+    request: PtoRow,
+    decision: "Approved" | "Denied",
+  ) {
+    startTransition(async () => {
+      const result = await reviewPtoRequest(request.id, decision);
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+      } else {
+        showToast(result.message, "error");
+      }
+    });
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -210,6 +271,13 @@ export default function TechniciansPage() {
 
   return (
     <div className="space-y-6">
+      {isAdmin ? (
+        <AdminTechnicianPortalSwitcher
+          variant="panel"
+          navigateOnChange
+        />
+      ) : null}
+
       <PageHeader
         title="Technician capacity"
         description="Open load, utilization, client portal star ratings, and average ticket response time."
@@ -266,15 +334,123 @@ export default function TechniciansPage() {
         </div>
       </div>
 
-      {unassignedCount > 0 ? (
-        <div className="alert alert-warning text-sm">
-          <span>
-            {unassignedCount} unassigned open ticket{unassignedCount === 1 ? "" : "s"} in the backlog.{" "}
-            <a href="/service-tickets?filter=unassigned" className="link font-medium">
-              Assign now
-            </a>
-          </span>
-        </div>
+      {canManage ? (
+        <section className="card border border-violet-300/40 bg-base-100 shadow-sm">
+          <div className="card-body gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="card-title text-base">PTO requests</h2>
+                <p className="text-sm text-base-content/70">
+                  Review time-off submitted from My Work. Approve or deny pending
+                  requests.
+                </p>
+              </div>
+              <div className="badge badge-outline gap-1">
+                {pendingPto.length} pending
+              </div>
+            </div>
+
+            {pendingPto.length === 0 ? (
+              <p className="rounded-box border border-dashed border-base-300 bg-base-200/40 px-4 py-6 text-center text-sm text-base-content/60">
+                No pending PTO requests right now.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-box border border-base-300">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Technician</th>
+                      <th>Dates</th>
+                      <th>Hours</th>
+                      <th>Reason</th>
+                      <th>Submitted</th>
+                      <th className="text-right">Decision</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingPto.map((request) => (
+                      <tr key={request.id}>
+                        <td className="font-medium">{request.technicianName}</td>
+                        <td>
+                          {formatDate(request.start_date)}
+                          {request.start_date !== request.end_date
+                            ? ` – ${formatDate(request.end_date)}`
+                            : ""}
+                        </td>
+                        <td>{formatHours(request.hours_requested)}</td>
+                        <td className="max-w-xs">
+                          <span className="line-clamp-2 text-sm text-base-content/70">
+                            {request.reason?.trim() || "—"}
+                          </span>
+                        </td>
+                        <td className="text-sm text-base-content/60">
+                          {formatDate(request.created_at)}
+                        </td>
+                        <td>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <button
+                              type="button"
+                              className="btn btn-success btn-sm"
+                              disabled={isPending}
+                              onClick={() =>
+                                handlePtoReview(request, "Approved")
+                              }
+                            >
+                              <Check className="size-4" />
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-error btn-outline btn-sm"
+                              disabled={isPending}
+                              onClick={() =>
+                                handlePtoReview(request, "Denied")
+                              }
+                            >
+                              <X className="size-4" />
+                              Deny
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {recentPtoDecisions.length > 0 ? (
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-base-content/80">
+                  Recent decisions
+                </h3>
+                <ul className="space-y-2">
+                  {recentPtoDecisions.map((request) => (
+                    <li
+                      key={request.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-box border border-base-300 bg-base-200/40 px-3 py-2 text-sm"
+                    >
+                      <span>
+                        <span className="font-medium">
+                          {request.technicianName}
+                        </span>
+                        <span className="text-base-content/60">
+                          {" "}
+                          · {formatDate(request.start_date)}
+                          {request.start_date !== request.end_date
+                            ? ` – ${formatDate(request.end_date)}`
+                            : ""}{" "}
+                          · {formatHours(request.hours_requested)}
+                        </span>
+                      </span>
+                      <StatusBadge status={request.status} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </section>
       ) : null}
 
       {cards.length === 0 ? (
@@ -368,13 +544,17 @@ export default function TechniciansPage() {
                 <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                   <div className="rounded-box bg-base-200/60 p-2">
                     <div className="text-xs text-base-content/60">Open load</div>
-                    <div className={`text-lg font-semibold ${tech.openLoad >= 5 ? "text-warning" : ""}`}>
+                    <div
+                      className={`text-lg font-semibold ${tech.openLoad >= 5 ? "text-warning" : ""}`}
+                    >
                       {tech.openLoad}
                     </div>
                   </div>
                   <div className="rounded-box bg-base-200/60 p-2">
                     <div className="text-xs text-base-content/60">Critical</div>
-                    <div className={`text-lg font-semibold ${tech.criticalLoad > 0 ? "text-error" : ""}`}>
+                    <div
+                      className={`text-lg font-semibold ${tech.criticalLoad > 0 ? "text-error" : ""}`}
+                    >
                       {tech.criticalLoad}
                     </div>
                   </div>
@@ -434,8 +614,16 @@ export default function TechniciansPage() {
               <span>{error}</span>
             </div>
           ) : null}
-          <form action={handleSubmit} className="form-grid mt-4 grid gap-4 sm:grid-cols-2">
-            <FormField label="Name" htmlFor="technician_name" required className="sm:col-span-2">
+          <form
+            action={handleSubmit}
+            className="form-grid mt-4 grid gap-4 sm:grid-cols-2"
+          >
+            <FormField
+              label="Name"
+              htmlFor="technician_name"
+              required
+              className="sm:col-span-2"
+            >
               <input
                 id="technician_name"
                 name="technician_name"
@@ -443,7 +631,11 @@ export default function TechniciansPage() {
                 required
               />
             </FormField>
-            <FormField label="Specialty" htmlFor="specialty" className="sm:col-span-2">
+            <FormField
+              label="Specialty"
+              htmlFor="specialty"
+              className="sm:col-span-2"
+            >
               <input
                 id="specialty"
                 name="specialty"
@@ -451,7 +643,11 @@ export default function TechniciansPage() {
                 placeholder="Networking, Security, General support…"
               />
             </FormField>
-            <FormField label="Internal hourly cost" htmlFor="internal_hourly_cost" required>
+            <FormField
+              label="Internal hourly cost"
+              htmlFor="internal_hourly_cost"
+              required
+            >
               <input
                 id="internal_hourly_cost"
                 name="internal_hourly_cost"
@@ -463,7 +659,10 @@ export default function TechniciansPage() {
                 defaultValue={75}
               />
             </FormField>
-            <FormField label="Billable hourly rate (optional)" htmlFor="hourly_rate">
+            <FormField
+              label="Billable hourly rate (optional)"
+              htmlFor="hourly_rate"
+            >
               <input
                 id="hourly_rate"
                 name="hourly_rate"
@@ -492,7 +691,11 @@ export default function TechniciansPage() {
               >
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary" disabled={isPending}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isPending}
+              >
                 {isPending ? (
                   <span className="loading loading-spinner loading-sm" />
                 ) : (

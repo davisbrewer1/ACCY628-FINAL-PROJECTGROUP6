@@ -13,6 +13,10 @@ export const NOTIFICATION_TYPES = [
   "work_approval",
   "manager_message",
   "upcoming_task",
+  "work_past_due",
+  "schedule_priority_override",
+  "ticket_unassigned",
+  "customer_reschedule",
 ] as const satisfies readonly NotificationType[];
 
 export interface CreateNotificationInput {

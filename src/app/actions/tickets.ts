@@ -104,6 +104,19 @@ export async function createServiceTicket(
   const assignedTech =
     String(formData.get("assigned_technician_id") ?? "").trim() || null;
 
+  let maxHours: number | null = null;
+  if (assignedTech) {
+    const maxHoursRaw = Number(formData.get("max_hours"));
+    if (!Number.isInteger(maxHoursRaw) || maxHoursRaw < 1 || maxHoursRaw > 9) {
+      return {
+        success: false,
+        message:
+          "When assigning a technician, set a maximum of 1–9 hours for the task.",
+      };
+    }
+    maxHours = maxHoursRaw;
+  }
+
   const { error } = await supabase.from("service_tickets").insert({
     ticket_number: ticketNumber,
     customer_id: customerId,
@@ -114,6 +127,7 @@ export async function createServiceTicket(
     priority,
     service_method: String(formData.get("service_method") ?? "").trim() || null,
     assigned_technician_id: assignedTech,
+    max_hours: maxHours,
     opened_at: openedAt,
     target_response_at: manualResponse || autoSla.targetResponseAt,
     target_resolution_at: manualResolution || autoSla.targetResolutionAt,
@@ -195,6 +209,23 @@ export async function createPortalTicket(
     data: { user },
   } = await supabase.auth.getUser();
 
+  const isAsap = String(formData.get("is_asap") ?? "").trim() === "true";
+  const lockedRaw = String(formData.get("locked_service_date") ?? "").trim();
+  const lockedDate = /^\d{4}-\d{2}-\d{2}$/.test(lockedRaw) ? lockedRaw : null;
+
+  if (!isAsap && !lockedDate) {
+    return {
+      success: false,
+      message: "Choose ASAP-Emergency or an available service day.",
+    };
+  }
+
+  // ASAP is always Critical. Dated requests default to Medium until a manager
+  // sets severity at assign time (priority form field is optional legacy).
+  const priority = isAsap
+    ? "Critical"
+    : String(formData.get("priority") ?? "Medium").trim() || "Medium";
+
   const { error } = await supabase.from("service_tickets").insert({
     ticket_number: ticketNumber,
     customer_id: customerId,
@@ -202,11 +233,16 @@ export async function createPortalTicket(
     title,
     description: String(formData.get("description") ?? "").trim() || null,
     category,
-    priority: String(formData.get("priority") ?? "Medium").trim(),
+    priority,
     service_method: String(formData.get("service_method") ?? "").trim() || null,
     location: String(formData.get("location") ?? "").trim() || null,
     requester_name: String(formData.get("requester_name") ?? "").trim() || null,
-    severity: String(formData.get("severity") ?? "").trim() || null,
+    severity: priority,
+    is_asap: isAsap,
+    locked_service_date: isAsap ? null : lockedDate,
+    original_requested_date: isAsap ? null : lockedDate,
+    scheduled_off_requested_day: false,
+    customer_rescheduled: false,
     ai_involved:
       requestType === "ai" || formData.get("ai_involved") === "true",
     cybersecurity_incident:
@@ -222,8 +258,13 @@ export async function createPortalTicket(
     return { success: false, message: error.message };
   }
 
-  revalidateTicketPaths("/portal", "/end-user");
-  return { success: true, message: "Support request submitted." };
+  revalidateTicketPaths("/portal", "/end-user", "/service-tickets");
+  return {
+    success: true,
+    message: isAsap
+      ? "Emergency request submitted (ASAP)."
+      : `Support request submitted for ${lockedDate}.`,
+  };
 }
 
 export async function updateTicketStatus(
@@ -246,13 +287,14 @@ export async function updateTicketStatus(
     return { success: false, message: error.message };
   }
 
-  revalidateTicketPaths();
+  revalidateTicketPaths("/end-user", "/end-user/support");
   return { success: true, message: "Ticket status updated." };
 }
 
 export async function assignTickets(
   ticketIds: string[],
   technicianId: string,
+  options: { priority: string; maxHours: number },
 ): Promise<ActionResult> {
   if (ticketIds.length === 0) {
     return { success: false, message: "Select at least one ticket to assign." };
@@ -261,23 +303,72 @@ export async function assignTickets(
     return { success: false, message: "Select a technician." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("service_tickets")
-    .update({
-      assigned_technician_id: technicianId,
-      status: "Assigned",
-    })
-    .in("id", ticketIds);
-
-  if (error) {
-    return { success: false, message: error.message };
+  const priority = normalizePriority(options.priority);
+  const maxHours = Math.round(Number(options.maxHours));
+  if (!Number.isInteger(maxHours) || maxHours < 1 || maxHours > 9) {
+    return {
+      success: false,
+      message: "Set a maximum of 1–9 hours for this assignment.",
+    };
   }
 
-  revalidateTicketPaths();
+  const supabase = await createClient();
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("service_tickets")
+    .select("id, is_asap")
+    .in("id", ticketIds);
+
+  if (fetchError) {
+    return { success: false, message: fetchError.message };
+  }
+
+  // ASAP tickets stay Critical regardless of the modal severity pick.
+  const asapIds = new Set(
+    (existing ?? [])
+      .filter((row) => Boolean(row.is_asap))
+      .map((row) => String(row.id)),
+  );
+  const normalIds = ticketIds.filter((id) => !asapIds.has(id));
+  const criticalIds = ticketIds.filter((id) => asapIds.has(id));
+
+  if (normalIds.length > 0) {
+    const { error } = await supabase
+      .from("service_tickets")
+      .update({
+        assigned_technician_id: technicianId,
+        status: "Assigned",
+        priority,
+        severity: priority,
+        max_hours: maxHours,
+      })
+      .in("id", normalIds);
+    if (error) {
+      return { success: false, message: error.message };
+    }
+  }
+
+  if (criticalIds.length > 0) {
+    const { error } = await supabase
+      .from("service_tickets")
+      .update({
+        assigned_technician_id: technicianId,
+        status: "Assigned",
+        priority: "Critical",
+        severity: "Critical",
+        max_hours: maxHours,
+        is_asap: true,
+      })
+      .in("id", criticalIds);
+    if (error) {
+      return { success: false, message: error.message };
+    }
+  }
+
+  revalidateTicketPaths("/end-user", "/end-user/support");
   return {
     success: true,
-    message: `Assigned ${ticketIds.length} ticket${ticketIds.length === 1 ? "" : "s"}.`,
+    message: `Assigned ${ticketIds.length} ticket${ticketIds.length === 1 ? "" : "s"} (${criticalIds.length > 0 && normalIds.length === 0 ? "Critical ASAP" : priority}, max ${maxHours}h).`,
   };
 }
 
@@ -375,6 +466,10 @@ export async function updateTicketSchedule(input: {
   swapTicketId?: string | null;
   swapScheduledStart?: string | null;
   swapScheduledWindow?: string | null;
+  acknowledgedBackwardMoveWarning?: boolean;
+  warningFromLabel?: string;
+  warningToLabel?: string;
+  warningPriority?: string;
 }): Promise<ActionResult> {
   try {
     const supabase = await createClient();
@@ -399,6 +494,8 @@ export async function updateTicketSchedule(input: {
       scheduled_start: string | null;
       scheduled_window?: string | null;
       status?: string;
+      scheduled_off_requested_day?: boolean;
+      customer_rescheduled?: boolean;
     } = {
       scheduled_start: input.scheduledStart,
     };
@@ -409,6 +506,28 @@ export async function updateTicketSchedule(input: {
 
     if (input.scheduledStart) {
       updates.status = "Assigned";
+      updates.customer_rescheduled = false;
+    }
+
+    const { data: ticketBefore, error: ticketFetchError } = await supabase
+      .from("service_tickets")
+      .select(
+        "id, ticket_number, title, priority, assigned_technician_id, locked_service_date, is_asap",
+      )
+      .eq("id", ticketId)
+      .maybeSingle();
+
+    if (ticketFetchError) {
+      return { success: false, message: ticketFetchError.message };
+    }
+
+    if (input.scheduledStart && ticketBefore?.locked_service_date && !ticketBefore.is_asap) {
+      const scheduledDay = new Date(input.scheduledStart);
+      const scheduledKey = `${scheduledDay.getFullYear()}-${String(scheduledDay.getMonth() + 1).padStart(2, "0")}-${String(scheduledDay.getDate()).padStart(2, "0")}`;
+      const lockedKey = String(ticketBefore.locked_service_date).slice(0, 10);
+      updates.scheduled_off_requested_day = scheduledKey !== lockedKey;
+    } else if (input.scheduledStart) {
+      updates.scheduled_off_requested_day = false;
     }
 
     const { error } = await supabase
@@ -442,11 +561,126 @@ export async function updateTicketSchedule(input: {
       }
     }
 
-    revalidateTicketPaths();
+    if (input.acknowledgedBackwardMoveWarning && ticketBefore) {
+      const technicianId = ticketBefore.assigned_technician_id
+        ? String(ticketBefore.assigned_technician_id)
+        : "";
+      let technicianName = "A technician";
+      if (technicianId) {
+        const { data: tech } = await supabase
+          .from("technicians")
+          .select("technician_name")
+          .eq("id", technicianId)
+          .maybeSingle();
+        if (tech?.technician_name) {
+          technicianName = String(tech.technician_name);
+        }
+      }
+
+      const priority =
+        String(input.warningPriority ?? ticketBefore.priority ?? "High").trim() ||
+        "High";
+      const fromLabel = String(input.warningFromLabel ?? "").trim() || "previous slot";
+      const toLabel = String(input.warningToLabel ?? "").trim() || "a later slot";
+      const message = `${technicianName} moved ${priority} ticket ${ticketBefore.ticket_number} later anyway (${fromLabel} → ${toLabel}): ${ticketBefore.title}`;
+
+      if (technicianId) {
+        try {
+          await insertNotification(supabase, {
+            technicianId,
+            type: "schedule_priority_override",
+            message,
+          });
+        } catch (notifyError) {
+          console.warn("schedule override notification skipped:", notifyError);
+        }
+      }
+    }
+
+    revalidateTicketPaths("/end-user", "/end-user/support", "/portal");
     return { success: true, message: "Schedule updated." };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Could not update the schedule.";
     return { success: false, message };
   }
+}
+
+/**
+ * Customer reschedules a visit: clear the tech calendar placement, lock the
+ * new service day, mark customer_rescheduled, and notify the assigned tech.
+ */
+export async function rescheduleCustomerTicket(
+  ticketId: string,
+  newLockedDate: string,
+  customerId: string,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const dateKey = String(newLockedDate ?? "").trim().slice(0, 10);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    return { success: false, message: "Choose a valid service day." };
+  }
+
+  const { data: ticket, error: fetchError } = await supabase
+    .from("service_tickets")
+    .select(
+      "id, ticket_number, title, customer_id, assigned_technician_id, scheduled_start, locked_service_date",
+    )
+    .eq("id", ticketId)
+    .maybeSingle();
+
+  if (fetchError) {
+    return { success: false, message: fetchError.message };
+  }
+  if (!ticket || ticket.customer_id !== customerId) {
+    return { success: false, message: "Ticket not found." };
+  }
+  if (!ticket.scheduled_start) {
+    return {
+      success: false,
+      message: "Reschedule is available after a technician places your visit.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("service_tickets")
+    .update({
+      locked_service_date: dateKey,
+      is_asap: false,
+      scheduled_start: null,
+      scheduled_window: null,
+      scheduled_off_requested_day: false,
+      customer_rescheduled: true,
+      status: "Assigned",
+    })
+    .eq("id", ticketId)
+    .eq("customer_id", customerId);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  if (ticket.assigned_technician_id) {
+    try {
+      const { insertNotification } = await import("@/lib/notifications");
+      await insertNotification(supabase, {
+        technicianId: String(ticket.assigned_technician_id),
+        type: "customer_reschedule",
+        message: `Customer rescheduled ${ticket.ticket_number} to ${dateKey}. It is back in Needs scheduling: ${ticket.title}`,
+      });
+    } catch (notifyError) {
+      console.warn("customer reschedule notification skipped:", notifyError);
+    }
+  }
+
+  revalidatePath("/portal");
+  revalidatePath("/end-user");
+  revalidatePath("/end-user/support");
+  revalidatePath("/technician");
+  revalidatePath("/service-tickets");
+  return {
+    success: true,
+    message: `Visit rescheduled to ${dateKey}. Your technician will place a new time window.`,
+  };
 }
