@@ -1,9 +1,9 @@
 import { calcSlaStatus } from "@/lib/calculations";
-import type { ServiceTicket } from "@/lib/types";
+import type { ServiceTicket, TicketRating } from "@/lib/types";
 import { differenceInMinutes, parseISO, isValid } from "date-fns";
 
 export interface TechnicianPerformance {
-  /** 1.0–5.0 quality score from SLA / response performance, or null if insufficient data */
+  /** Average client star rating (1–5), or null if no ratings yet */
   avgRating: number | null;
   /** Average hours from ticket open → first response */
   avgResponseHours: number | null;
@@ -11,6 +11,13 @@ export interface TechnicianPerformance {
   ratingSampleSize: number;
   responseOnTimeRate: number | null;
   resolutionOnTimeRate: number | null;
+  /** True when avgRating comes from client portal ticket_ratings */
+  ratingFromClients: boolean;
+}
+
+export interface ClientRatingStats {
+  avgRating: number | null;
+  ratingSampleSize: number;
 }
 
 function toDate(value: string | null | undefined): Date | null {
@@ -40,13 +47,38 @@ function respondedOnTime(ticket: ServiceTicket): boolean | null {
   return responded <= target;
 }
 
+/** Average client portal star ratings for one technician. */
+export function computeClientRatingStats(
+  technicianId: string,
+  ratings: TicketRating[],
+): ClientRatingStats {
+  const scores = ratings
+    .filter((item) => item.technician_id === technicianId)
+    .map((item) => item.rating)
+    .filter((score) => Number.isFinite(score) && score >= 1 && score <= 5);
+
+  if (scores.length === 0) {
+    return { avgRating: null, ratingSampleSize: 0 };
+  }
+
+  const avg =
+    Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 10) /
+    10;
+
+  return {
+    avgRating: Math.min(5, Math.max(1, avg)),
+    ratingSampleSize: scores.length,
+  };
+}
+
 /**
- * Derive average rating + average response time from assigned ticket outcomes.
- * Rating blends on-time first response and on-time resolution into a 1–5 score.
+ * Derive average response time from assigned tickets.
+ * Prefer client portal star ratings for avgRating when available.
  */
 export function computeTechnicianPerformance(
   technicianId: string,
   tickets: ServiceTicket[],
+  clientRatings: TicketRating[] = [],
 ): TechnicianPerformance {
   const assigned = tickets.filter((t) => t.assigned_technician_id === technicianId);
 
@@ -89,31 +121,16 @@ export function computeTechnicianPerformance(
       ? resolutionOnTime.filter(Boolean).length / resolutionOnTime.length
       : null;
 
-  // Need at least one quality signal to show a rating.
-  const rateParts = [responseOnTimeRate, resolutionOnTimeRate].filter(
-    (r): r is number => r != null,
-  );
-
-  let avgRating: number | null = null;
-  if (rateParts.length > 0) {
-    const quality = rateParts.reduce((sum, r) => sum + r, 0) / rateParts.length;
-    // Map 0–100% SLA adherence to roughly 2.5–5.0 stars.
-    avgRating = Math.round((2.5 + quality * 2.5) * 10) / 10;
-    avgRating = Math.min(5, Math.max(1, avgRating));
-  } else if (avgResponseHours != null) {
-    // Fallback when we only have response speed: faster average → higher rating.
-    // <= 1h → 5.0, 4h → 4.0, 12h → 3.0, 24h+ → ~2.5
-    const speedScore = Math.max(0, Math.min(1, 1 - (avgResponseHours - 1) / 23));
-    avgRating = Math.round((2.5 + speedScore * 2.5) * 10) / 10;
-  }
+  const clientStats = computeClientRatingStats(technicianId, clientRatings);
 
   return {
-    avgRating,
+    avgRating: clientStats.avgRating,
     avgResponseHours,
     responseSampleSize: responseHours.length,
-    ratingSampleSize: rateParts.length > 0 ? Math.max(responseOnTime.length, resolutionOnTime.length) : responseHours.length,
+    ratingSampleSize: clientStats.ratingSampleSize,
     responseOnTimeRate,
     resolutionOnTimeRate,
+    ratingFromClients: clientStats.ratingSampleSize > 0,
   };
 }
 

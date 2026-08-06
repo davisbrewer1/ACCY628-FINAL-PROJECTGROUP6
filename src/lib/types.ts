@@ -103,6 +103,35 @@ export interface ClientContact {
   created_at: string;
 }
 
+export interface TicketRating {
+  id: string;
+  ticket_id: string;
+  customer_id: string;
+  technician_id: string | null;
+  rated_by: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContractPlanChangeRequest {
+  id: string;
+  contract_id: string;
+  customer_id: string;
+  current_plan_id: string | null;
+  requested_plan_id: string | null;
+  request_type: "plan_change" | "termination" | string;
+  requested_by: string;
+  status: "Pending" | "Approved" | "Denied" | "Cancelled" | string;
+  client_note: string | null;
+  manager_note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Customer {
   id: string;
   customer_name: string;

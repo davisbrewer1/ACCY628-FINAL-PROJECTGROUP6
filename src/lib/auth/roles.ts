@@ -124,7 +124,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/end-user",
-    label: "End User Portal",
+    label: "Client Portal",
     icon: "UserRound",
     roles: ["client_user"],
   },

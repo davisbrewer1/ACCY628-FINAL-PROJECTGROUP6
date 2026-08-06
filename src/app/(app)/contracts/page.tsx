@@ -8,6 +8,7 @@ import {
   deleteContract,
   updateContract,
 } from "@/app/actions/contracts";
+import { reviewContractPlanChangeRequest } from "@/app/actions/portal-contracts";
 import { calcProfitMargin } from "@/lib/calculations";
 import { isThisMonth } from "@/lib/dashboard-stats";
 import { EmptyState } from "@/components/EmptyState";
@@ -27,10 +28,12 @@ import {
   PLAN_CASH_BILLING_GUIDANCE,
   planRecognizedMonthly,
   REVENUE_RECOGNITION_GUIDANCE,
+  snapshotBillingFrequency,
 } from "@/lib/plan-pricing";
 import { createClient } from "@/lib/supabase/client";
 import type {
   Contract,
+  ContractPlanChangeRequest,
   Customer,
   HardwareAsset,
   Profile,
@@ -68,6 +71,9 @@ export default function ContractsPage() {
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [assets, setAssets] = useState<HardwareAsset[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [planChangeRequests, setPlanChangeRequests] = useState<
+    ContractPlanChangeRequest[]
+  >([]);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -79,13 +85,18 @@ export default function ContractsPage() {
 
   async function loadData() {
     const supabase = createClient();
-    const [c, co, p, w, a, pr] = await Promise.all([
+    const [c, co, p, w, a, pr, req] = await Promise.all([
       supabase.from("customers").select("*").order("customer_name"),
       supabase.from("contracts").select("*").order("created_at", { ascending: false }),
       supabase.from("service_plans").select("*").order("base_price"),
       supabase.from("work_entries").select("*"),
       supabase.from("hardware_assets").select("*"),
       supabase.from("profiles").select("*"),
+      supabase
+        .from("contract_plan_change_requests")
+        .select("*")
+        .eq("status", "Pending")
+        .order("created_at", { ascending: true }),
     ]);
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
@@ -93,6 +104,7 @@ export default function ContractsPage() {
     setWorkEntries(w.data ?? []);
     setAssets((a.data as HardwareAsset[]) ?? []);
     setProfiles(pr.data ?? []);
+    setPlanChangeRequests((req.data ?? []) as ContractPlanChangeRequest[]);
     setLoading(false);
   }
 
@@ -257,6 +269,22 @@ export default function ContractsPage() {
     });
   }
 
+  function handleReviewPlanChange(
+    requestId: string,
+    decision: "Approved" | "Denied",
+  ) {
+    startTransition(async () => {
+      const result = await reviewContractPlanChangeRequest({
+        requestId,
+        decision,
+      });
+      showToast(result.message);
+      if (result.success) {
+        await loadData();
+      }
+    });
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -309,6 +337,107 @@ export default function ContractsPage() {
           <span className="label-text text-sm">Show canceled</span>
         </label>
       </div>
+
+      {planChangeRequests.length > 0 ? (
+        <div className="card border border-warning/40 bg-base-100 shadow-sm">
+          <div className="card-body gap-3">
+            <h2 className="card-title text-base">
+              Pending client contract requests ({planChangeRequests.length})
+            </h2>
+            <p className="text-sm text-base-content/70">
+              Clients requested plan changes or Cancel Plan from the portal. Approving a plan
+              change applies catalog billing terms. Approving Cancel Plan sets the contract to
+              Canceled.
+            </p>
+            <div className="space-y-3">
+              {planChangeRequests.map((request) => {
+                const contract = contracts.find((item) => item.id === request.contract_id);
+                const customer = customers.find((item) => item.id === request.customer_id);
+                const currentPlan = request.current_plan_id
+                  ? planById.get(request.current_plan_id)
+                  : undefined;
+                const isTermination = request.request_type === "termination";
+                const requestedPlan = request.requested_plan_id
+                  ? planById.get(request.requested_plan_id)
+                  : undefined;
+                const requester = profiles.find((item) => item.id === request.requested_by);
+
+                return (
+                  <div
+                    key={request.id}
+                    className="rounded-box border border-base-300 bg-base-200/30 p-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">
+                          {customer?.customer_name ?? "Customer"} ·{" "}
+                          {contract?.contract_name ?? "Contract"}
+                          {isTermination ? (
+                            <span className="badge badge-error badge-sm ml-2">Cancel Plan</span>
+                          ) : (
+                            <span className="badge badge-warning badge-sm ml-2">Plan change</span>
+                          )}
+                        </p>
+                        <p className="mt-1 text-sm text-base-content/75">
+                          {currentPlan?.name ?? contract?.service_plan_name ?? "Current plan"}
+                          {" → "}
+                          <span className="font-semibold">
+                            {isTermination
+                              ? "Cancel Plan"
+                              : (requestedPlan?.name ?? "Requested plan")}
+                          </span>
+                        </p>
+                        {requestedPlan && !isTermination ? (
+                          <p className="mt-1 text-xs text-base-content/65">
+                            Catalog billing: {formatCurrency(requestedPlan.base_price)} (
+                            {requestedPlan.pricing_model}) ·{" "}
+                            {snapshotBillingFrequency(requestedPlan)} ·{" "}
+                            {requestedPlan.included_support_hours} hrs · payment{" "}
+                            {requestedPlan.payment_terms ?? "—"}
+                          </p>
+                        ) : null}
+                        {isTermination ? (
+                          <p className="mt-1 text-xs text-base-content/65">
+                            Approving cancels this active plan. Recurring coverage stops; history
+                            and invoices remain.
+                          </p>
+                        ) : null}
+                        {request.client_note ? (
+                          <p className="mt-1 text-sm text-base-content/70">
+                            Client note: {request.client_note}
+                          </p>
+                        ) : null}
+                        <p className="mt-1 text-xs text-base-content/55">
+                          Requested by {requester?.full_name ?? requester?.email ?? "client"} on{" "}
+                          {formatDate(request.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-success btn-sm"
+                          disabled={isPending}
+                          onClick={() => handleReviewPlanChange(request.id, "Approved")}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-error btn-sm"
+                          disabled={isPending}
+                          onClick={() => handleReviewPlanChange(request.id, "Denied")}
+                        >
+                          Deny
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {filterLabel ? (
         <div className="alert alert-info text-sm">

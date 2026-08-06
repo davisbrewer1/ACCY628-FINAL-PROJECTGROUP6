@@ -13,7 +13,7 @@ import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
 import { isThisMonth } from "@/lib/dashboard-stats";
-import { formatCurrency, formatHours, formatPercent } from "@/lib/format";
+import { formatCurrency, formatDate, formatHours, formatPercent } from "@/lib/format";
 import { getOpenTickets } from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -21,7 +21,7 @@ import {
   formatResponseDuration,
   formatStarRating,
 } from "@/lib/technician-metrics";
-import type { ServiceTicket, Technician, WorkEntry } from "@/lib/types";
+import type { ServiceTicket, Technician, TicketRating, WorkEntry } from "@/lib/types";
 
 /** Standard available hours per month for utilization (8 hrs × 20 days). */
 const MONTHLY_CAPACITY_HOURS = 160;
@@ -35,6 +35,7 @@ interface TechCard extends Technician {
   avgResponseHours: number | null;
   responseSampleSize: number;
   ratingSampleSize: number;
+  recentComments: Array<{ rating: number; comment: string; at: string }>;
 }
 
 const MANAGER_ROLES = new Set([
@@ -51,20 +52,26 @@ export default function TechniciansPage() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
+  const [ticketRatings, setTicketRatings] = useState<TicketRating[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const canManage = MANAGER_ROLES.has(activeRole);
 
   async function loadData() {
     const supabase = createClient();
-    const [tech, t, w] = await Promise.all([
+    const [tech, t, w, ratingsRes] = await Promise.all([
       supabase.from("technicians").select("*").order("technician_name"),
       supabase.from("service_tickets").select("*"),
       supabase.from("work_entries").select("*"),
+      supabase
+        .from("ticket_ratings")
+        .select("*")
+        .order("created_at", { ascending: false }),
     ]);
     setTechnicians(tech.data ?? []);
     setTickets(t.data ?? []);
     setWorkEntries(w.data ?? []);
+    setTicketRatings((ratingsRes.data ?? []) as TicketRating[]);
     setLoading(false);
   }
 
@@ -85,7 +92,23 @@ export default function TechniciansPage() {
         100,
         (monthHours / MONTHLY_CAPACITY_HOURS) * 100,
       );
-      const performance = computeTechnicianPerformance(tech.id, tickets);
+      const performance = computeTechnicianPerformance(
+        tech.id,
+        tickets,
+        ticketRatings,
+      );
+      const recentComments = ticketRatings
+        .filter(
+          (item) =>
+            item.technician_id === tech.id &&
+            Boolean(item.comment?.trim()),
+        )
+        .slice(0, 2)
+        .map((item) => ({
+          rating: item.rating,
+          comment: item.comment!.trim(),
+          at: item.created_at,
+        }));
 
       return {
         ...tech,
@@ -97,9 +120,10 @@ export default function TechniciansPage() {
         avgResponseHours: performance.avgResponseHours,
         responseSampleSize: performance.responseSampleSize,
         ratingSampleSize: performance.ratingSampleSize,
+        recentComments,
       };
     });
-  }, [technicians, tickets, workEntries]);
+  }, [technicians, tickets, workEntries, ticketRatings]);
 
   const unassignedCount = useMemo(
     () => getOpenTickets(tickets).filter((t) => !t.assigned_technician_id).length,
@@ -113,10 +137,25 @@ export default function TechniciansPage() {
   }, [cards]);
 
   const teamAvgRating = useMemo(() => {
-    const rated = cards.filter((c) => c.active && c.avgRating != null);
-    if (rated.length === 0) return null;
-    return rated.reduce((sum, c) => sum + (c.avgRating ?? 0), 0) / rated.length;
-  }, [cards]);
+    const activeIds = new Set(
+      cards.filter((c) => c.active).map((c) => c.id),
+    );
+    const scores = ticketRatings
+      .filter((item) => item.technician_id && activeIds.has(item.technician_id))
+      .map((item) => item.rating)
+      .filter((score) => Number.isFinite(score));
+    if (scores.length === 0) return null;
+    return scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  }, [cards, ticketRatings]);
+
+  const teamRatingCount = useMemo(() => {
+    const activeIds = new Set(
+      cards.filter((c) => c.active).map((c) => c.id),
+    );
+    return ticketRatings.filter(
+      (item) => item.technician_id && activeIds.has(item.technician_id),
+    ).length;
+  }, [cards, ticketRatings]);
 
   const teamAvgResponse = useMemo(() => {
     const withResp = cards.filter((c) => c.active && c.avgResponseHours != null);
@@ -173,7 +212,7 @@ export default function TechniciansPage() {
     <div className="space-y-6">
       <PageHeader
         title="Technician capacity"
-        description="Open load, utilization, average rating (from SLA quality), and average ticket response time."
+        description="Open load, utilization, client portal star ratings, and average ticket response time."
         action={
           canManage ? (
             <button
@@ -209,7 +248,9 @@ export default function TechniciansPage() {
           </p>
           <p className="text-2xl font-semibold">{formatStarRating(teamAvgRating)}</p>
           <p className="mt-1 text-xs text-base-content/60">
-            From on-time response + on-time resolution on assigned tickets
+            {teamRatingCount > 0
+              ? `From ${teamRatingCount} client rating${teamRatingCount === 1 ? "" : "s"} on closed tickets`
+              : "No client ratings submitted yet"}
           </p>
         </div>
         <div className="rounded-box border border-base-300 bg-base-100 p-4">
@@ -276,8 +317,8 @@ export default function TechniciansPage() {
                     </p>
                     <p className="text-[11px] text-base-content/50">
                       {tech.ratingSampleSize > 0
-                        ? `Based on ${tech.ratingSampleSize} ticket outcome${tech.ratingSampleSize === 1 ? "" : "s"}`
-                        : "Needs ticket response/completion data"}
+                        ? `Based on ${tech.ratingSampleSize} client rating${tech.ratingSampleSize === 1 ? "" : "s"}`
+                        : "No client ratings yet"}
                     </p>
                   </div>
                   <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
@@ -344,6 +385,27 @@ export default function TechniciansPage() {
                     </div>
                   </div>
                 </div>
+
+                {tech.recentComments.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-base-content/55">
+                      Recent client feedback
+                    </p>
+                    {tech.recentComments.map((item) => (
+                      <div
+                        key={`${item.at}-${item.comment.slice(0, 24)}`}
+                        className="rounded-box border border-base-300 bg-base-200/40 px-3 py-2"
+                      >
+                        <p className="text-xs text-base-content/55">
+                          {item.rating}/5 · {formatDate(item.at)}
+                        </p>
+                        <p className="mt-0.5 text-sm text-base-content/80">
+                          “{item.comment}”
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
 
                 {canManage ? (
                   <div className="card-actions mt-2 justify-end">
