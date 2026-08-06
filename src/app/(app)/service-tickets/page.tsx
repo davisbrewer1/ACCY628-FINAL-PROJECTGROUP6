@@ -43,10 +43,12 @@ import type {
   Customer,
   ServiceTicket,
   Technician,
+  TechnicianPtoRequest,
   TicketHourExtensionRequest,
   WorkEntry,
 } from "@/lib/types";
 import { TICKET_STATUSES } from "@/lib/types";
+import { buildApprovedPtoByTechnician } from "@/lib/technician-pto";
 
 type SortMode = "priority" | "sla" | "newest";
 type PriorityFilter = "all" | "Critical" | "High" | "Medium" | "Low";
@@ -90,6 +92,7 @@ export default function ServiceTicketsPage() {
   const [hourExtensionRequests, setHourExtensionRequests] = useState<
     TicketHourExtensionRequest[]
   >([]);
+  const [ptoRequests, setPtoRequests] = useState<TechnicianPtoRequest[]>([]);
 
   const [queueFilter, setQueueFilter] = useState(urlFilter);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
@@ -125,7 +128,7 @@ export default function ServiceTicketsPage() {
 
   async function loadData() {
     const supabase = createClient();
-    const [c, co, tech, t, w, hourExt] = await Promise.all([
+    const [c, co, tech, t, w, hourExt, pto] = await Promise.all([
       supabase.from("customers").select("*").order("customer_name"),
       supabase.from("contracts").select("*"),
       supabase.from("technicians").select("*").eq("active", true),
@@ -135,6 +138,10 @@ export default function ServiceTicketsPage() {
         .from("ticket_hour_extension_requests")
         .select("*")
         .order("created_at", { ascending: false }),
+      supabase
+        .from("technician_pto_requests")
+        .select("*")
+        .eq("status", "Approved"),
     ]);
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
@@ -144,6 +151,7 @@ export default function ServiceTicketsPage() {
     setHourExtensionRequests(
       (hourExt.data ?? []) as TicketHourExtensionRequest[],
     );
+    setPtoRequests((pto.data ?? []) as TechnicianPtoRequest[]);
     setSelectedIds([]);
     setLoading(false);
   }
@@ -195,6 +203,25 @@ export default function ServiceTicketsPage() {
     return selectedCategory;
   }, [selectedIds, tickets, selectedCategory]);
 
+  const approvedPtoByTech = useMemo(
+    () => buildApprovedPtoByTechnician(ptoRequests),
+    [ptoRequests],
+  );
+
+  function ptoConflictDayForTech(
+    techId: string,
+    ticketList: ServiceTicket[],
+  ): string | null {
+    const days = approvedPtoByTech.get(techId);
+    if (!days || days.size === 0) return null;
+    for (const ticket of ticketList) {
+      if (ticket.is_asap || !ticket.locked_service_date) continue;
+      const key = String(ticket.locked_service_date).slice(0, 10);
+      if (days.has(key)) return key;
+    }
+    return null;
+  }
+
   const assignDurationHours = useMemo(() => {
     const fromModal = Number(assignMaxHours);
     if (Number.isInteger(fromModal) && fromModal >= 1 && fromModal <= 9) {
@@ -229,11 +256,15 @@ export default function ServiceTicketsPage() {
       selectedTickets.length > 0 &&
       selectedTickets.every((ticket) => Boolean(ticket.is_asap));
 
+    const availableTechs = technicians.filter(
+      (tech) => !ptoConflictDayForTech(tech.id, selectedTickets),
+    );
+
     // Customer-locked day: order by openings on that day. ASAP / mixed /
     // internal tickets: keep next-available ranking.
     if (lockedDates.length === 1 && !allAsap) {
       return rankTechniciansByDayAvailability(
-        technicians,
+        availableTechs,
         tickets,
         lockedDates[0],
         {
@@ -244,16 +275,18 @@ export default function ServiceTicketsPage() {
         technician: row.technician,
         nextLabel: row.nextLabel,
         hasOpeningOnDay: row.hasOpeningOnDay,
+        onPto: false as boolean,
       }));
     }
 
-    return rankTechniciansByNextAvailable(technicians, tickets, {
+    return rankTechniciansByNextAvailable(availableTechs, tickets, {
       durationHours: assignDurationHours,
       skillMatchIds: skillMatches,
     }).map((row) => ({
       technician: row.technician,
       nextLabel: row.nextLabel,
-      hasOpeningOnDay: true,
+      hasOpeningOnDay: true as boolean | undefined,
+      onPto: false as boolean,
     }));
   }, [
     technicians,
@@ -261,6 +294,7 @@ export default function ServiceTicketsPage() {
     assignCategory,
     assignDurationHours,
     selectedIds,
+    approvedPtoByTech,
   ]);
 
   const createTechsByAvailability = useMemo(() => {
@@ -506,6 +540,14 @@ export default function ServiceTicketsPage() {
       showToast("Select a technician for this ticket first.", "error");
       return;
     }
+    const ticket = tickets.find((item) => item.id === ticketId);
+    if (ticket && ptoConflictDayForTech(techId, [ticket])) {
+      showToast(
+        "That technician has approved PTO on the customer’s service day.",
+        "error",
+      );
+      return;
+    }
     setSelectedTicketId(ticketId);
     openAssignModal(techId, [ticketId]);
   }
@@ -525,29 +567,47 @@ export default function ServiceTicketsPage() {
       return Number.isInteger(max) && max >= 1 && max <= 9 ? max : 1;
     })();
 
-    if (!ticket.is_asap && ticket.locked_service_date) {
-      return rankTechniciansByDayAvailability(
-        technicians,
-        tickets,
-        String(ticket.locked_service_date).slice(0, 10),
-        { durationHours, skillMatchIds: skillMatches },
-      ).map((row) => ({
-        technician: row.technician,
-        nextLabel: row.nextLabel,
-        hasOpeningOnDay: row.hasOpeningOnDay,
-        category,
-      }));
-    }
+    const availableTechs = technicians.filter(
+      (tech) => !ptoConflictDayForTech(tech.id, [ticket]),
+    );
+    const onPtoTechs = technicians.filter((tech) =>
+      Boolean(ptoConflictDayForTech(tech.id, [ticket])),
+    );
 
-    return rankTechniciansByNextAvailable(technicians, tickets, {
-      durationHours,
-      skillMatchIds: skillMatches,
-    }).map((row) => ({
-      technician: row.technician,
-      nextLabel: row.nextLabel,
-      hasOpeningOnDay: true as boolean | undefined,
+    const rankedCore = !ticket.is_asap && ticket.locked_service_date
+      ? rankTechniciansByDayAvailability(
+          availableTechs,
+          tickets,
+          String(ticket.locked_service_date).slice(0, 10),
+          { durationHours, skillMatchIds: skillMatches },
+        ).map((row) => ({
+          technician: row.technician,
+          nextLabel: row.nextLabel,
+          hasOpeningOnDay: row.hasOpeningOnDay,
+          onPto: false,
+          category,
+        }))
+      : rankTechniciansByNextAvailable(availableTechs, tickets, {
+          durationHours,
+          skillMatchIds: skillMatches,
+        }).map((row) => ({
+          technician: row.technician,
+          nextLabel: row.nextLabel,
+          hasOpeningOnDay: true as boolean | undefined,
+          onPto: false,
+          category,
+        }));
+
+    // Keep PTO techs visible but unusable so managers see why they are blocked.
+    const blocked = onPtoTechs.map((tech) => ({
+      technician: tech,
+      nextLabel: `On PTO ${ptoConflictDayForTech(tech.id, [ticket]) ?? ""}`.trim(),
+      hasOpeningOnDay: false as boolean | undefined,
+      onPto: true,
       category,
     }));
+
+    return [...rankedCore, ...blocked];
   }
 
   function handleBulkAssign() {
@@ -816,18 +876,26 @@ export default function ServiceTicketsPage() {
                           <option value="">Select technician</option>
                           {ranked.map(
                             (
-                              { technician: t, nextLabel, hasOpeningOnDay },
+                              {
+                                technician: t,
+                                nextLabel,
+                                hasOpeningOnDay,
+                                onPto,
+                              },
                               index,
                             ) => (
-                              <option key={t.id} value={t.id}>
-                                {index === 0 ? "★ " : ""}
+                              <option key={t.id} value={t.id} disabled={onPto}>
+                                {index === 0 && !onPto ? "★ " : ""}
                                 {t.technician_name}
                                 {t.specialty ? ` · ${t.specialty}` : ""}
                                 {` · ${nextLabel}`}
-                                {hasOpeningOnDay === false
-                                  ? " · no opening that day"
-                                  : ""}
-                                {isSkillMatch(
+                                {onPto
+                                  ? ""
+                                  : hasOpeningOnDay === false
+                                    ? " · no opening that day"
+                                    : ""}
+                                {!onPto &&
+                                isSkillMatch(
                                   t,
                                   parseCategoryLabel(ticket.category).category ||
                                     ticket.category ||

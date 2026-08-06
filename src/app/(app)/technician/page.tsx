@@ -46,6 +46,10 @@ import {
   getWorkWeekDays,
   parseScheduledSlot,
 } from "@/lib/technician-schedule";
+import {
+  buildActivePtoDateSet,
+  buildApprovedPtoDateSet,
+} from "@/lib/technician-pto";
 import type { PartUsageInput } from "@/lib/autoCostCalculator";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -58,7 +62,6 @@ import type {
   WorkEntry,
 } from "@/lib/types";
 import {
-  eachDayOfInterval,
   endOfWeek,
   format,
   isSameDay,
@@ -339,6 +342,9 @@ export default function TechnicianWorkspacePage() {
   // After a customer reschedule (or ?needsScheduling=1), jump the week calendar
   // to the locked day and highlight the ticket in Needs scheduling.
   useEffect(() => {
+    if (needsSchedulingFocus) {
+      didFocusNeedsScheduling.current = false;
+    }
     if (loading || !technician) return;
 
     const unscheduled = tickets.filter(
@@ -480,18 +486,14 @@ export default function TechnicianWorkspacePage() {
 
   const ptoRemaining = Math.max(0, annualPtoAllowance - ptoUsedOrPending);
 
-  const ptoDates = useMemo(() => {
-    const dates = new Set<string>();
-    for (const request of ptoRequests) {
-      if (request.status === "Denied" || request.status === "Cancelled") continue;
-      const start = parseISO(request.start_date);
-      const end = parseISO(request.end_date);
-      for (const day of eachDayOfInterval({ start, end })) {
-        dates.add(format(day, "yyyy-MM-dd"));
-      }
-    }
-    return dates;
-  }, [ptoRequests]);
+  const ptoDates = useMemo(
+    () => buildActivePtoDateSet(ptoRequests),
+    [ptoRequests],
+  );
+  const blockedPtoDates = useMemo(
+    () => buildApprovedPtoDateSet(ptoRequests),
+    [ptoRequests],
+  );
 
   const pendingHourExtensionTicketIds = useMemo(
     () =>
@@ -1165,6 +1167,7 @@ export default function TechnicianWorkspacePage() {
           onRequestHourExtension={handleRequestHourExtension}
           technicianId={technician?.id ?? null}
           onRejectMove={(message) => showToast(message, "error")}
+          blockedPtoDates={blockedPtoDates}
         />
       </div>
 

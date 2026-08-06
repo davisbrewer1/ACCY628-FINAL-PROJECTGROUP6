@@ -151,6 +151,8 @@ interface TechnicianScheduleCalendarProps {
   technicianId?: string | null;
   /** Called when a drop is rejected (wrong day, collision, past end of day). */
   onRejectMove?: (message: string) => void;
+  /** Approved PTO day keys (yyyy-MM-dd) — drops onto these days are blocked. */
+  blockedPtoDates?: Set<string>;
 }
 
 export function TechnicianScheduleCalendar({
@@ -169,6 +171,7 @@ export function TechnicianScheduleCalendar({
   onRequestHourExtension,
   technicianId = null,
   onRejectMove,
+  blockedPtoDates = new Set(),
 }: TechnicianScheduleCalendarProps) {
   const days = mode === "week" ? getWorkWeekDays(anchor) : getMonthGridDays(anchor);
   const schedule = useMemo(
@@ -259,6 +262,12 @@ export function TechnicianScheduleCalendar({
     if (!window) return;
 
     const destDayKey = format(day, "yyyy-MM-dd");
+    if (blockedPtoDates.has(destDayKey)) {
+      rejectMove(
+        "That day is blocked by approved PTO. Place the ticket on a working day.",
+      );
+      return;
+    }
     const weekSchedule = scheduleTicketsForWeek(tickets, day);
     const occupancy = buildOccupancyMap(weekSchedule);
 

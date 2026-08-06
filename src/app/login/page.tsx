@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { NexusLogo } from "@/components/brand/NexusLogo";
@@ -9,16 +9,27 @@ import { FormField } from "@/components/FormField";
 import { getDefaultDashboard, normalizeRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
 
+const DEMO_PASSWORD = "DemoPass123!";
+
 const DEMO_ACCOUNTS = [
-  { role: "Administrator", email: "admin@nexus.demo", password: "DemoPass123!" },
-  { role: "Executive", email: "executive@nexus.demo", password: "DemoPass123!" },
-  { role: "Service Manager", email: "manager@nexus.demo", password: "DemoPass123!" },
-  { role: "Account Manager", email: "account@nexus.demo", password: "DemoPass123!" },
-  { role: "Technician", email: "tech@nexus.demo", password: "DemoPass123!" },
-  { role: "Billing", email: "billing@nexus.demo", password: "DemoPass123!" },
-  { role: "Client Admin", email: "clientadmin@nexus.demo", password: "DemoPass123!" },
-  { role: "Client User", email: "clientuser@nexus.demo", password: "DemoPass123!" },
-];
+  { role: "Administrator", email: "admin@nexus.demo" },
+  { role: "Executive", email: "executive@nexus.demo" },
+  { role: "Service Manager", email: "manager@nexus.demo" },
+  { role: "Account Manager", email: "account@nexus.demo" },
+  { role: "Billing", email: "billing@nexus.demo" },
+  { role: "Client Admin", email: "clientadmin@nexus.demo" },
+  { role: "Client User", email: "clientuser@nexus.demo" },
+] as const;
+
+/** Individual technician demo logins (switchable on this page). */
+const DEMO_TECHNICIANS = [
+  { name: "Terry Tech", email: "tech@nexus.demo" },
+  { name: "Jamie Network", email: "tech2@serviceflow.demo" },
+  { name: "Chris Cloud", email: "tech3@serviceflow.demo" },
+  { name: "Dana Desktop", email: "tech4@serviceflow.demo" },
+  { name: "Evan Endpoint", email: "tech5@serviceflow.demo" },
+  { name: "Fran Firewall", email: "tech6@serviceflow.demo" },
+] as const;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,7 +38,52 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [demoLoadingEmail, setDemoLoadingEmail] = useState<string | null>(null);
+  const [selectedTechEmail, setSelectedTechEmail] = useState<string>(
+    DEMO_TECHNICIANS[0].email,
+  );
   const [error, setError] = useState<string | null>(null);
+
+  const selectedTech = useMemo(
+    () =>
+      DEMO_TECHNICIANS.find((tech) => tech.email === selectedTechEmail) ??
+      DEMO_TECHNICIANS[0],
+    [selectedTechEmail],
+  );
+
+  async function signInWithDemo(emailValue: string) {
+    setError(null);
+    setDemoLoadingEmail(emailValue);
+    setLoading(true);
+
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user?.email && user.email.toLowerCase() !== emailValue.toLowerCase()) {
+      await supabase.auth.signOut();
+    }
+
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: emailValue.trim(),
+      password: DEMO_PASSWORD,
+    });
+
+    if (authError) {
+      setError(
+        authError.message === "Invalid login credentials"
+          ? "That demo account could not sign in. Confirm the account exists and password is DemoPass123!."
+          : authError.message,
+      );
+      setDemoLoadingEmail(null);
+      setLoading(false);
+      return;
+    }
+
+    setEmail(emailValue);
+    setPassword(DEMO_PASSWORD);
+    await redirectByRole(supabase);
+  }
 
   async function handleLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -43,7 +99,7 @@ export default function LoginPage() {
     if (authError) {
       setError(
         authError.message === "Invalid login credentials"
-          ? "That email or password did not match. Check the demo accounts below or try again."
+          ? "That email or password did not match. Use a demo account below or try again."
           : authError.message,
       );
       setLoading(false);
@@ -96,6 +152,7 @@ export default function LoginPage() {
     if (!user) {
       setError("Account created. Please check your email to confirm, then log in.");
       setLoading(false);
+      setDemoLoadingEmail(null);
       return;
     }
 
@@ -205,7 +262,7 @@ export default function LoginPage() {
                   className="btn btn-primary w-full"
                   disabled={loading}
                 >
-                  {loading ? (
+                  {loading && !demoLoadingEmail ? (
                     <span className="loading loading-spinner loading-sm" />
                   ) : (
                     "Log in"
@@ -264,12 +321,74 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <footer className="relative z-10 mt-8 max-w-xl text-center text-sm text-slate-300">
-          <p className="font-medium text-slate-200">Demo accounts (password: DemoPass123!)</p>
-          <ul className="mt-2 space-y-1">
+        <footer className="relative z-10 mt-8 w-full max-w-md text-sm text-slate-300">
+          <p className="text-center font-medium text-slate-200">
+            Demo accounts (password: {DEMO_PASSWORD})
+          </p>
+          <p className="mt-1 text-center text-xs text-slate-400">
+            Click a role to sign in instantly. For technicians, pick who you want
+            first.
+          </p>
+
+          <div className="mt-4 rounded-xl border border-cyan-400/30 bg-slate-950/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200/90">
+              Technician accounts
+            </p>
+            <label className="mt-3 flex flex-col gap-1.5">
+              <span className="text-xs text-slate-400">Switch technician</span>
+              <select
+                className="select select-bordered w-full border-cyan-500/40 bg-slate-900 text-slate-100"
+                value={selectedTechEmail}
+                onChange={(event) => setSelectedTechEmail(event.target.value)}
+                disabled={loading}
+                aria-label="Choose technician demo account"
+              >
+                {DEMO_TECHNICIANS.map((tech) => (
+                  <option key={tech.email} value={tech.email}>
+                    {tech.name} · {tech.email}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm mt-3 w-full border-0"
+              disabled={loading}
+              onClick={() => void signInWithDemo(selectedTech.email)}
+            >
+              {demoLoadingEmail === selectedTech.email ? (
+                <span className="loading loading-spinner loading-sm" />
+              ) : (
+                `Sign in as ${selectedTech.name}`
+              )}
+            </button>
+          </div>
+
+          <ul className="mt-4 space-y-2">
             {DEMO_ACCOUNTS.map((account) => (
               <li key={account.email}>
-                {account.role}: {account.email}
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left transition hover:border-cyan-400/40 hover:bg-white/10 disabled:opacity-60"
+                  disabled={loading}
+                  onClick={() => void signInWithDemo(account.email)}
+                >
+                  <span>
+                    <span className="block font-medium text-slate-100">
+                      {account.role}
+                    </span>
+                    <span className="font-mono text-xs text-slate-400">
+                      {account.email}
+                    </span>
+                  </span>
+                  {demoLoadingEmail === account.email ? (
+                    <span className="loading loading-spinner loading-sm text-cyan-300" />
+                  ) : (
+                    <span className="text-xs font-semibold text-cyan-300">
+                      Sign in
+                    </span>
+                  )}
+                </button>
               </li>
             ))}
           </ul>

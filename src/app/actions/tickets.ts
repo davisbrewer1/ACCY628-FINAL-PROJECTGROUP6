@@ -16,6 +16,7 @@ import {
   normalizePriority,
 } from "@/lib/ticket-ops";
 import { allocateNextTicketNumber } from "@/lib/ticket-numbers";
+import { buildApprovedPtoDateSet } from "@/lib/technician-pto";
 import type { Contract } from "@/lib/types";
 
 async function loadActiveContractsForCustomer(
@@ -317,11 +318,35 @@ export async function assignTickets(
 
   const { data: existing, error: fetchError } = await supabase
     .from("service_tickets")
-    .select("id, is_asap")
+    .select("id, is_asap, locked_service_date")
     .in("id", ticketIds);
 
   if (fetchError) {
     return { success: false, message: fetchError.message };
+  }
+
+  const lockedDates = [
+    ...new Set(
+      (existing ?? [])
+        .filter((row) => !row.is_asap && row.locked_service_date)
+        .map((row) => String(row.locked_service_date).slice(0, 10)),
+    ),
+  ];
+
+  if (lockedDates.length > 0) {
+    const { data: ptoRows } = await supabase
+      .from("technician_pto_requests")
+      .select("start_date, end_date, status")
+      .eq("technician_id", technicianId)
+      .eq("status", "Approved");
+    const ptoDays = buildApprovedPtoDateSet(ptoRows ?? []);
+    const conflict = lockedDates.find((day) => ptoDays.has(day));
+    if (conflict) {
+      return {
+        success: false,
+        message: `That technician has approved PTO on ${conflict}. Choose another technician or date.`,
+      };
+    }
   }
 
   // ASAP tickets stay Critical regardless of the modal severity pick.
@@ -522,6 +547,23 @@ export async function updateTicketSchedule(input: {
       return { success: false, message: ticketFetchError.message };
     }
 
+    if (input.scheduledStart && ticketBefore?.assigned_technician_id) {
+      const scheduledDay = new Date(input.scheduledStart);
+      const dayKey = `${scheduledDay.getFullYear()}-${String(scheduledDay.getMonth() + 1).padStart(2, "0")}-${String(scheduledDay.getDate()).padStart(2, "0")}`;
+      const { data: ptoRows } = await supabase
+        .from("technician_pto_requests")
+        .select("start_date, end_date, status")
+        .eq("technician_id", ticketBefore.assigned_technician_id)
+        .eq("status", "Approved");
+      if (buildApprovedPtoDateSet(ptoRows ?? []).has(dayKey)) {
+        return {
+          success: false,
+          message:
+            "That day is blocked by approved PTO. Place the ticket on a non-PTO day.",
+        };
+      }
+    }
+
     if (input.scheduledStart && ticketBefore?.locked_service_date && !ticketBefore.is_asap) {
       const scheduledDay = new Date(input.scheduledStart);
       const scheduledKey = `${scheduledDay.getFullYear()}-${String(scheduledDay.getMonth() + 1).padStart(2, "0")}-${String(scheduledDay.getDate()).padStart(2, "0")}`;
@@ -644,7 +686,7 @@ export async function rescheduleCustomerTicket(
     };
   }
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("service_tickets")
     .update({
       locked_service_date: dateKey,
@@ -656,10 +698,26 @@ export async function rescheduleCustomerTicket(
       status: "Assigned",
     })
     .eq("id", ticketId)
-    .eq("customer_id", customerId);
+    .eq("customer_id", customerId)
+    .select("id, scheduled_start, locked_service_date, customer_rescheduled")
+    .maybeSingle();
 
   if (error) {
     return { success: false, message: error.message };
+  }
+  if (!updated) {
+    return {
+      success: false,
+      message:
+        "Could not reschedule this ticket. You may not have permission to update it.",
+    };
+  }
+  if (updated.scheduled_start) {
+    return {
+      success: false,
+      message:
+        "Reschedule did not clear the technician calendar slot. Try again or contact your MSP.",
+    };
   }
 
   if (ticket.assigned_technician_id) {
@@ -682,6 +740,6 @@ export async function rescheduleCustomerTicket(
   revalidatePath("/service-tickets");
   return {
     success: true,
-    message: `Visit rescheduled to ${dateKey}. Your technician will place a new time window.`,
+    message: `Visit moved off the schedule and locked to ${dateKey}. Your technician will place a new time in Needs scheduling.`,
   };
 }
