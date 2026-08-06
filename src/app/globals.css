@@ -41,6 +41,13 @@ body {
   color: #ecfeff;
 }
 
+/* Dimmed area outside the technician sidebar — click closes the drawer */
+.tech-shell .drawer-side > .drawer-overlay {
+  cursor: pointer;
+  pointer-events: auto;
+  background-color: rgb(2 6 23 / 0.55);
+}
+
 .tech-shell h2 {
   color: #f8fafc;
 }
