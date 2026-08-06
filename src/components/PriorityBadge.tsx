@@ -1,10 +1,10 @@
 import type { TicketPriority } from "@/lib/types";
 
 const PRIORITY_STYLES: Record<TicketPriority, string> = {
-  Critical: "badge-error",
-  High: "badge-warning",
-  Medium: "badge-info",
-  Low: "badge-ghost",
+  Critical: "border-0 bg-[#ef4444] text-white",
+  High: "border-0 bg-[#ea580c] text-white",
+  Medium: "border-0 bg-[#eab308] text-[#422006]",
+  Low: "border-0 bg-teal-500 text-[#0B1220]",
 };
 
 interface PriorityBadgeProps {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
-import { Check, Plus, Search, X } from "lucide-react";
+import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
 import { reviewTicketHourExtension } from "@/app/actions/hour-extensions";
 import {
   assignTickets,
@@ -919,25 +919,69 @@ export default function ServiceTicketsPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-base-content/50">
-          Priority
-        </span>
-        {(["all", "Critical", "High", "Medium", "Low"] as const).map((value) => (
+      <div className="flex flex-wrap items-stretch gap-3">
+        <div className="dropdown">
           <button
-            key={value}
             type="button"
-            className={`btn btn-xs ${priorityFilter === value ? "btn-secondary" : "btn-outline"}`}
-            onClick={() => setPriorityFilter(value)}
+            tabIndex={0}
+            className="flex min-h-full w-full min-w-[11rem] items-center justify-between gap-3 rounded-box border border-[rgba(11,18,32,0.12)] bg-[rgba(11,18,32,0.04)] px-3 py-2 text-left"
+            aria-label="Priority level"
           >
-            {value === "all" ? "All priorities" : value}
-            {value !== "all" ? (
-              <span className="opacity-70">
-                {priorityCounts[value as keyof typeof priorityCounts]}
-              </span>
-            ) : null}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#1e3a8a]">
+                Priority level
+              </p>
+              <p className="mt-0.5 text-sm text-base-content/70">
+                {priorityCounts.Critical +
+                  priorityCounts.High +
+                  priorityCounts.Medium +
+                  priorityCounts.Low}{" "}
+                open
+                {priorityFilter !== "all" ? ` · ${priorityFilter}` : ""}
+              </p>
+            </div>
+            <ChevronDown className="size-4 shrink-0 text-[#1e3a8a]" aria-hidden="true" />
           </button>
-        ))}
+          <ul
+            tabIndex={0}
+            className="dropdown-content menu z-20 mt-1 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+          >
+            {(
+              [
+                ["Critical", priorityCounts.Critical],
+                ["High", priorityCounts.High],
+                ["Medium", priorityCounts.Medium],
+                ["Low", priorityCounts.Low],
+              ] as const
+            ).map(([level, count]) => (
+              <li key={level}>
+                <button
+                  type="button"
+                  className={
+                    priorityFilter === level ? "active font-medium" : undefined
+                  }
+                  onClick={() =>
+                    setPriorityFilter((current) =>
+                      current === level ? "all" : level,
+                    )
+                  }
+                >
+                  <span>{level}</span>
+                  <span className="opacity-60">{count}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="min-w-0 flex-1 rounded-box border border-[rgba(11,18,32,0.12)] bg-[rgba(11,18,32,0.04)] px-3 py-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#1e3a8a]">
+            Ticket detail
+          </p>
+          <p className="mt-0.5 text-sm text-base-content/70">
+            Click a ticket in the list to view priority, SLA, billing, and work
+            history in the panel on the right.
+          </p>
+        </div>
       </div>
 
       {selectedIds.length > 0 ? (
@@ -989,7 +1033,13 @@ export default function ServiceTicketsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div
+        className={`grid gap-4 ${
+          selectedTicket
+            ? "xl:grid-cols-[minmax(0,1fr)_22rem]"
+            : "grid-cols-1"
+        }`}
+      >
         <div className="min-w-0">
           {filteredRows.length === 0 ? (
             <EmptyState
@@ -1046,7 +1096,11 @@ export default function ServiceTicketsPage() {
                         <tr
                           key={row.id}
                           className={`cursor-pointer hover:bg-base-200/60 ${tone} ${selected ? "bg-primary/5" : ""}`}
-                          onClick={() => setSelectedTicketId(row.id)}
+                          onClick={() =>
+                            setSelectedTicketId((current) =>
+                              current === row.id ? null : row.id,
+                            )
+                          }
                         >
                           <td onClick={(e) => e.stopPropagation()}>
                             <input
@@ -1107,28 +1161,21 @@ export default function ServiceTicketsPage() {
           )}
         </div>
 
+        {selectedTicket ? (
         <aside className="card h-fit border bg-base-100 shadow-sm xl:sticky xl:top-4">
           <div className="card-body gap-3">
             <div className="flex items-start justify-between gap-2">
               <h2 className="card-title text-base">Ticket detail</h2>
-              {selectedTicket ? (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-xs"
-                  onClick={() => setSelectedTicketId(null)}
-                  aria-label="Close detail"
-                >
-                  <X className="size-4" />
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                onClick={() => setSelectedTicketId(null)}
+                aria-label="Close detail"
+              >
+                <X className="size-4" />
+              </button>
             </div>
 
-            {!selectedTicket ? (
-              <EmptyState
-                title="Select a ticket"
-                description="Click any row to review priority, SLA, billing, and work history."
-              />
-            ) : (
               <>
                 <div>
                   <div className="font-mono text-xs text-base-content/60">
@@ -1249,9 +1296,9 @@ export default function ServiceTicketsPage() {
                   )}
                 </div>
               </>
-            )}
           </div>
         </aside>
+        ) : null}
       </div>
 
       <dialog ref={dialogRef} className="modal">

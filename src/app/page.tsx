@@ -67,11 +67,16 @@ export default function HomePage() {
 
       {/* Hero — full-bleed visual plane */}
       <section className="relative isolate min-h-[calc(100vh-4rem)] overflow-hidden">
-        <div
-          className="absolute inset-0 bg-[#0B1220] bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: "url('/brand/nexus-hero-bg.png')" }}
-          aria-hidden="true"
-        />
+        <div className="nexus-hero-flow absolute inset-0 bg-[#0B1220]" aria-hidden="true">
+          <div
+            className="nexus-hero-flow__layer"
+            style={{ backgroundImage: "url('/brand/nexus-hero-bg.png')" }}
+          />
+          <div
+            className="nexus-hero-flow__layer nexus-hero-flow__layer--drift"
+            style={{ backgroundImage: "url('/brand/nexus-hero-bg.png')" }}
+          />
+        </div>
         <div className="absolute inset-0 bg-[#0B1220]/45" aria-hidden="true" />
         <div
           className="absolute inset-0 bg-gradient-to-r from-[#0B1220]/75 via-[#0B1220]/35 to-transparent"

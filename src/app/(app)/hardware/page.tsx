@@ -50,7 +50,13 @@ const MANAGER_ROLES = new Set([
   "account_manager",
 ]);
 
-type ManagerSubTab = "devices" | "budgets";
+type HardwareMenuSection =
+  | "hardware-assets"
+  | "purchases"
+  | "parts-inventory"
+  | "parts-orders"
+  | "devices"
+  | "budgets";
 type DeviceFilterMode = "all" | "inventory" | "customer";
 
 interface AssetRow extends HardwareAsset {
@@ -99,7 +105,8 @@ export default function HardwarePage() {
   const [budgetDrafts, setBudgetDrafts] = useState<Record<string, string>>({});
   const [partsOpen, setPartsOpen] = useState(true);
   const [assetsOpen, setAssetsOpen] = useState(false);
-  const [managerTab, setManagerTab] = useState<ManagerSubTab>("devices");
+  const [hardwareMenu, setHardwareMenu] =
+    useState<HardwareMenuSection>("hardware-assets");
   const [deviceFilterMode, setDeviceFilterMode] =
     useState<DeviceFilterMode>("all");
   const [filterCustomerId, setFilterCustomerId] = useState("");
@@ -120,6 +127,23 @@ export default function HardwarePage() {
   const isManagerView = MANAGER_ROLES.has(activeRole);
   const canReviewReorders =
     activeRole === "administrator" || activeRole === "service_manager";
+  const showHardwareOverview =
+    !isManagerView || hardwareMenu === "hardware-assets";
+  const showPurchaseRequests =
+    isManagerView && hardwareMenu === "purchases";
+  const showPartsInventorySection = isManagerView
+    ? hardwareMenu === "parts-inventory"
+    : isAdministratorView || isTechnicianView || canReviewReorders;
+  const showPartsOrdersSection = isManagerView
+    ? hardwareMenu === "parts-orders"
+    : canReviewReorders;
+  const showAssetsTableSection =
+    !isManagerView ||
+    hardwareMenu === "hardware-assets" ||
+    hardwareMenu === "devices";
+  const showBudgetsSection = isManagerView && hardwareMenu === "budgets";
+  const partsSectionExpanded = partsOpen || isManagerView;
+  const assetsSectionExpanded = assetsOpen || isManagerView;
 
   function onAssetClick(assetId: string) {
     setDrawerAssetId(assetId);
@@ -526,35 +550,48 @@ export default function HardwarePage() {
       />
 
       {isManagerView ? (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={`btn btn-sm ${managerTab === "devices" ? "btn-primary" : "btn-ghost"}`}
-            onClick={() => setManagerTab("devices")}
-          >
-            Devices
-            {pendingPurchaseRequests.length > 0 ? (
-              <span className="badge badge-warning badge-sm">
-                {pendingPurchaseRequests.length}
-              </span>
-            ) : null}
-          </button>
-          <button
-            type="button"
-            className={`btn btn-sm ${managerTab === "budgets" ? "btn-primary" : "btn-ghost"}`}
-            onClick={() => setManagerTab("budgets")}
-          >
-            Parts budgets
-            {pendingBudgetRequests.length > 0 ? (
-              <span className="badge badge-warning badge-sm">
-                {pendingBudgetRequests.length}
-              </span>
-            ) : null}
-          </button>
-        </div>
+        <nav
+          aria-label="Hardware sections"
+          className="sticky top-16 z-10 -mx-1 flex flex-wrap gap-2 rounded-box border border-[rgba(11,18,32,0.1)] bg-base-100/90 p-2 shadow-sm backdrop-blur"
+        >
+          {(
+            [
+              { id: "hardware-assets", label: "Hardware assets" },
+              {
+                id: "purchases",
+                label: "Asset purchase requests",
+                badge: pendingPurchaseRequests.length,
+              },
+              { id: "parts-inventory", label: "Parts inventory" },
+              {
+                id: "parts-orders",
+                label: "Parts order requests",
+                badge: pendingReorderRequests.length,
+              },
+              { id: "devices", label: "Devices" },
+              {
+                id: "budgets",
+                label: "Parts budgets",
+                badge: pendingBudgetRequests.length,
+              },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`btn btn-sm ${hardwareMenu === item.id ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => setHardwareMenu(item.id)}
+            >
+              {item.label}
+              {"badge" in item && item.badge > 0 ? (
+                <span className="badge badge-warning badge-sm">{item.badge}</span>
+              ) : null}
+            </button>
+          ))}
+        </nav>
       ) : null}
 
-      {isManagerView && managerTab === "budgets" ? (
+      {showBudgetsSection ? (
         <div className="space-y-6">
           {pendingBudgetRequests.length > 0 ? (
             <div className="card border border-warning/40 bg-warning/5 shadow-sm">
@@ -731,7 +768,9 @@ export default function HardwarePage() {
             </div>
           </div>
         </div>
-      ) : (
+      ) : null}
+
+      {showHardwareOverview ? (
         <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Total devices" value={assets.length} />
@@ -740,7 +779,7 @@ export default function HardwarePage() {
         <StatCard title="Needs replacement" value={assets.filter((a) => a.needs_replacement).length} tone="danger" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-start">
         <div className="card border bg-base-100 shadow-sm">
           <div className="card-body">
             <h2 className="card-title text-base">By type</h2>
@@ -770,8 +809,10 @@ export default function HardwarePage() {
           </div>
         </div>
       </div>
+        </>
+      ) : null}
 
-      {isManagerView ? (
+      {showPurchaseRequests ? (
         <section className="card border bg-base-100 shadow-sm">
           <div className="card-body">
             <div>
@@ -915,11 +956,11 @@ export default function HardwarePage() {
         </section>
       ) : null}
 
-      {isAdministratorView || isTechnicianView || canReviewReorders ? (
+      {showPartsInventorySection ? (
         <section
           className={`card border shadow-sm ${
             isTechnicianView
-              ? "border-blue-500/25 bg-slate-900/80 text-slate-100"
+              ? "border-slate-300 bg-[#dbe4f0] text-[#0B1220]"
               : "bg-base-100"
           }`}
         >
@@ -927,17 +968,17 @@ export default function HardwarePage() {
             type="button"
             className="flex w-full items-start justify-between gap-3 px-6 py-5 text-left"
             onClick={() => setPartsOpen((open) => !open)}
-            aria-expanded={partsOpen}
+            aria-expanded={partsSectionExpanded}
           >
             <div>
               <h2
-                className={`card-title ${isTechnicianView ? "text-white" : ""}`}
+                className={`card-title ${isTechnicianView ? "text-[#0B1220]" : ""}`}
               >
                 Parts Inventory
               </h2>
               <p
                 className={`text-sm ${
-                  isTechnicianView ? "text-slate-400" : "text-base-content/60"
+                  isTechnicianView ? "text-slate-600" : "text-base-content/60"
                 }`}
               >
                 Replacement parts matched to hardware assets currently on file.
@@ -954,21 +995,21 @@ export default function HardwarePage() {
               </div>
             </div>
             <span
-              className={`mt-1 text-xl leading-none ${isTechnicianView ? "text-slate-300" : "text-base-content/50"}`}
+              className={`mt-1 text-xl leading-none ${isTechnicianView ? "text-slate-600" : "text-base-content/50"}`}
               aria-hidden="true"
             >
-              {partsOpen ? "▾" : "▸"}
+              {partsSectionExpanded ? "▾" : "▸"}
             </span>
           </button>
 
-          {partsOpen ? (
+          {partsSectionExpanded ? (
           <div className="flex flex-col gap-5 border-t border-base-300/20 px-6 pb-6 pt-4">
             {isTechnicianView && myBudget ? (
               <div
                 className={`rounded-box border p-3 text-sm ${
                   myBudget.remaining <= 0
                     ? "border-error/40 bg-error/10"
-                    : "border-cyan-500/30 bg-slate-950/80"
+                    : "border-slate-300 bg-white/80"
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -991,7 +1032,7 @@ export default function HardwarePage() {
             <label
               className={`input input-bordered flex w-full items-center gap-2 lg:max-w-md ${
                 isTechnicianView
-                  ? "border-slate-600 bg-slate-950 text-slate-100"
+                  ? "border-slate-300 bg-white text-[#0B1220]"
                   : ""
               }`}
             >
@@ -1010,7 +1051,7 @@ export default function HardwarePage() {
               <div
                 className={`rounded-box border border-dashed p-8 text-center text-sm ${
                   isTechnicianView
-                    ? "border-slate-700 text-slate-400"
+                    ? "border-slate-300 text-slate-600"
                     : "text-base-content/60"
                 }`}
               >
@@ -1021,13 +1062,13 @@ export default function HardwarePage() {
             ) : (
               <div className="overflow-x-auto">
                 <table
-                  className={`table ${isTechnicianView ? "text-slate-100" : ""}`}
+                  className={`table ${isTechnicianView ? "text-[#0B1220]" : ""}`}
                 >
                   <thead>
                     <tr
                       className={
                         isTechnicianView
-                          ? "border-b border-slate-700 [&_th]:!bg-slate-950 [&_th]:!text-slate-300"
+                          ? "border-b border-slate-300 [&_th]:!bg-white/90 [&_th]:!text-slate-600"
                           : undefined
                       }
                     >
@@ -1042,7 +1083,7 @@ export default function HardwarePage() {
                   <tbody
                     className={
                       isTechnicianView
-                        ? "[&>tr]:!bg-slate-900 [&>tr]:!text-slate-100"
+                        ? "[&>tr]:!bg-white/80 [&>tr]:!text-[#0B1220]"
                         : undefined
                     }
                   >
@@ -1056,7 +1097,7 @@ export default function HardwarePage() {
                           key={part.id}
                           className={
                             isTechnicianView
-                              ? "border-b border-slate-700/70 !bg-slate-900"
+                              ? "border-b border-slate-200 !bg-white/80"
                               : undefined
                           }
                         >
@@ -1065,7 +1106,7 @@ export default function HardwarePage() {
                             <div
                               className={`text-xs ${
                                 isTechnicianView
-                                  ? "text-slate-400"
+                                  ? "text-slate-600"
                                   : "text-base-content/50"
                               }`}
                             >
@@ -1075,7 +1116,7 @@ export default function HardwarePage() {
                           <td
                             className={`max-w-sm text-sm ${
                               isTechnicianView
-                                ? "text-slate-300"
+                                ? "text-slate-700"
                                 : "text-base-content/70"
                             }`}
                           >
@@ -1089,7 +1130,7 @@ export default function HardwarePage() {
                             <span
                               className={`text-xs ${
                                 isTechnicianView
-                                  ? "text-slate-400"
+                                  ? "text-slate-600"
                                   : "text-base-content/50"
                               }`}
                             >
@@ -1111,7 +1152,7 @@ export default function HardwarePage() {
                             <div
                               className={`mt-1 text-xs ${
                                 isTechnicianView
-                                  ? "text-slate-400"
+                                  ? "text-slate-600"
                                   : "text-base-content/50"
                               }`}
                             >
@@ -1125,7 +1166,7 @@ export default function HardwarePage() {
                                   type="number"
                                   min="1"
                                   max={capacity}
-                                  className="input input-bordered input-sm w-20 border-slate-600 bg-slate-950 text-slate-100"
+                                  className="input input-bordered input-sm w-20 border-slate-300 bg-white text-[#0B1220]"
                                   value={orderAmount}
                                   disabled={capacity === 0 || isPending}
                                   onChange={(event) =>
@@ -1152,7 +1193,7 @@ export default function HardwarePage() {
                                   {capacity === 0 ? "Full" : "Order"}
                                 </button>
                               </div>
-                              <div className="mt-1 text-xs text-slate-400">
+                              <div className="mt-1 text-xs text-slate-600">
                                 No approval required
                               </div>
                             </td>
@@ -1169,7 +1210,7 @@ export default function HardwarePage() {
         </section>
       ) : null}
 
-      {canReviewReorders ? (
+      {showPartsOrdersSection ? (
         <section className="card border bg-base-100 shadow-sm">
           <div className="card-body">
             <div>
@@ -1271,10 +1312,11 @@ export default function HardwarePage() {
         </section>
       ) : null}
 
+      {showAssetsTableSection ? (
       <section
         className={`card border shadow-sm ${
           isTechnicianView
-            ? "border-blue-500/25 bg-slate-900/80 text-slate-100"
+            ? "border-slate-300 bg-[#dbe4f0] text-[#0B1220]"
             : "bg-base-100"
         }`}
       >
@@ -1282,15 +1324,15 @@ export default function HardwarePage() {
           type="button"
           className="flex w-full items-start justify-between gap-3 px-6 py-5 text-left"
           onClick={() => setAssetsOpen((open) => !open)}
-          aria-expanded={assetsOpen}
+          aria-expanded={assetsSectionExpanded}
         >
           <div>
-            <h2 className={`card-title ${isTechnicianView ? "text-white" : ""}`}>
+            <h2 className={`card-title ${isTechnicianView ? "text-[#0B1220]" : ""}`}>
               Hardware Assets
             </h2>
             <p
               className={`text-sm ${
-                isTechnicianView ? "text-slate-400" : "text-base-content/60"
+                isTechnicianView ? "text-slate-600" : "text-base-content/60"
               }`}
             >
               Device inventory, lifecycle stages, and replacement alerts.
@@ -1306,20 +1348,20 @@ export default function HardwarePage() {
             </div>
           </div>
           <span
-            className={`mt-1 text-xl leading-none ${isTechnicianView ? "text-slate-300" : "text-base-content/50"}`}
+            className={`mt-1 text-xl leading-none ${isTechnicianView ? "text-slate-600" : "text-base-content/50"}`}
             aria-hidden="true"
           >
-            {assetsOpen ? "▾" : "▸"}
+            {assetsSectionExpanded ? "▾" : "▸"}
           </span>
         </button>
 
-        {assetsOpen || isManagerView ? (
+        {assetsSectionExpanded ? (
         <div className="flex flex-col gap-5 border-t border-base-300/20 px-6 pb-6 pt-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
             <label
               className={`input input-bordered flex w-full items-center gap-2 lg:max-w-md ${
                 isTechnicianView
-                  ? "border-slate-600 bg-slate-950 text-slate-100"
+                  ? "border-slate-300 bg-white text-[#0B1220]"
                   : ""
               }`}
             >
@@ -1388,7 +1430,7 @@ export default function HardwarePage() {
             <div
               className={`rounded-box border border-dashed p-8 text-center text-sm ${
                 isTechnicianView
-                  ? "border-slate-700 text-slate-400"
+                  ? "border-slate-300 text-slate-600"
                   : "text-base-content/60"
               }`}
             >
@@ -1397,13 +1439,13 @@ export default function HardwarePage() {
           ) : (
             <div className="overflow-x-auto">
               <table
-                className={`table ${isTechnicianView ? "text-slate-100" : ""}`}
+                className={`table ${isTechnicianView ? "text-[#0B1220]" : ""}`}
               >
                 <thead>
                   <tr
                     className={
                       isTechnicianView
-                        ? "border-b border-slate-700 [&_th]:!bg-slate-950 [&_th]:!text-slate-300"
+                        ? "border-b border-slate-300 [&_th]:!bg-white/90 [&_th]:!text-slate-600"
                         : undefined
                     }
                   >
@@ -1423,7 +1465,7 @@ export default function HardwarePage() {
                 <tbody
                   className={
                     isTechnicianView
-                      ? "[&>tr]:!bg-slate-900 [&>tr]:!text-slate-100"
+                      ? "[&>tr]:!bg-white/80 [&>tr]:!text-[#0B1220]"
                       : undefined
                   }
                 >
@@ -1432,7 +1474,7 @@ export default function HardwarePage() {
                       key={row.id}
                       className={
                         isTechnicianView
-                          ? "cursor-pointer border-b border-slate-700/70 !bg-slate-900 hover:!bg-slate-800"
+                          ? "cursor-pointer border-b border-slate-200 !bg-white/80 hover:!bg-slate-100"
                           : "cursor-pointer hover:bg-base-200/80"
                       }
                       onClick={() => onAssetClick(row.id)}
@@ -1450,7 +1492,7 @@ export default function HardwarePage() {
                         <div
                           className={`text-xs ${
                             isTechnicianView
-                              ? "text-slate-400"
+                              ? "text-slate-600"
                               : "text-base-content/60"
                           }`}
                         >
@@ -1469,7 +1511,7 @@ export default function HardwarePage() {
                             <span
                               className={`text-xs ${
                                 isTechnicianView
-                                  ? "text-slate-400"
+                                  ? "text-slate-600"
                                   : "text-base-content/50"
                               }`}
                             >
@@ -1509,8 +1551,7 @@ export default function HardwarePage() {
         </div>
         ) : null}
       </section>
-        </>
-      )}
+      ) : null}
 
       <dialog ref={dialogRef} className="modal">
         <div className="modal-box max-h-[90vh] max-w-3xl overflow-y-auto">

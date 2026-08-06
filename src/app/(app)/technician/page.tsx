@@ -14,7 +14,6 @@ import { hoursBetween } from "@/lib/calculations";
 import { isOpenTicket } from "@/lib/dashboard-stats";
 import { AlertBanner } from "@/components/AlertBanner";
 import { FormField } from "@/components/FormField";
-import { PageHeader } from "@/components/PageHeader";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -77,22 +76,14 @@ function TechStat({
   hint?: string;
   tone?: "default" | "danger" | "warning" | "info" | "pto";
 }) {
-  const toneClass =
-    tone === "danger"
-      ? "border-rose-500/30 bg-rose-500/10"
-      : tone === "warning"
-        ? "border-amber-400/30 bg-amber-400/10"
-        : tone === "info"
-          ? "border-blue-400/30 bg-blue-500/10"
-          : tone === "pto"
-            ? "border-violet-400/30 bg-violet-500/10"
-            : "border-blue-500/25 bg-slate-900/70";
-
+  void tone;
   return (
-    <div className={`rounded-xl border p-4 shadow-sm ${toneClass}`}>
-      <p className="text-sm font-medium text-slate-300">{title}</p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight text-white">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-slate-400">{hint}</p> : null}
+    <div className="rounded-xl border border-slate-300 bg-[#e2e8f0] p-4 shadow-sm">
+      <p className="text-sm font-medium text-[#0B1220]">{title}</p>
+      <p className="mt-1 text-2xl font-semibold tracking-tight text-[#0B1220]">
+        {value}
+      </p>
+      {hint ? <p className="mt-1 text-xs text-slate-600">{hint}</p> : null}
     </div>
   );
 }
@@ -882,19 +873,21 @@ export default function TechnicianWorkspacePage() {
     : (profile?.full_name ?? technician.technician_name);
 
   return (
-    <div className="space-y-6 text-slate-100">
-      <PageHeader
-        title={
-          isAdminViewer
-            ? `${welcomeName}'s My Work`
-            : `Welcome, ${welcomeName}`
-        }
-        description={
-          isAdminViewer
-            ? `Viewing schedule, PTO, and work log for ${technician.technician_name}. Use View as in the header to switch technicians.`
-            : "Schedule tickets, request PTO, log work, and track pay-period hours."
-        }
-        action={
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="font-display text-xl font-semibold tracking-tight text-[#0B1220]">
+            {isAdminViewer
+              ? `${welcomeName}'s My Work`
+              : `Welcome, ${welcomeName}`}
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            {isAdminViewer
+              ? `Viewing schedule, PTO, and work log for ${technician.technician_name}. Use View as in the header to switch technicians.`
+              : "Schedule tickets, request PTO, log work, and track pay-period hours."}
+          </p>
+        </div>
+        <div className="shrink-0">
           <button
             type="button"
             className="btn btn-primary border-0"
@@ -903,8 +896,8 @@ export default function TechnicianWorkspacePage() {
             <ClipboardPlus className="size-4" aria-hidden="true" />
             Log work
           </button>
-        }
-      />
+        </div>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <TechStat title="Open assignments" value={assignedOpen.length} />
@@ -1082,7 +1075,7 @@ export default function TechnicianWorkspacePage() {
         </section>
       ) : null}
 
-      <div className="rounded-xl border border-blue-500/25 bg-gradient-to-br from-[#0B1220] via-[#111827] to-[#1E3A5F] p-4 shadow-lg sm:p-5">
+      <div className="rounded-xl border border-slate-300 bg-[#e8eef5] p-4 shadow-lg sm:p-5">
         <TechnicianScheduleCalendar
           tickets={calendarTickets}
           anchor={calendarAnchor}
@@ -1101,23 +1094,23 @@ export default function TechnicianWorkspacePage() {
         />
       </div>
 
-      <div className="rounded-xl border border-violet-400/20 bg-slate-900/80 shadow-sm">
+      <div className="rounded-xl border border-slate-300 bg-[#dbe4f0] shadow-sm">
         <div className="space-y-4 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-base font-semibold text-white">Request PTO</h2>
-              <p className="mt-1 text-sm text-slate-400">
+              <h2 className="text-base font-semibold text-[#0B1220]">Request PTO</h2>
+              <p className="mt-1 text-sm text-slate-600">
                 Pending and approved requests reduce your remaining balance.
               </p>
             </div>
-            <div className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-3 text-right">
-              <p className="text-xs font-medium uppercase tracking-wide text-violet-200/80">
+            <div className="rounded-xl border border-slate-400/50 bg-white/70 px-4 py-3 text-right">
+              <p className="text-xs font-medium uppercase tracking-wide text-[#1e3a8a]">
                 PTO remaining
               </p>
-              <p className="mt-1 text-2xl font-semibold text-white">
+              <p className="mt-1 text-2xl font-semibold text-[#0B1220]">
                 {ptoRemaining.toFixed(0)} hrs
               </p>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-slate-600">
                 of {annualPtoAllowance} hrs annual allotment
               </p>
             </div>
@@ -1134,7 +1127,7 @@ export default function TechnicianWorkspacePage() {
                 name="start_date"
                 type="date"
                 required
-                className="input input-bordered w-full border-slate-600 bg-slate-950"
+                className="input input-bordered w-full border-slate-300 bg-white text-[#0B1220]"
               />
             </FormField>
             <FormField label="End date" htmlFor="end_date" required>
@@ -1143,7 +1136,7 @@ export default function TechnicianWorkspacePage() {
                 name="end_date"
                 type="date"
                 required
-                className="input input-bordered w-full border-slate-600 bg-slate-950"
+                className="input input-bordered w-full border-slate-300 bg-white text-[#0B1220]"
               />
             </FormField>
             <FormField
@@ -1157,7 +1150,7 @@ export default function TechnicianWorkspacePage() {
                 type="number"
                 min="0.5"
                 step="0.5"
-                className="input input-bordered w-full border-slate-600 bg-slate-950"
+                className="input input-bordered w-full border-slate-300 bg-white text-[#0B1220]"
                 placeholder="Auto from date range"
               />
             </FormField>
@@ -1166,14 +1159,14 @@ export default function TechnicianWorkspacePage() {
                 id="reason"
                 name="reason"
                 rows={2}
-                className="textarea textarea-bordered w-full border-slate-600 bg-slate-950"
+                className="textarea textarea-bordered w-full border-slate-300 bg-white text-[#0B1220]"
                 placeholder="Vacation, appointment, etc."
               />
             </FormField>
             <div className="md:col-span-2">
               <button
                 type="submit"
-                className="btn border-0 bg-violet-500 text-white hover:bg-violet-400"
+                className="btn btn-primary"
                 disabled={isPending}
               >
                 {isPending ? (
@@ -1186,24 +1179,24 @@ export default function TechnicianWorkspacePage() {
           </form>
 
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-200">Your PTO requests</h3>
+            <h3 className="text-sm font-semibold text-[#0B1220]">Your PTO requests</h3>
             {ptoRequests.length === 0 ? (
-              <p className="text-sm text-slate-500">No PTO requests yet.</p>
+              <p className="text-sm text-slate-600">No PTO requests yet.</p>
             ) : (
               <div className="space-y-2">
                 {ptoRequests.slice(0, 6).map((request) => (
                   <div
                     key={request.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white/80 px-3 py-2"
                   >
                     <div>
-                      <p className="text-sm text-white">
+                      <p className="text-sm text-[#0B1220]">
                         {request.start_date}
                         {request.end_date !== request.start_date
                           ? ` → ${request.end_date}`
                           : ""}
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-600">
                         {Number(request.hours_requested).toFixed(1)} hrs
                         {request.reason ? ` · ${request.reason}` : ""}
                       </p>
@@ -1213,7 +1206,7 @@ export default function TechnicianWorkspacePage() {
                       {request.status === "Pending" ? (
                         <button
                           type="button"
-                          className="btn btn-ghost btn-xs text-slate-300"
+                          className="btn btn-ghost btn-xs text-slate-700"
                           disabled={isPending}
                           onClick={() => handleCancelPto(request.id)}
                         >
@@ -1229,30 +1222,30 @@ export default function TechnicianWorkspacePage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-emerald-400/25 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 p-5 shadow-sm">
+      <div className="rounded-xl border border-slate-300 bg-[#dbe4f0] p-5 shadow-sm">
         <div>
-          <h2 className="text-base font-semibold text-white">Current pay period</h2>
-          <p className="mt-1 text-sm text-slate-400">
+          <h2 className="text-base font-semibold text-[#0B1220]">Current pay period</h2>
+          <p className="mt-1 text-sm text-slate-600">
             Biweekly · {format(payPeriod.start, "MMM d")} –{" "}
             {format(payPeriod.end, "MMM d, yyyy")}
           </p>
         </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
-            <p className="text-sm text-slate-300">Pay rate</p>
-            <p className="mt-1 text-3xl font-semibold text-white">
+          <div className="rounded-xl border border-slate-300 bg-white/80 p-4">
+            <p className="text-sm text-slate-600">Pay rate</p>
+            <p className="mt-1 text-3xl font-semibold text-[#0B1220]">
               {formatCurrency(payRate)}
             </p>
           </div>
-          <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
-            <p className="text-sm text-slate-300">Hours worked this period</p>
-            <p className="mt-1 text-3xl font-semibold text-white">
+          <div className="rounded-xl border border-slate-300 bg-white/80 p-4">
+            <p className="text-sm text-slate-600">Hours worked this period</p>
+            <p className="mt-1 text-3xl font-semibold text-[#0B1220]">
               {payPeriodHours.toFixed(1)}
             </p>
           </div>
-          <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
-            <p className="text-sm text-slate-300">Current Earnings this period</p>
-            <p className="mt-1 text-3xl font-semibold text-emerald-300">
+          <div className="rounded-xl border border-slate-300 bg-white/80 p-4">
+            <p className="text-sm text-slate-600">Current Earnings this period</p>
+            <p className="mt-1 text-3xl font-semibold text-[#0f766e]">
               {formatCurrency(payPeriodEarnings)}
             </p>
           </div>
@@ -1260,18 +1253,18 @@ export default function TechnicianWorkspacePage() {
       </div>
 
       {workEntries.length > 0 ? (
-        <div className="rounded-xl border border-blue-500/25 bg-slate-900/80 shadow-sm">
+        <div className="rounded-xl border border-slate-300 bg-[#dbe4f0] shadow-sm">
           <div className="space-y-4 p-5">
             <div>
-              <h2 className="text-base font-semibold text-white">Recent work</h2>
-              <p className="mt-1 text-sm text-slate-400">
+              <h2 className="text-base font-semibold text-[#0B1220]">Recent work</h2>
+              <p className="mt-1 text-sm text-slate-600">
                 Click a row to edit a completed work entry.
               </p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="table table-sm text-slate-200">
+            <div className="overflow-x-auto rounded-xl border border-slate-300 bg-white/80">
+              <table className="table table-sm text-[#0B1220]">
                 <thead>
-                  <tr className="border-slate-700 text-slate-400">
+                  <tr className="border-slate-300 text-slate-600">
                     <th>Date</th>
                     <th>Hours</th>
                     <th>Work performed</th>
@@ -1282,7 +1275,7 @@ export default function TechnicianWorkspacePage() {
                   {workEntries.slice(0, 8).map((entry) => (
                     <tr
                       key={entry.id}
-                      className="cursor-pointer border-slate-800 transition hover:bg-blue-500/10"
+                      className="cursor-pointer border-slate-200 transition hover:bg-slate-100"
                       onClick={() => openWorkEntryForEdit(entry)}
                     >
                       <td>{entry.work_date ?? "—"}</td>

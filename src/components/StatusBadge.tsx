@@ -2,7 +2,7 @@ import type { InvoiceStatus, SlaStatus, TicketStatus } from "@/lib/types";
 
 const STATUS_STYLES: Record<string, string> = {
   New: "badge-info",
-  Assigned: "badge-primary",
+  Assigned: "border-0 bg-[#14532d] text-white",
   "In Progress": "badge-primary",
   "On Hold": "badge-warning",
   "Waiting on Customer": "badge-warning",

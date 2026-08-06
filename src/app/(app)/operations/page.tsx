@@ -2,11 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Activity,
+  Briefcase,
+  HeartPulse,
+  TrendingDown,
+  Wrench,
+} from "lucide-react";
 import { calcSlaStatus } from "@/lib/calculations";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { PriorityBadge } from "@/components/PriorityBadge";
+import {
+  PortalMetricStrip,
+  PortalZone,
+} from "@/components/portal/PortalZone";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -197,36 +208,58 @@ export default function OperationsPage() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-12">
       <PageHeader
         title="Manager command center"
         description="Service delivery control board. Every tile opens the queue where you can resolve the issue."
       />
 
-      <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-base-content/65">
-        <span>
-          <strong className="text-base-content">{actNowCount}</strong> need action now
-        </span>
-        <span>
-          <strong className="text-base-content">{watchlistAccounts.length}</strong> accounts on watchlist
-        </span>
-        <span>
-          <strong className="text-base-content">{formatCurrency(leakageTotal)}</strong> profit leakage
-        </span>
-        <span>
-          <strong className="text-base-content">{deliveryCount}</strong> delivery watches
-        </span>
-        <span>
-          <strong className="text-base-content">{renewals30.length}</strong> renewals in 30 days
-        </span>
-      </div>
+      <PortalMetricStrip
+        ariaLabel="Command center zones"
+        items={[
+          {
+            href: "#act-now",
+            label: "Act now",
+            value: actNowCount,
+            accent: "navy",
+          },
+          {
+            href: "#client-health",
+            label: "Client health",
+            value: watchlistAccounts.length,
+            accent: "teal",
+          },
+          {
+            href: "#profit-leakage",
+            label: "Profit leakage",
+            value: formatCurrency(leakageTotal),
+            accent: "royal",
+          },
+          {
+            href: "#delivery-health",
+            label: "Delivery",
+            value: deliveryCount,
+            accent: "azure",
+          },
+          {
+            href: "#portfolio-watch",
+            label: "Portfolio",
+            value: renewals30.length,
+            accent: "mint",
+          },
+        ]}
+      />
 
       {/* ---------- Act now ---------- */}
-      <CommandZone
+      <PortalZone
         id="act-now"
         eyebrow="Zone 1"
         title="Act now"
         summary="Operational risks that stall delivery today. Assign work, clear SLA pressure, and approve logged time."
+        accent="navy"
+        icon={Activity}
+        count={actNowCount}
+        countLabel="items need action"
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
@@ -287,15 +320,19 @@ export default function OperationsPage() {
             }))}
           />
         </div>
-      </CommandZone>
+      </PortalZone>
 
       {/* ---------- Client health + profit leakage ---------- */}
-      <div className="grid gap-8 xl:grid-cols-2">
-        <CommandZone
+      <div className="grid gap-10 xl:grid-cols-2">
+        <PortalZone
           id="client-health"
           eyebrow="Zone 2"
           title="Client health score"
           summary="One score per account from SLA, AR, hour burn, criticals, and renewals — with the next best manager action."
+          accent="teal"
+          icon={HeartPulse}
+          count={watchlistAccounts.length}
+          countLabel="on watchlist"
         >
           <div className="grid gap-3 sm:grid-cols-3">
             <StatCard
@@ -378,13 +415,17 @@ export default function OperationsPage() {
               ))
             )}
           </div>
-        </CommandZone>
+        </PortalZone>
 
-        <CommandZone
+        <PortalZone
           id="profit-leakage"
           eyebrow="Zone 3"
           title="Profit-leakage radar"
           summary="Where money is escaping: unbilled work, overage not invoiced, contracts below MRR, and slow collections."
+          accent="royal"
+          icon={TrendingDown}
+          count={formatCurrency(leakageTotal)}
+          countLabel="at risk"
         >
           <div className="grid gap-3 sm:grid-cols-3">
             <StatCard
@@ -452,15 +493,19 @@ export default function OperationsPage() {
               ))
             )}
           </div>
-        </CommandZone>
+        </PortalZone>
       </div>
 
       {/* ---------- Delivery health ---------- */}
-      <CommandZone
+      <PortalZone
         id="delivery-health"
         eyebrow="Zone 4"
         title="Delivery health"
         summary="Capacity and overrun signals. Catch late tickets, contracts burning past included hours, and overloaded technicians."
+        accent="azure"
+        icon={Wrench}
+        count={deliveryCount}
+        countLabel="delivery watches"
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
@@ -536,14 +581,18 @@ export default function OperationsPage() {
             })}
           />
         </div>
-      </CommandZone>
+      </PortalZone>
 
       {/* ---------- Portfolio watch ---------- */}
-      <CommandZone
+      <PortalZone
         id="portfolio-watch"
         eyebrow="Zone 5"
         title="Portfolio watch"
         summary="Account and contract outlook. Renewals, margin pressure, and customers carrying risk flags."
+        accent="mint"
+        icon={Briefcase}
+        count={renewals30.length}
+        countLabel="renewals in 30 days"
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
@@ -653,7 +702,7 @@ export default function OperationsPage() {
             </table>
           </div>
         ) : null}
-      </CommandZone>
+      </PortalZone>
     </div>
   );
 }
@@ -704,37 +753,6 @@ function leakLabel(kind: string): string {
   }
 }
 
-function CommandZone({
-  id,
-  eyebrow,
-  title,
-  summary,
-  children,
-}: {
-  id: string;
-  eyebrow: string;
-  title: string;
-  summary: string;
-  children: ReactNode;
-}) {
-  return (
-    <section id={id} className="scroll-mt-24 space-y-4">
-      <div className="max-w-3xl border-b border-base-300 pb-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-base-content/50">
-          {eyebrow}
-        </p>
-        <h2 className="mt-1 text-xl font-semibold tracking-tight text-base-content">
-          {title}
-        </h2>
-        <p className="mt-1 text-sm leading-relaxed text-base-content/65">
-          {summary}
-        </p>
-      </div>
-      {children}
-    </section>
-  );
-}
-
 function TraceQueue({
   title,
   href,
@@ -755,7 +773,7 @@ function TraceQueue({
   }>;
 }) {
   return (
-    <div className="rounded-box border border-base-300 bg-base-100">
+    <div className="rounded-box border border-base-300/80 bg-base-100/90">
       <div className="flex items-center justify-between gap-3 border-b border-base-300 px-4 py-3">
         <h3 className="text-sm font-semibold">{title}</h3>
         <Link href={href} className="text-xs font-medium text-primary hover:underline">

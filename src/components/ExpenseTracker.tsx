@@ -348,8 +348,8 @@ export function ExpenseTracker({
 
   if (!ticketId) {
     return (
-      <div className="card border bg-base-100 shadow-sm">
-        <div className="card-body py-8 text-center text-sm text-base-content/60">
+      <div className="rounded-xl border border-slate-300 bg-[#dbe4f0] text-[#0B1220] shadow-sm">
+        <div className="px-5 py-8 text-center text-sm text-slate-600">
           Select a ticket to log expenses.
         </div>
       </div>
@@ -357,21 +357,21 @@ export function ExpenseTracker({
   }
 
   return (
-    <div className="card border bg-base-100 shadow-sm">
-      <div className="card-body gap-4">
+    <div className="rounded-xl border border-slate-300 bg-[#dbe4f0] text-[#0B1220] shadow-sm">
+      <div className="flex flex-col gap-4 p-5">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h2 className="card-title text-base">Expense Tracker</h2>
-            <p className="text-sm text-base-content/60">
+            <h2 className="text-base font-semibold text-[#0B1220]">Expense Tracker</h2>
+            <p className="text-sm text-slate-600">
               Quick expenses for{" "}
-              <span className="font-medium text-base-content">
+              <span className="font-medium text-[#0B1220]">
                 {ticketLabel ?? "this ticket"}
               </span>
             </p>
             {budgetStatus ? (
-              <p className="mt-1 text-xs text-base-content/60">
+              <p className="mt-1 text-xs text-slate-600">
                 Internal budget remaining this month:{" "}
-                <span className="font-medium text-base-content">
+                <span className="font-medium text-[#0B1220]">
                   {formatCurrency(budgetStatus.remaining)}
                 </span>{" "}
                 of {formatCurrency(budgetStatus.monthlyLimit)} (MTD{" "}
@@ -379,7 +379,7 @@ export function ExpenseTracker({
               </p>
             ) : null}
           </div>
-          <p className="text-sm">
+          <p className="text-sm text-[#0B1220]">
             Total:{" "}
             <span className="font-semibold">{formatCurrency(total)}</span>
           </p>
@@ -387,9 +387,9 @@ export function ExpenseTracker({
 
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
           <label className="form-control min-w-0 lg:col-span-2">
-            <span className="label-text mb-1 text-xs">Type</span>
+            <span className="mb-1 text-xs text-slate-600">Type</span>
             <select
-              className="select select-bordered select-sm w-full min-w-0"
+              className="select select-bordered select-sm w-full min-w-0 border-slate-300 bg-white text-[#0B1220]"
               value={type}
               disabled={busy}
               onChange={(e) => setType(e.target.value as ExpenseType)}
@@ -403,9 +403,9 @@ export function ExpenseTracker({
           </label>
 
           <label className="form-control min-w-0 sm:col-span-2 lg:col-span-3">
-            <span className="label-text mb-1 text-xs">Billing</span>
+            <span className="mb-1 text-xs text-slate-600">Billing</span>
             <select
-              className="expense-billing-select select select-bordered select-sm w-full min-w-0"
+              className="expense-billing-select select select-bordered select-sm w-full min-w-0 border-slate-300 bg-white text-[#0B1220]"
               value={expenseTag}
               disabled={busy}
               onChange={(e) => setExpenseTag(e.target.value as ExpenseTag)}
@@ -417,19 +417,19 @@ export function ExpenseTracker({
               ))}
             </select>
             {expenseTag === "Billable to Customer" ? (
-              <span className="mt-1 block text-[11px] leading-snug text-base-content/55">
+              <span className="mt-1 block text-[11px] leading-snug text-slate-600">
                 Sends to Work &amp; Billing for manager approval before invoicing
               </span>
             ) : null}
           </label>
 
           <label className="form-control min-w-0 lg:col-span-2">
-            <span className="label-text mb-1 text-xs">Amount</span>
+            <span className="mb-1 text-xs text-slate-600">Amount</span>
             <input
               type="number"
               min="0.01"
               step="0.01"
-              className="input input-bordered input-sm w-full min-w-0"
+              className="input input-bordered input-sm w-full min-w-0 border-slate-300 bg-white text-[#0B1220]"
               placeholder="0.00"
               value={amount}
               disabled={busy}
@@ -438,10 +438,10 @@ export function ExpenseTracker({
           </label>
 
           <label className="form-control min-w-0 sm:col-span-2 lg:col-span-3">
-            <span className="label-text mb-1 text-xs">Description</span>
+            <span className="mb-1 text-xs text-slate-600">Description</span>
             <input
               type="text"
-              className="input input-bordered input-sm w-full min-w-0"
+              className="input input-bordered input-sm w-full min-w-0 border-slate-300 bg-white text-[#0B1220]"
               placeholder="Optional note"
               value={description}
               disabled={busy}
@@ -450,10 +450,10 @@ export function ExpenseTracker({
           </label>
 
           <label className="form-control min-w-0 lg:col-span-2">
-            <span className="label-text mb-1 text-xs">Date</span>
+            <span className="mb-1 text-xs text-slate-600">Date</span>
             <input
               type="date"
-              className="input input-bordered input-sm w-full min-w-0"
+              className="input input-bordered input-sm w-full min-w-0 border-slate-300 bg-white text-[#0B1220]"
               value={date}
               disabled={busy}
               onChange={(e) => setDate(e.target.value)}
@@ -461,11 +461,11 @@ export function ExpenseTracker({
           </label>
         </div>
 
-        <div className="expense-receipt-panel rounded-box border border-dashed border-base-300 bg-base-200/40 p-3">
+        <div className="expense-receipt-panel rounded-xl border border-dashed border-slate-300 bg-white/70 p-3">
           <div className="mb-2 flex items-center gap-2">
-            <Camera className="size-4 text-base-content/60" aria-hidden="true" />
-            <p className="text-sm font-medium">Receipt photos</p>
-            <span className="text-xs text-base-content/50">(optional)</span>
+            <Camera className="size-4 text-slate-600" aria-hidden="true" />
+            <p className="text-sm font-medium text-[#0B1220]">Receipt photos</p>
+            <span className="text-xs text-slate-600">(optional)</span>
             {receipts.length > 0 ? (
               <span className="badge badge-ghost badge-sm">
                 {receipts.length}/{MAX_RECEIPTS}
@@ -488,7 +488,7 @@ export function ExpenseTracker({
                 {receipts.map((item) => (
                   <div
                     key={item.id}
-                    className="expense-receipt-tile relative w-28 overflow-hidden rounded-box border border-base-300 bg-base-100"
+                    className="expense-receipt-tile relative w-28 overflow-hidden rounded-xl border border-slate-300 bg-white"
                   >
                     {item.previewUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -502,12 +502,12 @@ export function ExpenseTracker({
                         <FileText className="size-8 opacity-50" />
                       </div>
                     )}
-                    <p className="truncate px-1.5 py-1 text-[10px] text-base-content/70">
+                    <p className="truncate px-1.5 py-1 text-[10px] text-slate-600">
                       {item.file.name}
                     </p>
                     <button
                       type="button"
-                      className="btn btn-circle btn-ghost btn-xs absolute right-1 top-1 bg-base-100/90"
+                      className="btn btn-circle btn-ghost btn-xs absolute right-1 top-1 bg-white/90"
                       aria-label={`Remove ${item.file.name}`}
                       disabled={busy}
                       onClick={() => removeReceipt(item.id)}
@@ -541,15 +541,15 @@ export function ExpenseTracker({
           ) : (
             <button
               type="button"
-              className="expense-receipt-dropzone flex w-full flex-col items-center justify-center gap-2 rounded-box border border-base-300 bg-base-100 px-4 py-6 text-center transition hover:border-primary/50 hover:bg-primary/5"
+              className="expense-receipt-dropzone flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-6 text-center transition hover:border-slate-400 hover:bg-slate-50"
               disabled={busy}
               onClick={() => receiptRef.current?.click()}
             >
-              <Upload className="size-6 text-primary" aria-hidden="true" />
-              <span className="text-sm font-medium">
+              <Upload className="size-6 text-slate-600" aria-hidden="true" />
+              <span className="text-sm font-medium text-[#0B1220]">
                 Upload or take receipt photos
               </span>
-              <span className="text-xs text-base-content/55">
+              <span className="text-xs text-slate-600">
                 Select multiple JPG, PNG, or PDF files at once
               </span>
             </button>
@@ -572,17 +572,17 @@ export function ExpenseTracker({
           </button>
         </div>
 
-        <div className="overflow-x-auto rounded-box border border-base-300">
+        <div className="overflow-x-auto rounded-xl border border-slate-300 bg-white/80">
           {loading ? (
             <div className="flex justify-center py-8">
               <span className="loading loading-spinner loading-md text-primary" />
             </div>
           ) : expenses.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-base-content/55">
+            <p className="px-4 py-8 text-center text-sm text-slate-600">
               No expenses yet — add one above in a few seconds.
             </p>
           ) : (
-            <table className="table table-zebra table-sm">
+            <table className="table table-zebra table-sm text-[#0B1220]">
               <thead>
                 <tr>
                   <th>Type</th>
@@ -608,7 +608,7 @@ export function ExpenseTracker({
                       <tr key={row.id}>
                         <td>
                           <select
-                            className="select select-bordered select-xs"
+                            className="select select-bordered select-xs border-slate-300 bg-white text-[#0B1220]"
                             value={editType}
                             onChange={(e) =>
                               setEditType(e.target.value as ExpenseType)
@@ -623,7 +623,7 @@ export function ExpenseTracker({
                         </td>
                         <td>
                           <select
-                            className="expense-billing-select select select-bordered select-xs w-full min-w-[12rem] max-w-[16rem]"
+                            className="expense-billing-select select select-bordered select-xs w-full min-w-[12rem] max-w-[16rem] border-slate-300 bg-white text-[#0B1220]"
                             value={editExpenseTag}
                             onChange={(e) =>
                               setEditExpenseTag(e.target.value as ExpenseTag)
@@ -640,7 +640,7 @@ export function ExpenseTracker({
                           {row.approval_status ? (
                             <StatusBadge status={row.approval_status} />
                           ) : (
-                            <span className="text-base-content/40">—</span>
+                            <span className="text-slate-500">—</span>
                           )}
                         </td>
                         <td>
@@ -648,7 +648,7 @@ export function ExpenseTracker({
                             type="number"
                             min="0.01"
                             step="0.01"
-                            className="input input-bordered input-xs w-24"
+                            className="input input-bordered input-xs w-24 border-slate-300 bg-white text-[#0B1220]"
                             value={editAmount}
                             onChange={(e) => setEditAmount(e.target.value)}
                           />
@@ -656,7 +656,7 @@ export function ExpenseTracker({
                         <td>
                           <input
                             type="text"
-                            className="input input-bordered input-xs w-full min-w-[8rem]"
+                            className="input input-bordered input-xs w-full min-w-[8rem] border-slate-300 bg-white text-[#0B1220]"
                             value={editDescription}
                             onChange={(e) => setEditDescription(e.target.value)}
                           />
@@ -664,7 +664,7 @@ export function ExpenseTracker({
                         <td>
                           <input
                             type="date"
-                            className="input input-bordered input-xs"
+                            className="input input-bordered input-xs border-slate-300 bg-white text-[#0B1220]"
                             value={editDate}
                             onChange={(e) => setEditDate(e.target.value)}
                           />
@@ -722,7 +722,7 @@ export function ExpenseTracker({
                         {row.approval_status ? (
                           <StatusBadge status={row.approval_status} />
                         ) : (
-                          <span className="text-base-content/40">—</span>
+                          <span className="text-slate-500">—</span>
                         )}
                       </td>
                       <td className="font-medium">
@@ -730,7 +730,7 @@ export function ExpenseTracker({
                       </td>
                       <td className="max-w-[14rem] truncate">
                         {row.description || (
-                          <span className="text-base-content/40">—</span>
+                          <span className="text-slate-500">—</span>
                         )}
                       </td>
                       <td>{formatDate(row.date)}</td>
@@ -750,7 +750,7 @@ export function ExpenseTracker({
                             {receiptCount > 1 ? receiptCount : null}
                           </button>
                         ) : (
-                          <span className="text-base-content/40">—</span>
+                          <span className="text-slate-500">—</span>
                         )}
                       </td>
                       <td>

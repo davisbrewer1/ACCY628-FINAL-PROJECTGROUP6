@@ -143,8 +143,8 @@ function navButtonShade(index: number, total: number): string {
 
 function navButtonTextClass(index: number, total: number): string {
   const t = total <= 1 ? 0 : index / (total - 1);
-  // Darker blues need light text; mint/sky near the end need dark ink
-  return t >= 0.72 ? "text-[#0B1220]" : "text-white";
+  // Mid teal through mint/sky need dark ink; deeper blues stay white
+  return t >= 0.5 ? "text-[#0B1220]" : "text-white";
 }
 
 function activeNavIndex(items: NavItem[], pathname: string): number {
@@ -301,7 +301,7 @@ export function AppShell({
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const navItems = useMemo(() => {
     const base = getNavForRole(activeRole);
     // Real admins always keep My Work in the sidebar, even when Demo Role
@@ -320,7 +320,7 @@ export function AppShell({
   }, [activeRole, realRole]);
   const onTechnicianPortal =
     pathname === "/technician" || pathname.startsWith("/technician/");
-  const techTheme =
+  const showTechnicianTools =
     activeRole === "technician" ||
     (realRole === "administrator" && onTechnicianPortal);
   const headerNavIndex = activeNavIndex(navItems, pathname);
@@ -338,11 +338,7 @@ export function AppShell({
   }
 
   return (
-    <div
-      className={`drawer ${
-        techTheme ? "tech-shell" : "lg:drawer-open"
-      }`}
-    >
+    <div className="drawer portal-shell">
       <input
         id="app-shell-drawer"
         type="checkbox"
@@ -351,24 +347,15 @@ export function AppShell({
         onChange={(event) => setSidebarOpen(event.target.checked)}
       />
 
-      <div
-        className={`drawer-content flex min-h-screen flex-col ${
-          techTheme
-            ? "bg-gradient-to-br from-[#0B1220] via-[#111827] to-[#1E3A5F] text-slate-100"
-            : "bg-base-200"
-        }`}
-      >
+      <div className="drawer-content flex min-h-screen flex-col bg-base-200">
         <header
           className="navbar sticky top-0 z-20 border-b border-white/10 px-4 text-white backdrop-blur transition-[background-color] duration-300 lg:px-6"
           style={{ backgroundColor: headerBarColor }}
         >
-          <div
-            className={`flex-none ${techTheme ? "" : "lg:hidden"}`}
-            suppressHydrationWarning
-          >
+          <div className="flex-none" suppressHydrationWarning>
             <button
               type="button"
-              className={`btn btn-square btn-ghost ${techTheme ? "text-white" : ""}`}
+              className="btn btn-square btn-ghost text-white"
               aria-label={
                 sidebarOpen ? "Close navigation menu" : "Open navigation menu"
               }
@@ -402,7 +389,7 @@ export function AppShell({
             {realRole === "administrator" && onTechnicianPortal ? (
               <AdminTechnicianPortalSwitcher variant="header" />
             ) : null}
-            {techTheme ? (
+            {showTechnicianTools ? (
               <TechnicianHeaderTools technicianId={technicianId} />
             ) : null}
             {activeRole === "administrator" ||

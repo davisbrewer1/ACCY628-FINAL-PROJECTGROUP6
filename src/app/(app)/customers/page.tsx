@@ -359,7 +359,7 @@ export default function CustomersPage() {
                       <div className="flex flex-wrap gap-1">
                         <StatusBadge status={row.status ?? "Unknown"} />
                         {row.riskFlags.map((flag) => (
-                          <span key={flag} className="badge badge-warning badge-sm">
+                          <span key={flag} className={riskFlagBadgeClass(flag)}>
                             {flag}
                           </span>
                         ))}
@@ -461,4 +461,22 @@ export default function CustomersPage() {
       </dialog>
     </div>
   );
+}
+
+function riskFlagBadgeClass(flag: string): string {
+  const base = "badge badge-sm border-0 font-medium";
+  switch (flag) {
+    case "Past due":
+      return `${base} bg-[#9f1239] text-white`;
+    case "Renewing soon":
+      return `${base} bg-[#ea580c] text-white`;
+    case "Low health":
+      return `${base} bg-[#eab308] text-[#422006]`;
+    case "No active contract":
+      return `${base} bg-[#c2410c] text-white`;
+    case "Over hours":
+      return `${base} bg-[#b45309] text-white`;
+    default:
+      return `${base} badge-ghost`;
+  }
 }

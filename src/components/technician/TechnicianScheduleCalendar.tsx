@@ -26,7 +26,6 @@ import {
   buildSlotStart,
   formatLockedServiceDateLabel,
   formatScheduledWindow,
-  formatWeekRange,
   getSpanWindows,
   getWindowById,
   getWorkWeekDays,
@@ -410,30 +409,22 @@ export function TechnicianScheduleCalendar({
     applyMove(payload);
   }
 
-  const rangeLabel =
-    mode === "week"
-      ? formatWeekRange(getWorkWeekDays(anchor))
-      : format(anchor, "MMMM yyyy");
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-teal-200/80">
-            Schedule calendar
+          <h3 className="text-lg font-bold tracking-tight text-[#0f766e]">
+            Schedule Calendar
           </h3>
-          <p className="mt-1 text-sm text-slate-300">
-            Place new assignments, then drag between windows · {rangeLabel}
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="join border border-slate-600">
+          <div className="join border border-slate-300">
             <button
               type="button"
               className={`btn btn-sm join-item border-0 ${
                 mode === "week"
                   ? "btn-primary"
-                  : "bg-slate-900 text-slate-200"
+                  : "bg-white text-slate-700"
               }`}
               onClick={() => onModeChange("week")}
             >
@@ -444,7 +435,7 @@ export function TechnicianScheduleCalendar({
               className={`btn btn-sm join-item border-0 ${
                 mode === "month"
                   ? "btn-primary"
-                  : "bg-slate-900 text-slate-200"
+                  : "bg-white text-slate-700"
               }`}
               onClick={() => onModeChange("month")}
             >
@@ -453,7 +444,7 @@ export function TechnicianScheduleCalendar({
           </div>
           <button
             type="button"
-            className="btn btn-sm border-slate-600 bg-slate-900 text-slate-100 hover:border-blue-500/50 hover:bg-slate-800"
+            className="btn btn-sm border-slate-300 bg-white text-slate-700 hover:border-teal-500/50 hover:bg-slate-50"
             onClick={() => shift(-1)}
             aria-label={mode === "week" ? "Previous week" : "Previous month"}
           >
@@ -461,14 +452,14 @@ export function TechnicianScheduleCalendar({
           </button>
           <button
             type="button"
-            className="btn btn-sm border-slate-600 bg-slate-900 text-slate-100 hover:border-blue-500/50 hover:bg-slate-800"
+            className="btn btn-sm border-slate-300 bg-white text-slate-700 hover:border-teal-500/50 hover:bg-slate-50"
             onClick={() => onAnchorChange(new Date())}
           >
             Today
           </button>
           <button
             type="button"
-            className="btn btn-sm border-slate-600 bg-slate-900 text-slate-100 hover:border-blue-500/50 hover:bg-slate-800"
+            className="btn btn-sm border-slate-300 bg-white text-slate-700 hover:border-teal-500/50 hover:bg-slate-50"
             onClick={() => shift(1)}
             aria-label={mode === "week" ? "Next week" : "Next month"}
           >
@@ -534,7 +525,7 @@ export function TechnicianScheduleCalendar({
         />
       )}
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-600">
         {mode === "week"
           ? "Set hours on Needs scheduling (capped by the manager max), then drag onto an open hour. Request more hours if the job needs it — managers approve those on Technicians. Completed work stays visible but cannot be moved."
           : "Month view shows ticket counts and PTO days. Switch to Week to place unscheduled assignments and drag tickets between windows."}
@@ -546,10 +537,10 @@ export function TechnicianScheduleCalendar({
             role="dialog"
             aria-modal="true"
             aria-labelledby="move-back-warning-title"
-            className="w-full max-w-md rounded-2xl border border-amber-500/40 bg-slate-900 p-5 shadow-2xl shadow-black/40"
+            className="w-full max-w-md rounded-2xl border border-teal-500/40 bg-slate-900 p-5 shadow-2xl shadow-black/40"
           >
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 rounded-lg bg-amber-500/15 p-2 text-amber-300">
+              <div className="mt-0.5 rounded-lg bg-teal-500/15 p-2 text-teal-300">
                 <AlertTriangle className="size-5" />
               </div>
               <div className="min-w-0 flex-1">
@@ -559,7 +550,7 @@ export function TechnicianScheduleCalendar({
                 >
                   Moving {pendingWarning.priority} ticket later
                 </h4>
-                <p className="mt-2 text-sm text-slate-300">
+                <p className="mt-2 text-sm text-slate-600">
                   {pendingWarning.message}
                 </p>
                 <div className="mt-3 space-y-1 text-sm text-slate-400">
@@ -589,7 +580,7 @@ export function TechnicianScheduleCalendar({
               </button>
               <button
                 type="button"
-                className="btn btn-sm border-0 bg-amber-500 text-slate-950 hover:bg-amber-400"
+                className="btn btn-sm border-0 bg-teal-500 text-[#0B1220] hover:bg-teal-400"
                 disabled={busy}
                 onClick={() =>
                   applyMove({
@@ -660,18 +651,18 @@ function UnscheduledTray({
   }
 
   return (
-    <div className="rounded-xl border border-amber-400/25 bg-amber-500/5 p-3 sm:p-4">
+    <div className="rounded-xl border border-teal-500/40 bg-teal-500/10 p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h4 className="text-sm font-semibold text-amber-100">
+          <h4 className="text-sm font-semibold text-teal-900">
             Needs scheduling
             {tickets.length > 0 ? (
-              <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-100">
+              <span className="ml-2 rounded-full bg-teal-500/20 px-2 py-0.5 text-xs font-medium text-teal-900">
                 {tickets.length}
               </span>
             ) : null}
           </h4>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-slate-600">
             {weekMode
               ? "Pick hours (up to the manager max), then drag onto the customer’s locked day (or the next business day if that day is full for you). Rescheduled tickets are marked."
               : "Manager assignments waiting for a time slot. Switch to Week view to place them."}
@@ -680,7 +671,7 @@ function UnscheduledTray({
         {!weekMode && tickets.length > 0 ? (
           <button
             type="button"
-            className="btn btn-sm border-0 bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+            className="btn btn-sm border-0 bg-teal-500 text-[#0B1220] hover:bg-teal-400"
             onClick={onSwitchToWeek}
           >
             Open week view
@@ -721,8 +712,8 @@ function UnscheduledTray({
                     dragging
                       ? "opacity-50"
                       : selected
-                        ? "border-cyan-400 bg-cyan-500/20 shadow-[0_0_0_1px_rgba(34,211,238,0.35)]"
-                        : "border-amber-400/30 bg-slate-950/70"
+                        ? "border-teal-400 bg-[#2d6a75] shadow-[0_0_0_1px_rgba(45,212,191,0.45)]"
+                        : "border-teal-500 bg-[#456b78]"
                   }`}
                 >
                   <div className="flex items-start gap-2">
@@ -752,7 +743,7 @@ function UnscheduledTray({
                       }
                     >
                       <GripVertical
-                        className="mt-0.5 size-4 shrink-0 text-amber-300/80"
+                        className="mt-0.5 size-4 shrink-0 text-teal-300"
                         aria-hidden="true"
                       />
                       <span className="min-w-0">
@@ -772,7 +763,7 @@ function UnscheduledTray({
                             className="badge-xs"
                           />
                           {ticket.max_hours ? (
-                            <span className="text-[11px] text-amber-200/80">
+                            <span className="text-[11px] text-teal-200">
                               max {ticket.max_hours}h
                             </span>
                           ) : null}
@@ -841,7 +832,7 @@ function UnscheduledTray({
                   {canRequestMore && !extending ? (
                     <button
                       type="button"
-                      className="btn btn-ghost btn-xs h-7 justify-start gap-1 px-1 text-amber-200/90 hover:bg-amber-500/10"
+                      className="btn btn-ghost btn-xs h-7 justify-start gap-1 px-1 text-yellow-300 hover:bg-yellow-400/10 hover:text-yellow-200"
                       disabled={busy}
                       onClick={(event) => {
                         event.stopPropagation();
@@ -857,7 +848,7 @@ function UnscheduledTray({
 
                   {extending && onRequestHourExtension ? (
                     <div
-                      className="space-y-2 rounded-md border border-amber-400/20 bg-slate-950/80 p-2"
+                      className="space-y-2 rounded-md border border-teal-500/30 bg-slate-800/90 p-2"
                       onClick={(event) => event.stopPropagation()}
                     >
                       <p className="text-[11px] text-slate-400">
@@ -897,7 +888,7 @@ function UnscheduledTray({
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          className="btn btn-xs border-0 bg-amber-400 text-slate-950 hover:bg-amber-300"
+                          className="btn btn-xs border-0 bg-teal-500 text-[#0B1220] hover:bg-teal-400"
                           disabled={busy}
                           onClick={() => {
                             onRequestHourExtension({
@@ -967,12 +958,12 @@ function WeekGrid({
   const templateRows = `auto repeat(${rowCount}, ${hourRowSize})`;
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-blue-500/25 bg-slate-950/60">
+    <div className="overflow-x-auto rounded-xl border border-slate-300 bg-[#e8eef5]">
       <div
         className="grid min-w-[820px] grid-cols-[6.5rem_repeat(5,minmax(0,1fr))]"
         style={{ gridTemplateRows: templateRows }}
       >
-        <div className="sticky left-0 z-10 border-b border-r border-blue-500/20 bg-slate-900/90 p-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <div className="sticky left-0 z-10 border-b border-r border-slate-300 bg-slate-200/90 p-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
           Hour
         </div>
         {days.map((day, dayIndex) => {
@@ -982,14 +973,14 @@ function WeekGrid({
             <div
               key={dateKey}
               style={{ gridColumn: dayIndex + 2, gridRow: 1 }}
-              className={`border-b border-blue-500/20 p-2 text-center ${
-                onPto ? "bg-violet-500/15" : isToday(day) ? "bg-blue-500/10" : "bg-slate-900/80"
+              className={`border-b border-slate-300 p-2 text-center ${
+                onPto ? "bg-violet-500/15" : isToday(day) ? "bg-teal-500/15" : "bg-slate-100"
               }`}
             >
-              <p className="text-xs font-semibold uppercase tracking-wide text-teal-200/70">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">
                 {format(day, "EEE")}
               </p>
-              <p className="text-sm font-medium text-white">{format(day, "MMM d")}</p>
+              <p className="text-sm font-medium text-[#0B1220]">{format(day, "MMM d")}</p>
               {onPto ? (
                 <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-violet-300">
                   PTO
@@ -1003,7 +994,7 @@ function WeekGrid({
           <div
             key={`label-${window.id}`}
             style={{ gridColumn: 1, gridRow: windowIndex + 2 }}
-            className="sticky left-0 z-10 flex h-full items-center border-b border-r border-blue-500/15 bg-slate-900/80 px-2 text-sm font-medium text-slate-300"
+            className="sticky left-0 z-10 flex h-full items-center border-b border-r border-slate-300 bg-slate-200/90 px-2 text-sm font-medium text-slate-700"
           >
             {window.label}
           </div>
@@ -1039,9 +1030,9 @@ function WeekGrid({
                   gridColumn: dayIndex + 2,
                   gridRow: `${windowIndex + 2} / span ${span}`,
                 }}
-                className={`h-full border-b border-l border-blue-500/15 p-1 transition ${
-                  isToday(day) ? "bg-blue-950/30" : "bg-slate-950/40"
-                } ${isDropTarget ? "bg-blue-500/20 ring-1 ring-inset ring-blue-400/60" : ""}`}
+                className={`h-full border-b border-l border-slate-300 p-1 transition ${
+                  isToday(day) ? "bg-teal-50" : "bg-white/70"
+                } ${isDropTarget ? "bg-teal-500/20 ring-1 ring-inset ring-teal-400/60" : ""}`}
                 onDragOver={(event: DragEvent<HTMLDivElement>) => {
                   event.preventDefault();
                   onDragOverCell(key);
@@ -1086,8 +1077,8 @@ function WeekGrid({
                                 : ""
                             } ${
                               selectedTicketId === occupant.ticket.id
-                                ? "border-teal-400 bg-blue-500/20 shadow-[0_0_0_1px_rgba(45,212,191,0.35)]"
-                                : "border-slate-600/80 bg-slate-900/90 hover:border-blue-500/50 hover:bg-slate-800"
+                                ? "border-teal-400 bg-[#2d6a75] shadow-[0_0_0_1px_rgba(45,212,191,0.45)]"
+                                : "border-teal-500 bg-[#456b78] hover:border-teal-400 hover:bg-[#4f7a88]"
                             }`
                     }`}
                   >
@@ -1135,7 +1126,7 @@ function WeekGrid({
                     </div>
                   </button>
                 ) : (
-                  <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-700/60 text-[10px] uppercase tracking-wide text-slate-600">
+                  <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-400 text-[10px] uppercase tracking-wide text-slate-500">
                     Drop
                   </div>
                 )}
@@ -1184,12 +1175,12 @@ function MonthGrid({
   }, [tickets, schedule]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-blue-500/25 bg-slate-950/60">
-      <div className="grid grid-cols-7 border-b border-blue-500/20 bg-slate-900/80">
+    <div className="overflow-hidden rounded-xl border border-slate-300 bg-[#e8eef5]">
+      <div className="grid grid-cols-7 border-b border-slate-300 bg-slate-200/90">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
           <div
             key={label}
-            className="p-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-400"
+            className="p-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-600"
           >
             {label}
           </div>
@@ -1206,14 +1197,14 @@ function MonthGrid({
               key={key}
               type="button"
               onClick={() => onOpenWeek(day)}
-              className={`min-h-[6.5rem] border-b border-r border-blue-500/15 p-2 text-left transition hover:bg-blue-500/10 ${
-                inMonth ? "bg-slate-950/40" : "bg-slate-950/20 opacity-50"
+              className={`min-h-[6.5rem] border-b border-r border-slate-300 p-2 text-left transition hover:bg-teal-500/10 ${
+                inMonth ? "bg-white/80" : "bg-slate-100/50 opacity-50"
               } ${isToday(day) ? "ring-1 ring-inset ring-blue-400/40" : ""} ${
                 onPto ? "bg-violet-500/10" : ""
               }`}
             >
               <div className="flex items-center justify-between gap-1">
-                <span className={`text-sm font-medium ${inMonth ? "text-white" : "text-slate-500"}`}>
+                <span className={`text-sm font-medium ${inMonth ? "text-[#0B1220]" : "text-slate-500"}`}>
                   {format(day, "d")}
                 </span>
                 {onPto ? (
@@ -1226,10 +1217,10 @@ function MonthGrid({
                     key={ticket.id}
                     className={`truncate rounded px-1.5 py-0.5 text-[10px] ${
                       selectedTicketId === ticket.id
-                        ? "bg-blue-500/30 text-blue-50"
+                        ? "bg-[#2d6a75] text-white ring-1 ring-teal-400"
                         : ticket.cybersecurity_incident
-                          ? "bg-rose-500/25 text-rose-100"
-                          : "bg-slate-800 text-slate-200"
+                          ? "bg-rose-500/25 text-rose-900 ring-1 ring-rose-400"
+                          : "bg-[#456b78] text-white ring-1 ring-teal-500"
                     }`}
                     onClick={(event) => {
                       event.stopPropagation();

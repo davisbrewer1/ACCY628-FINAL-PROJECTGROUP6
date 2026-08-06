@@ -416,18 +416,18 @@ export default function WorkBillingPage() {
 
   if (expenseOnly) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 text-[#0B1220]">
         <PageHeader
           title="Expense Tracker"
           description="Add travel, supplies, meals, and other ticket expenses in seconds."
         />
 
-        <div className="card border bg-base-100 shadow-sm">
-          <div className="card-body grid gap-3 py-4 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-300 bg-[#dbe4f0] text-[#0B1220] shadow-sm">
+          <div className="grid gap-3 px-5 py-4 sm:grid-cols-2">
             <label className="form-control min-w-0">
-              <span className="label-text mb-1 text-xs">Ticket / project</span>
+              <span className="mb-1 text-xs text-slate-600">Ticket / project</span>
               <select
-                className="expense-ticket-select select select-bordered select-sm w-full min-w-0"
+                className="expense-ticket-select select select-bordered select-sm w-full min-w-0 border-slate-300 bg-white text-[#0B1220]"
                 value={expenseTicketId}
                 onChange={(e) => setExpenseTicketId(e.target.value)}
               >
@@ -448,9 +448,9 @@ export default function WorkBillingPage() {
             </label>
 
             <label className="form-control min-w-0">
-              <span className="label-text mb-1 text-xs">Technician</span>
+              <span className="mb-1 text-xs text-slate-600">Technician</span>
               <select
-                className="select select-bordered select-sm w-full min-w-0"
+                className="select select-bordered select-sm w-full min-w-0 border-slate-300 bg-white text-[#0B1220]"
                 value={expenseTechnicianId}
                 onChange={(e) => setExpenseTechnicianId(e.target.value)}
               >

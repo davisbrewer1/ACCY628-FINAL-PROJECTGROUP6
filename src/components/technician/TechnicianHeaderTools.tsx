@@ -322,11 +322,11 @@ export function TechnicianHeaderTools({
 
   return (
     <div className="relative flex items-center gap-2">
-      <KnowledgeBasePanel canEdit={false} variant="tech" />
+      <KnowledgeBasePanel canEdit={false} variant="default" />
 
       <button
         type="button"
-        className="btn btn-sm gap-2 border-slate-600 bg-slate-900 text-slate-100 hover:border-cyan-500/50"
+        className="btn btn-ghost btn-sm gap-2 text-white"
         aria-expanded={panelOpen}
         onClick={() => setPanelOpen((open) => !open)}
       >
@@ -347,11 +347,11 @@ export function TechnicianHeaderTools({
             aria-label="Close panel"
             onClick={() => setPanelOpen(false)}
           />
-          <div className="absolute right-0 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-blue-500/25 bg-slate-950 shadow-2xl shadow-blue-950/40">
-            <div className="flex items-center justify-between border-b border-blue-500/20 px-4 py-3">
+          <div className="absolute right-0 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-xl">
+            <div className="flex items-center justify-between border-b border-base-300 px-4 py-3">
               <div>
-                <p className="text-sm font-semibold text-white">Inbox</p>
-                <p className="text-xs text-slate-400">
+                <p className="text-sm font-semibold text-base-content">Inbox</p>
+                <p className="text-xs text-base-content/60">
                   {activeTab === "messages"
                     ? "Messages from your manager"
                     : "Past due first, then security risk"}
@@ -359,7 +359,7 @@ export function TechnicianHeaderTools({
               </div>
               <button
                 type="button"
-                className="btn btn-ghost btn-xs btn-square text-slate-300"
+                className="btn btn-ghost btn-xs btn-square"
                 onClick={() => setPanelOpen(false)}
                 aria-label="Close"
               >
@@ -368,7 +368,7 @@ export function TechnicianHeaderTools({
             </div>
 
             <div
-              className="grid grid-cols-2 gap-1 border-b border-cyan-500/15 p-2"
+              className="grid grid-cols-2 gap-1 border-b border-base-300 p-2"
               role="tablist"
               aria-label="Inbox sections"
             >
@@ -378,15 +378,15 @@ export function TechnicianHeaderTools({
                 aria-selected={activeTab === "notifications"}
                 className={`btn btn-sm gap-1 ${
                   activeTab === "notifications"
-                    ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-100"
-                    : "btn-ghost text-slate-300"
+                    ? "btn-primary"
+                    : "btn-ghost"
                 }`}
                 onClick={() => setActiveTab("notifications")}
               >
                 <Bell className="size-3.5" aria-hidden="true" />
                 Notifications
                 {workNotifications.length > 0 ? (
-                  <span className="badge badge-sm border-0 bg-cyan-500/80 text-slate-950">
+                  <span className="badge badge-sm badge-neutral">
                     {workNotifications.length}
                   </span>
                 ) : null}
@@ -396,16 +396,14 @@ export function TechnicianHeaderTools({
                 role="tab"
                 aria-selected={activeTab === "messages"}
                 className={`btn btn-sm gap-1 ${
-                  activeTab === "messages"
-                    ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-100"
-                    : "btn-ghost text-slate-300"
+                  activeTab === "messages" ? "btn-primary" : "btn-ghost"
                 }`}
                 onClick={() => setActiveTab("messages")}
               >
                 <MessageSquare className="size-3.5" aria-hidden="true" />
                 Messages
                 {managerMessages.length > 0 ? (
-                  <span className="badge badge-sm border-0 bg-sky-500/80 text-slate-950">
+                  <span className="badge badge-sm badge-info">
                     {managerMessages.length}
                   </span>
                 ) : null}
@@ -414,7 +412,7 @@ export function TechnicianHeaderTools({
 
             <div className="max-h-[28rem] space-y-3 overflow-y-auto p-3">
               {activeItems.length === 0 ? (
-                <p className="px-1 py-6 text-center text-sm text-slate-500">
+                <p className="px-1 py-6 text-center text-sm text-base-content/50">
                   {activeTab === "messages"
                     ? "No manager messages right now."
                     : "No notifications right now."}
@@ -425,16 +423,16 @@ export function TechnicianHeaderTools({
                     key={item.id}
                     className={`rounded-xl border p-3 ${
                       item.source === "overdue"
-                        ? "border-amber-400/40 bg-amber-500/10"
+                        ? "border-warning/40 bg-warning/10"
                         : item.security
-                          ? "border-rose-400/40 bg-rose-500/10"
+                          ? "border-error/40 bg-error/10"
                           : item.source === "manager"
-                            ? "border-sky-400/30 bg-sky-500/10"
-                            : "border-slate-700 bg-slate-900/80"
+                            ? "border-info/30 bg-info/10"
+                            : "border-base-300 bg-base-200/60"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-white">
+                      <h3 className="text-sm font-semibold text-base-content">
                         {item.title}
                       </h3>
                       <div className="flex shrink-0 items-center gap-1">
@@ -452,12 +450,14 @@ export function TechnicianHeaderTools({
                             Manager
                           </span>
                         ) : (
-                          <span className="badge badge-sm">Assignment</span>
+                          <span className="badge badge-sm badge-ghost">
+                            Assignment
+                          </span>
                         )}
                         {item.source === "manager" ? (
                           <button
                             type="button"
-                            className="btn btn-ghost btn-xs btn-square text-slate-400 hover:text-white"
+                            className="btn btn-ghost btn-xs btn-square"
                             aria-label="Dismiss manager message"
                             onClick={() => dismissManagerMessage(item.id)}
                           >
@@ -466,8 +466,8 @@ export function TechnicianHeaderTools({
                         ) : null}
                       </div>
                     </div>
-                    <p className="mt-1 text-xs text-slate-300">{item.body}</p>
-                    <p className="mt-2 text-[11px] text-slate-500">
+                    <p className="mt-1 text-xs text-base-content/70">{item.body}</p>
+                    <p className="mt-2 text-[11px] text-base-content/50">
                       {formatDistanceToNow(new Date(item.receivedAtMs), {
                         addSuffix: true,
                       })}
