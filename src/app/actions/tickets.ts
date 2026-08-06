@@ -650,8 +650,9 @@ export async function updateTicketSchedule(input: {
 }
 
 /**
- * Customer reschedules a visit: clear the tech calendar placement, lock the
- * new service day, mark customer_rescheduled, and notify the assigned tech.
+ * Customer reschedules a visit via SECURITY DEFINER RPC (clients cannot
+ * UPDATE service_tickets directly under RLS). Clears calendar placement,
+ * tags the request, and notifies the assigned technician.
  */
 export async function rescheduleCustomerTicket(
   ticketId: string,
@@ -668,7 +669,7 @@ export async function rescheduleCustomerTicket(
   const { data: ticket, error: fetchError } = await supabase
     .from("service_tickets")
     .select(
-      "id, ticket_number, title, customer_id, assigned_technician_id, scheduled_start, locked_service_date",
+      "id, ticket_number, title, customer_id, assigned_technician_id, scheduled_start, locked_service_date, customer_rescheduled",
     )
     .eq("id", ticketId)
     .maybeSingle();
@@ -679,54 +680,44 @@ export async function rescheduleCustomerTicket(
   if (!ticket || ticket.customer_id !== customerId) {
     return { success: false, message: "Ticket not found." };
   }
-  if (!ticket.scheduled_start) {
+  if (!ticket.scheduled_start && !ticket.customer_rescheduled) {
     return {
       success: false,
       message: "Reschedule is available after a technician places your visit.",
     };
   }
 
-  const { data: updated, error } = await supabase
-    .from("service_tickets")
-    .update({
-      locked_service_date: dateKey,
-      is_asap: false,
-      scheduled_start: null,
-      scheduled_window: null,
-      scheduled_off_requested_day: false,
-      customer_rescheduled: true,
-      status: "Assigned",
-    })
-    .eq("id", ticketId)
-    .eq("customer_id", customerId)
-    .select("id, scheduled_start, locked_service_date, customer_rescheduled")
-    .maybeSingle();
+  const { data: updated, error } = await supabase.rpc(
+    "customer_reschedule_service_ticket",
+    {
+      p_ticket_id: ticketId,
+      p_new_date: dateKey,
+    },
+  );
 
   if (error) {
-    return { success: false, message: error.message };
-  }
-  if (!updated) {
     return {
       success: false,
-      message:
-        "Could not reschedule this ticket. You may not have permission to update it.",
-    };
-  }
-  if (updated.scheduled_start) {
-    return {
-      success: false,
-      message:
-        "Reschedule did not clear the technician calendar slot. Try again or contact your MSP.",
+      message: error.message.replace(/^.*ERROR:\s*/i, "").split("\n")[0],
     };
   }
 
+  const row = Array.isArray(updated) ? updated[0] : updated;
+  if (!row) {
+    return {
+      success: false,
+      message: "Reschedule did not save. Try again.",
+    };
+  }
+
+  // Best-effort duplicate notify from the app layer (RPC already inserts one).
   if (ticket.assigned_technician_id) {
     try {
       const { insertNotification } = await import("@/lib/notifications");
       await insertNotification(supabase, {
         technicianId: String(ticket.assigned_technician_id),
         type: "customer_reschedule",
-        message: `Customer rescheduled ${ticket.ticket_number} to ${dateKey}. It is back in Needs scheduling: ${ticket.title}`,
+        message: `Reschedule tag: ${ticket.ticket_number} → ${dateKey}. Place a new time in Needs scheduling: ${ticket.title}`,
       });
     } catch (notifyError) {
       console.warn("customer reschedule notification skipped:", notifyError);
@@ -740,6 +731,6 @@ export async function rescheduleCustomerTicket(
   revalidatePath("/service-tickets");
   return {
     success: true,
-    message: `Visit moved off the schedule and locked to ${dateKey}. Your technician will place a new time in Needs scheduling.`,
+    message: `Reschedule requested for ${dateKey}. Your technician was notified and will place a new time.`,
   };
 }

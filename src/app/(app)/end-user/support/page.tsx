@@ -421,6 +421,24 @@ export default function EndUserSupportPage() {
                   </div>
                 )}
               </div>
+
+              {kind === "open" &&
+              ticket.customer_rescheduled &&
+              ticket.locked_service_date ? (
+                <div
+                  className="border-t border-warning/40 bg-warning/15 px-4 py-2.5 text-sm"
+                  role="status"
+                >
+                  <span className="font-semibold uppercase tracking-wide text-warning-content">
+                    Reschedule tag
+                  </span>
+                  <span className="mt-0.5 block font-medium text-base-content">
+                    Requested new day:{" "}
+                    {formatLockedServiceDateLabel(ticket.locked_service_date)}.
+                    Technician notified — awaiting new time placement.
+                  </span>
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -667,8 +685,8 @@ export default function EndUserSupportPage() {
                     {rescheduleOpen ? (
                       <form action={handleReschedule} className="mt-3 space-y-3">
                         <p className="text-sm text-base-content/70">
-                          Pick a new available day. Your visit comes off the
-                          technician&apos;s calendar until they place it again.
+                          Pick a new available day. We add a reschedule tag with
+                          that date and notify your technician.
                         </p>
                         <ServiceDatePicker allowAsap={false} />
                         <button
@@ -696,20 +714,52 @@ export default function EndUserSupportPage() {
                         available visit window.
                       </p>
                     ) : selectedTicket.locked_service_date ? (
-                      <p>
-                        Requested service day:{" "}
-                        <span className="font-semibold">
-                          {formatLockedServiceDateLabel(
-                            selectedTicket.locked_service_date,
-                          )}
-                        </span>
-                        . An arrival window appears once your technician places
-                        this visit
-                        {selectedTicket.customer_rescheduled
-                          ? " (reschedule received — awaiting new placement)"
-                          : ""}
-                        .
-                      </p>
+                      <div className="space-y-3">
+                        <p>
+                          Requested service day:{" "}
+                          <span className="font-semibold">
+                            {formatLockedServiceDateLabel(
+                              selectedTicket.locked_service_date,
+                            )}
+                          </span>
+                          . An arrival window appears once your technician places
+                          this visit
+                          {selectedTicket.customer_rescheduled
+                            ? " (reschedule tag active — awaiting new placement)"
+                            : ""}
+                          .
+                        </p>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline"
+                          onClick={() => {
+                            setError(null);
+                            setRescheduleOpen((open) => !open);
+                          }}
+                        >
+                          {rescheduleOpen ? "Cancel reschedule" : "Reschedule"}
+                        </button>
+                        {rescheduleOpen ? (
+                          <form action={handleReschedule} className="space-y-3">
+                            <p className="text-sm text-base-content/70">
+                              Pick a new day. We tag the request and notify your
+                              technician to place a new time.
+                            </p>
+                            <ServiceDatePicker allowAsap={false} />
+                            <button
+                              type="submit"
+                              className="btn btn-primary btn-sm"
+                              disabled={isPending}
+                            >
+                              {isPending ? (
+                                <span className="loading loading-spinner loading-sm" />
+                              ) : (
+                                "Confirm new day"
+                              )}
+                            </button>
+                          </form>
+                        ) : null}
+                      </div>
                     ) : (
                       <p>
                         A technician is assigned. An expected arrival window will
@@ -908,6 +958,28 @@ export default function EndUserSupportPage() {
                   </div>
                 )}
               </div>
+
+              {selectedTicket.customer_rescheduled &&
+              selectedTicket.locked_service_date ? (
+                <div
+                  className="rounded-box border border-warning/50 bg-warning/15 px-4 py-3"
+                  role="status"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide text-warning-content">
+                    Reschedule tag
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-base-content">
+                    Requested day:{" "}
+                    {formatLockedServiceDateLabel(
+                      selectedTicket.locked_service_date,
+                    )}
+                  </p>
+                  <p className="mt-1 text-sm text-base-content/75">
+                    Your technician was notified. The old calendar time is
+                    cleared until they place a new window on this day.
+                  </p>
+                </div>
+              ) : null}
 
               <div className="modal-action">
                 <button type="button" className="btn" onClick={closeTicketDetails}>

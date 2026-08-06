@@ -287,7 +287,7 @@ export interface ServiceTicket {
   original_requested_date?: string | null;
   /** Tech placed the visit on the day after the locked service date. */
   scheduled_off_requested_day?: boolean | null;
-  /** Customer rescheduled; ticket returned to Needs scheduling. */
+  /** Customer asked to move the visit; show reschedule tag until re-placed. */
   customer_rescheduled?: boolean | null;
 }
 
