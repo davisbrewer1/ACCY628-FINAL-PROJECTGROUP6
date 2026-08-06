@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { endOfWeek, isSameDay, startOfWeek } from "date-fns";
 import { Plus, Star, Trash2 } from "lucide-react";
 import {
   createTechnician,
@@ -12,7 +13,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
-import { isThisMonth } from "@/lib/dashboard-stats";
 import { formatCurrency, formatDate, formatHours, formatPercent } from "@/lib/format";
 import { getOpenTickets } from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/client";
@@ -21,16 +21,28 @@ import {
   formatResponseDuration,
   formatStarRating,
 } from "@/lib/technician-metrics";
+import { sumHoursInRange } from "@/lib/technician-payroll";
+import {
+  getWorkWeekDays,
+  parseScheduledSlot,
+} from "@/lib/technician-schedule";
 import type { ServiceTicket, Technician, TicketRating, WorkEntry } from "@/lib/types";
 
-/** Standard available hours per month for utilization (8 hrs × 20 days). */
-const MONTHLY_CAPACITY_HOURS = 160;
+/** Standard weekly capacity for utilization (8 hrs × 5 days). */
+const WEEKLY_CAPACITY_HOURS = 40;
+/**
+ * When a tech has no calendar schedule, treat this many concurrent open
+ * tickets as a full weekly load for utilization.
+ */
+const FULL_LOAD_OPEN_TICKETS = 8;
 
 interface TechCard extends Technician {
   openLoad: number;
   criticalLoad: number;
-  monthHours: number;
+  weekHours: number;
+  scheduledHours: number;
   utilizationRate: number;
+  utilizationSource: "schedule" | "open_load";
   avgRating: number | null;
   avgResponseHours: number | null;
   responseSampleSize: number;
@@ -81,17 +93,35 @@ export default function TechniciansPage() {
 
   const cards: TechCard[] = useMemo(() => {
     const open = getOpenTickets(tickets);
+    const now = new Date();
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+    const weekDays = getWorkWeekDays(now);
+
     return technicians.map((tech) => {
       const assigned = open.filter((t) => t.assigned_technician_id === tech.id);
-      const monthHours = workEntries
-        .filter(
-          (e) => e.technician_id === tech.id && isThisMonth(e.work_date),
-        )
-        .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
-      const utilizationRate = Math.min(
-        100,
-        (monthHours / MONTHLY_CAPACITY_HOURS) * 100,
+      const weekHours = sumHoursInRange(
+        workEntries.filter((e) => e.technician_id === tech.id),
+        weekStart,
+        weekEnd,
       );
+      const scheduledHours = assigned.reduce((sum, ticket) => {
+        const parsed = parseScheduledSlot(ticket);
+        if (!parsed) return sum;
+        if (!weekDays.some((day) => isSameDay(day, parsed.day))) return sum;
+        return sum + parsed.durationHours;
+      }, 0);
+
+      // Prefer this week's assigned calendar load. If nothing is scheduled,
+      // fall back to open-ticket load vs a concurrent capacity of 8.
+      const utilizationSource =
+        scheduledHours > 0 ? ("schedule" as const) : ("open_load" as const);
+      const loadHours =
+        utilizationSource === "schedule"
+          ? scheduledHours
+          : (assigned.length / FULL_LOAD_OPEN_TICKETS) * WEEKLY_CAPACITY_HOURS;
+      const utilizationRate = (loadHours / WEEKLY_CAPACITY_HOURS) * 100;
+
       const performance = computeTechnicianPerformance(
         tech.id,
         tickets,
@@ -114,8 +144,10 @@ export default function TechniciansPage() {
         ...tech,
         openLoad: assigned.length,
         criticalLoad: assigned.filter((t) => t.priority === "Critical").length,
-        monthHours,
+        weekHours,
+        scheduledHours,
         utilizationRate,
+        utilizationSource,
         avgRating: performance.avgRating,
         avgResponseHours: performance.avgResponseHours,
         responseSampleSize: performance.responseSampleSize,
@@ -238,7 +270,7 @@ export default function TechniciansPage() {
             </p>
             <p className="text-2xl font-semibold">{formatPercent(teamUtilization)}</p>
             <p className="mt-1 text-xs text-base-content/60">
-              Hours logged ÷ {MONTHLY_CAPACITY_HOURS} capacity hours
+              Assigned weekly load ÷ {WEEKLY_CAPACITY_HOURS} hr capacity
             </p>
           </div>
         ) : null}
@@ -357,11 +389,15 @@ export default function TechniciansPage() {
                           ? "progress-warning"
                           : "progress-success"
                     }`}
-                    value={tech.utilizationRate}
+                    value={Math.min(100, tech.utilizationRate)}
                     max={100}
                   />
                   <p className="mt-1 text-xs text-base-content/60">
-                    {formatHours(tech.monthHours)} logged this month
+                    {tech.utilizationSource === "schedule"
+                      ? `${formatHours(tech.scheduledHours)} scheduled this week`
+                      : `${tech.openLoad} open assigned ÷ ${FULL_LOAD_OPEN_TICKETS} capacity`}
+                    {" · "}
+                    {formatHours(tech.weekHours)} logged this week
                   </p>
                 </div>
 
