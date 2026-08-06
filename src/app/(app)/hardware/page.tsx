@@ -3,11 +3,15 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { AlertTriangle, ClipboardList, PackagePlus, Plus, Search } from "lucide-react";
 import {
+  assignHardwareAsset,
   createAssetOrderTicket,
   createHardwareAsset,
+  requestPartsBudgetIncrease,
   restockInventoryPart,
   reviewAssetOrderTicket,
   reviewInventoryReorderRequest,
+  reviewPartsBudgetIncreaseRequest,
+  updateTechnicianPartsBudget,
 } from "@/app/actions/hardware";
 import { AssetDetailDrawer } from "@/components/AssetDetailDrawer";
 import { EmptyState } from "@/components/EmptyState";
@@ -26,7 +30,11 @@ import {
   type Customer,
   type HardwareAsset,
   type InventoryPart,
+  type InventoryPartOrder,
   type InventoryReorderRequest,
+  type Technician,
+  type TechnicianBudgetIncreaseRequest,
+  type TechnicianPartsBudget,
 } from "@/lib/types";
 
 const CAN_ADD_ROLES = new Set([
@@ -35,6 +43,15 @@ const CAN_ADD_ROLES = new Set([
   "account_manager",
   "technician",
 ]);
+
+const MANAGER_ROLES = new Set([
+  "administrator",
+  "service_manager",
+  "account_manager",
+]);
+
+type ManagerSubTab = "devices" | "budgets";
+type DeviceFilterMode = "all" | "inventory" | "customer";
 
 interface AssetRow extends HardwareAsset {
   customerName: string;
@@ -57,6 +74,8 @@ export default function HardwarePage() {
   const { showToast } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const orderDialogRef = useRef<HTMLDialogElement>(null);
+  const assignDialogRef = useRef<HTMLDialogElement>(null);
+  const budgetRequestDialogRef = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
   const [assets, setAssets] = useState<HardwareAsset[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -65,13 +84,26 @@ export default function HardwarePage() {
   const [reorderRequests, setReorderRequests] = useState<InventoryReorderRequest[]>(
     [],
   );
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [partsBudgets, setPartsBudgets] = useState<TechnicianPartsBudget[]>([]);
+  const [partOrders, setPartOrders] = useState<InventoryPartOrder[]>([]);
+  const [budgetRequests, setBudgetRequests] = useState<
+    TechnicianBudgetIncreaseRequest[]
+  >([]);
+  const [myTechnicianId, setMyTechnicianId] = useState<string | null>(null);
   const [partSearch, setPartSearch] = useState("");
   const [assetSearch, setAssetSearch] = useState("");
   const [reorderQuantities, setReorderQuantities] = useState<Record<string, number>>(
     {},
   );
+  const [budgetDrafts, setBudgetDrafts] = useState<Record<string, string>>({});
   const [partsOpen, setPartsOpen] = useState(true);
   const [assetsOpen, setAssetsOpen] = useState(false);
+  const [managerTab, setManagerTab] = useState<ManagerSubTab>("devices");
+  const [deviceFilterMode, setDeviceFilterMode] =
+    useState<DeviceFilterMode>("all");
+  const [filterCustomerId, setFilterCustomerId] = useState("");
+  const [assignAssetId, setAssignAssetId] = useState("");
   const [orderAssetId, setOrderAssetId] = useState("");
   const [drawerAssetId, setDrawerAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +114,7 @@ export default function HardwarePage() {
   const canAdd = CAN_ADD_ROLES.has(activeRole);
   const isTechnicianView = activeRole === "technician";
   const isAdministratorView = activeRole === "administrator";
+  const isManagerView = MANAGER_ROLES.has(activeRole);
   const canReviewReorders =
     activeRole === "administrator" || activeRole === "service_manager";
 
@@ -92,39 +125,81 @@ export default function HardwarePage() {
   async function loadData() {
     const supabase = createClient();
     try {
-      const [a, c, o, p, r] = await Promise.all([
-        supabase.from("hardware_assets").select("*").order("asset_number"),
-        supabase.from("customers").select("*").order("customer_name"),
-        supabase
-          .from("asset_order_tickets")
-          .select("*")
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("inventory_parts")
-          .select("*")
-          .eq("active", true)
-          .order("part_name"),
-        supabase
-          .from("inventory_reorder_requests")
-          .select("*")
-          .order("created_at", { ascending: false }),
-      ]);
-      setAssets(a.data ?? []);
+      const monthStart = new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        1,
+      ).toISOString();
+
+      const [a, c, o, p, r, tech, budgets, orders, reqs, auth] =
+        await Promise.all([
+          supabase.from("hardware_assets").select("*").order("asset_number"),
+          supabase.from("customers").select("*").order("customer_name"),
+          supabase
+            .from("asset_order_tickets")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("inventory_parts")
+            .select("*")
+            .eq("active", true)
+            .order("part_name"),
+          supabase
+            .from("inventory_reorder_requests")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("technicians")
+            .select("*")
+            .eq("active", true)
+            .order("technician_name"),
+          supabase.from("technician_parts_budgets").select("*"),
+          supabase
+            .from("inventory_part_orders")
+            .select("*")
+            .gte("created_at", monthStart),
+          supabase
+            .from("technician_budget_increase_requests")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase.auth.getUser(),
+        ]);
+      setAssets((a.data as HardwareAsset[]) ?? []);
       setCustomers(c.data ?? []);
       setOrderTickets(o.data ?? []);
       setParts(p.data ?? []);
       setReorderRequests(
         r.error ? [] : ((r.data as InventoryReorderRequest[] | null) ?? []),
       );
+      setTechnicians((tech.data as Technician[]) ?? []);
+      setPartsBudgets((budgets.data as TechnicianPartsBudget[]) ?? []);
+      setPartOrders((orders.data as InventoryPartOrder[]) ?? []);
+      setBudgetRequests(
+        (reqs.data as TechnicianBudgetIncreaseRequest[]) ?? [],
+      );
+
+      const userId = auth.data.user?.id;
+      if (userId) {
+        const linked = ((tech.data as Technician[]) ?? []).find(
+          (row) => row.profile_id === userId,
+        );
+        setMyTechnicianId(linked?.id ?? null);
+      } else {
+        setMyTechnicianId(null);
+      }
+
+      const drafts: Record<string, string> = {};
+      for (const b of (budgets.data as TechnicianPartsBudget[]) ?? []) {
+        drafts[b.technician_id] = String(b.monthly_limit);
+      }
+      setBudgetDrafts(drafts);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    // Initial client-side Supabase hydration follows the existing app data-loading pattern.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadData();
+    void loadData();
   }, []);
 
   const customerMap = useMemo(
@@ -136,7 +211,9 @@ export default function HardwarePage() {
     () =>
       assets.map((asset) => ({
         ...asset,
-        customerName: customerMap.get(asset.customer_id) ?? "Unknown",
+        customerName: asset.customer_id
+          ? (customerMap.get(asset.customer_id) ?? "Unknown")
+          : "Inventory",
         alertBadges: getAlertBadges(asset),
       })),
     [assets, customerMap],
@@ -144,8 +221,14 @@ export default function HardwarePage() {
 
   const normalizedAssetSearch = assetSearch.trim().toLowerCase();
   const filteredRows = useMemo(() => {
-    if (!normalizedAssetSearch) return rows;
-    return rows.filter((row) =>
+    let next = rows;
+    if (deviceFilterMode === "inventory") {
+      next = next.filter((row) => !row.customer_id);
+    } else if (deviceFilterMode === "customer" && filterCustomerId) {
+      next = next.filter((row) => row.customer_id === filterCustomerId);
+    }
+    if (!normalizedAssetSearch) return next;
+    return next.filter((row) =>
       [
         row.asset_number,
         row.customerName,
@@ -163,7 +246,47 @@ export default function HardwarePage() {
           .includes(normalizedAssetSearch),
       ),
     );
-  }, [normalizedAssetSearch, rows]);
+  }, [
+    normalizedAssetSearch,
+    rows,
+    deviceFilterMode,
+    filterCustomerId,
+  ]);
+
+  const inventoryCount = useMemo(
+    () => assets.filter((a) => !a.customer_id).length,
+    [assets],
+  );
+
+  const mtdSpendByTech = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const order of partOrders) {
+      map.set(
+        order.technician_id,
+        (map.get(order.technician_id) ?? 0) + Number(order.total_cost ?? 0),
+      );
+    }
+    return map;
+  }, [partOrders]);
+
+  const myBudget = useMemo(() => {
+    if (!myTechnicianId) return null;
+    const limit = Number(
+      partsBudgets.find((b) => b.technician_id === myTechnicianId)
+        ?.monthly_limit ?? 500,
+    );
+    const spent = mtdSpendByTech.get(myTechnicianId) ?? 0;
+    return {
+      limit,
+      spent,
+      remaining: Math.max(0, Math.round((limit - spent) * 100) / 100),
+    };
+  }, [myTechnicianId, partsBudgets, mtdSpendByTech]);
+
+  const pendingBudgetRequests = useMemo(
+    () => budgetRequests.filter((r) => r.status === "Pending"),
+    [budgetRequests],
+  );
 
   const typeSummary = useMemo(() => {
     const map = new Map<string, number>();
@@ -283,6 +406,60 @@ export default function HardwarePage() {
     });
   }
 
+  function handleAssign(formData: FormData) {
+    setError(null);
+    startTransition(async () => {
+      const result = await assignHardwareAsset(formData);
+      if (result.success) {
+        showToast(result.message);
+        assignDialogRef.current?.close();
+        setAssignAssetId("");
+        await loadData();
+      } else {
+        setError(result.message);
+        showToast(result.message, "error");
+      }
+    });
+  }
+
+  function handleSaveBudget(technicianId: string) {
+    const raw = budgetDrafts[technicianId];
+    const limit = Number(raw);
+    startTransition(async () => {
+      const result = await updateTechnicianPartsBudget(technicianId, limit);
+      showToast(result.message, result.success ? "success" : "error");
+      if (result.success) await loadData();
+    });
+  }
+
+  function handleBudgetIncreaseRequest(formData: FormData) {
+    const requested = Number(formData.get("requested_limit"));
+    const reason = String(formData.get("reason") ?? "");
+    startTransition(async () => {
+      const result = await requestPartsBudgetIncrease(requested, reason);
+      showToast(result.message, result.success ? "success" : "error");
+      if (result.success) {
+        budgetRequestDialogRef.current?.close();
+        await loadData();
+      }
+    });
+  }
+
+  function handleBudgetRequestReview(
+    requestId: string,
+    decision: "Approved" | "Rejected",
+  ) {
+    startTransition(async () => {
+      const result = await reviewPartsBudgetIncreaseRequest(
+        requestId,
+        decision,
+        reviewNotes[requestId] ?? "",
+      );
+      showToast(result.message, result.success ? "success" : "error");
+      if (result.success) await loadData();
+    });
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -295,7 +472,11 @@ export default function HardwarePage() {
     <div className="hardware-page space-y-6">
       <PageHeader
         title="Hardware assets"
-        description="Track device inventory, lifecycle stages, and proactive replacement alerts."
+        description={
+          isManagerView
+            ? "Deployed devices, unassigned inventory, and technician parts restock budgets."
+            : "Track device inventory, lifecycle stages, and proactive replacement alerts."
+        }
         action={
           canAdd || isTechnicianView ? (
             <div className="flex flex-wrap justify-end gap-2">
@@ -324,10 +505,207 @@ export default function HardwarePage() {
         }
       />
 
+      {isManagerView ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={`btn btn-sm ${managerTab === "devices" ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setManagerTab("devices")}
+          >
+            Devices
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${managerTab === "budgets" ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setManagerTab("budgets")}
+          >
+            Parts budgets
+            {pendingBudgetRequests.length > 0 ? (
+              <span className="badge badge-warning badge-sm">
+                {pendingBudgetRequests.length}
+              </span>
+            ) : null}
+          </button>
+        </div>
+      ) : null}
+
+      {isManagerView && managerTab === "budgets" ? (
+        <div className="space-y-6">
+          {pendingBudgetRequests.length > 0 ? (
+            <div className="card border border-warning/40 bg-warning/5 shadow-sm">
+              <div className="card-body gap-3">
+                <h2 className="card-title text-base">
+                  Pending limit increase requests
+                </h2>
+                <div className="overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Technician</th>
+                        <th>Current</th>
+                        <th>Requested</th>
+                        <th>Reason</th>
+                        <th>Notes</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingBudgetRequests.map((req) => {
+                        const tech = technicians.find(
+                          (t) => t.id === req.technician_id,
+                        );
+                        return (
+                          <tr key={req.id}>
+                            <td>{tech?.technician_name ?? "Technician"}</td>
+                            <td>{formatCurrency(req.current_limit)}</td>
+                            <td className="font-medium">
+                              {formatCurrency(req.requested_limit)}
+                            </td>
+                            <td className="max-w-xs text-sm">
+                              {req.reason ?? "—"}
+                            </td>
+                            <td>
+                              <input
+                                className="input input-bordered input-xs w-40"
+                                placeholder="Optional note"
+                                value={reviewNotes[req.id] ?? ""}
+                                onChange={(e) =>
+                                  setReviewNotes((prev) => ({
+                                    ...prev,
+                                    [req.id]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  type="button"
+                                  className="btn btn-success btn-xs"
+                                  disabled={isPending}
+                                  onClick={() =>
+                                    handleBudgetRequestReview(req.id, "Approved")
+                                  }
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-error btn-xs"
+                                  disabled={isPending}
+                                  onClick={() =>
+                                    handleBudgetRequestReview(req.id, "Rejected")
+                                  }
+                                >
+                                  Deny
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="card border bg-base-100 shadow-sm">
+            <div className="card-body gap-3">
+              <h2 className="card-title text-base">
+                Technician parts restock budgets (this month)
+              </h2>
+              <p className="text-sm text-base-content/70">
+                Limits apply to parts restock orders (quantity × unit cost). Techs
+                blocked at the limit can request an increase here.
+              </p>
+              {technicians.length === 0 ? (
+                <EmptyState
+                  title="No technicians"
+                  description="Active technicians will appear here with monthly parts budgets."
+                />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Technician</th>
+                        <th className="text-right">MTD spend</th>
+                        <th className="text-right">Monthly limit</th>
+                        <th className="text-right">Remaining</th>
+                        <th>Status</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {technicians.map((tech) => {
+                        const limit = Number(
+                          partsBudgets.find((b) => b.technician_id === tech.id)
+                            ?.monthly_limit ?? 500,
+                        );
+                        const spent = mtdSpendByTech.get(tech.id) ?? 0;
+                        const remaining = Math.max(0, limit - spent);
+                        const atLimit = spent >= limit;
+                        const nearLimit =
+                          !atLimit && limit > 0 && spent / limit >= 0.8;
+                        return (
+                          <tr key={tech.id}>
+                            <td className="font-medium">{tech.technician_name}</td>
+                            <td className="text-right">{formatCurrency(spent)}</td>
+                            <td className="text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="input input-bordered input-sm w-28 text-right"
+                                value={budgetDrafts[tech.id] ?? String(limit)}
+                                onChange={(e) =>
+                                  setBudgetDrafts((prev) => ({
+                                    ...prev,
+                                    [tech.id]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="text-right">
+                              {formatCurrency(remaining)}
+                            </td>
+                            <td>
+                              {atLimit ? (
+                                <StatusBadge status="At limit" />
+                              ) : nearLimit ? (
+                                <StatusBadge status="Near limit" />
+                              ) : (
+                                <StatusBadge status="OK" />
+                              )}
+                            </td>
+                            <td className="text-right">
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-xs"
+                                disabled={isPending}
+                                onClick={() => handleSaveBudget(tech.id)}
+                              >
+                                Save
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Total assets" value={assets.length} />
+        <StatCard title="Total devices" value={assets.length} />
+        <StatCard title="In inventory" value={inventoryCount} tone="info" />
         <StatCard title="With alerts" value={alertCount} tone={alertCount > 0 ? "warning" : "success"} />
-        <StatCard title="Categories" value={typeSummary.length} tone="info" />
         <StatCard title="Needs replacement" value={assets.filter((a) => a.needs_replacement).length} tone="danger" />
       </div>
 
@@ -528,6 +906,31 @@ export default function HardwarePage() {
 
           {partsOpen ? (
           <div className="flex flex-col gap-5 border-t border-base-300/20 px-6 pb-6 pt-4">
+            {isTechnicianView && myBudget ? (
+              <div
+                className={`rounded-box border p-3 text-sm ${
+                  myBudget.remaining <= 0
+                    ? "border-error/40 bg-error/10"
+                    : "border-cyan-500/30 bg-slate-950/80"
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    Parts budget this month:{" "}
+                    <strong>{formatCurrency(myBudget.spent)}</strong> of{" "}
+                    <strong>{formatCurrency(myBudget.limit)}</strong>
+                    {" "}({formatCurrency(myBudget.remaining)} remaining)
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-xs"
+                    onClick={() => budgetRequestDialogRef.current?.showModal()}
+                  >
+                    Request limit increase
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <label
               className={`input input-bordered flex w-full items-center gap-2 lg:max-w-md ${
                 isTechnicianView
@@ -827,7 +1230,8 @@ export default function HardwarePage() {
               Device inventory, lifecycle stages, and replacement alerts.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <span className="badge badge-outline">{rows.length} assets</span>
+              <span className="badge badge-outline">{filteredRows.length} shown</span>
+              <span className="badge badge-outline">{inventoryCount} in inventory</span>
               <span
                 className={`badge ${alertCount > 0 ? "badge-warning" : "badge-success"}`}
               >
@@ -843,25 +1247,60 @@ export default function HardwarePage() {
           </span>
         </button>
 
-        {assetsOpen ? (
+        {assetsOpen || isManagerView ? (
         <div className="flex flex-col gap-5 border-t border-base-300/20 px-6 pb-6 pt-4">
-          <label
-            className={`input input-bordered flex w-full items-center gap-2 lg:max-w-md ${
-              isTechnicianView
-                ? "border-slate-600 bg-slate-950 text-slate-100"
-                : ""
-            }`}
-          >
-            <Search className="size-4 opacity-60" />
-            <input
-              type="search"
-              className="grow bg-transparent"
-              value={assetSearch}
-              onChange={(event) => setAssetSearch(event.target.value)}
-              placeholder="Search asset, customer, device, or alert"
-              aria-label="Search hardware assets"
-            />
-          </label>
+          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+            <label
+              className={`input input-bordered flex w-full items-center gap-2 lg:max-w-md ${
+                isTechnicianView
+                  ? "border-slate-600 bg-slate-950 text-slate-100"
+                  : ""
+              }`}
+            >
+              <Search className="size-4 opacity-60" />
+              <input
+                type="search"
+                className="grow bg-transparent"
+                value={assetSearch}
+                onChange={(event) => setAssetSearch(event.target.value)}
+                placeholder="Search asset, customer, device, or alert"
+                aria-label="Search hardware assets"
+              />
+            </label>
+            <label className="form-control w-full max-w-xs">
+              <span className="label-text mb-1 text-xs">Filter</span>
+              <select
+                className="select select-bordered select-sm"
+                value={deviceFilterMode}
+                onChange={(e) => {
+                  const mode = e.target.value as DeviceFilterMode;
+                  setDeviceFilterMode(mode);
+                  if (mode !== "customer") setFilterCustomerId("");
+                }}
+              >
+                <option value="all">All devices</option>
+                <option value="inventory">In inventory (unassigned)</option>
+                <option value="customer">By customer</option>
+              </select>
+            </label>
+            {deviceFilterMode === "customer" ? (
+              <label className="form-control w-full max-w-xs">
+                <span className="label-text mb-1 text-xs">Customer</span>
+                <select
+                  className="select select-bordered select-sm"
+                  value={filterCustomerId}
+                  onChange={(e) => setFilterCustomerId(e.target.value)}
+                >
+                  <option value="">Select customer</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.customer_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
 
           {rows.length === 0 ? (
             <EmptyState
@@ -903,7 +1342,7 @@ export default function HardwarePage() {
                     }
                   >
                     <th>Asset #</th>
-                    <th>Customer</th>
+                    <th>Customer / inventory</th>
                     <th>Type</th>
                     <th>Qty</th>
                     <th>Device</th>
@@ -912,6 +1351,7 @@ export default function HardwarePage() {
                     <th>Status</th>
                     <th>Warranty</th>
                     <th>Alerts</th>
+                    {isManagerView ? <th /> : null}
                   </tr>
                 </thead>
                 <tbody
@@ -974,6 +1414,24 @@ export default function HardwarePage() {
                           )}
                         </div>
                       </td>
+                      {isManagerView ? (
+                        <td className="text-right">
+                          {!row.customer_id ? (
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAssignAssetId(row.id);
+                                setError(null);
+                                assignDialogRef.current?.showModal();
+                              }}
+                            >
+                              Assign
+                            </button>
+                          ) : null}
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -983,15 +1441,17 @@ export default function HardwarePage() {
         </div>
         ) : null}
       </section>
+        </>
+      )}
 
       <dialog ref={dialogRef} className="modal">
         <div className="modal-box max-h-[90vh] max-w-3xl overflow-y-auto">
           <h3 className="text-lg font-bold">Add Hardware Asset</h3>
           {error ? <div className="alert alert-error mt-4 text-sm"><span>{error}</span></div> : null}
           <form action={handleSubmit} className="form-grid mt-4 grid gap-4 sm:grid-cols-2">
-            <FormField label="Customer" htmlFor="customer_id" required>
-              <select id="customer_id" name="customer_id" className="select select-bordered w-full" required defaultValue="">
-                <option value="" disabled>Select customer</option>
+            <FormField label="Customer" htmlFor="customer_id">
+              <select id="customer_id" name="customer_id" className="select select-bordered w-full" defaultValue="unassigned">
+                <option value="unassigned">Unassigned (inventory)</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>{c.customer_name}</option>
                 ))}
@@ -1249,6 +1709,131 @@ export default function HardwarePage() {
         </form>
       </dialog>
       ) : null}
+
+      <dialog ref={assignDialogRef} className="modal">
+        <div className="modal-box max-w-lg">
+          <h3 className="text-lg font-bold">Assign inventory asset</h3>
+          {error ? (
+            <div className="alert alert-error mt-4 text-sm">
+              <span>{error}</span>
+            </div>
+          ) : null}
+          <form action={handleAssign} className="mt-4 grid gap-4">
+            <input type="hidden" name="asset_id" value={assignAssetId} />
+            <FormField label="Customer" htmlFor="assign_customer_id" required>
+              <select
+                id="assign_customer_id"
+                name="customer_id"
+                className="select select-bordered w-full"
+                required
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  Select customer
+                </option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.customer_name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Location" htmlFor="assign_location">
+              <input
+                id="assign_location"
+                name="location"
+                className="input input-bordered w-full"
+              />
+            </FormField>
+            <FormField label="Device status" htmlFor="assign_device_status">
+              <select
+                id="assign_device_status"
+                name="device_status"
+                className="select select-bordered w-full"
+                defaultValue="Active"
+              >
+                <option value="Active">Active</option>
+                <option value="Offline">Offline</option>
+                <option value="In repair">In repair</option>
+              </select>
+            </FormField>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => assignDialogRef.current?.close()}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={isPending}>
+                {isPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Assign"
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit">close</button>
+        </form>
+      </dialog>
+
+      <dialog ref={budgetRequestDialogRef} className="modal">
+        <div className="modal-box max-w-lg">
+          <h3 className="text-lg font-bold">Request parts budget increase</h3>
+          <p className="mt-1 text-sm text-base-content/70">
+            Current monthly limit:{" "}
+            {myBudget ? formatCurrency(myBudget.limit) : "—"}. Managers review
+            requests on the Parts budgets tab.
+          </p>
+          <form action={handleBudgetIncreaseRequest} className="mt-4 grid gap-4">
+            <FormField label="Requested monthly limit" htmlFor="requested_limit" required>
+              <input
+                id="requested_limit"
+                name="requested_limit"
+                type="number"
+                min="0"
+                step="0.01"
+                className="input input-bordered w-full"
+                required
+                defaultValue={
+                  myBudget ? String(Math.ceil(myBudget.limit * 1.5)) : "750"
+                }
+              />
+            </FormField>
+            <FormField label="Reason" htmlFor="reason">
+              <textarea
+                id="reason"
+                name="reason"
+                className="textarea textarea-bordered w-full"
+                rows={3}
+                placeholder="Why do you need a higher restock limit?"
+              />
+            </FormField>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => budgetRequestDialogRef.current?.close()}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={isPending}>
+                {isPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Submit request"
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit">close</button>
+        </form>
+      </dialog>
 
       <AssetDetailDrawer
         assetId={drawerAssetId}

@@ -1,5 +1,6 @@
 import { calcSlaStatus } from "@/lib/calculations";
 import { isOpenTicket, isThisMonth } from "@/lib/dashboard-stats";
+import { pickPrimaryActiveContract } from "@/lib/customer-access";
 import type {
   Contract,
   Customer,
@@ -105,10 +106,14 @@ export function computeContractHoursBurns(
   workEntries: WorkEntry[],
 ): ContractHoursBurn[] {
   return contracts
-    .filter((c) => c.contract_status === "Active")
+    .filter((c) => c.contract_status !== "Canceled")
     .map((contract) => {
-      const hoursUsed = workEntries
-        .filter((e) => e.contract_id === contract.id && isThisMonth(e.work_date))
+      const hoursUsed = workEntriesAttributedToContract(
+        contract,
+        contracts,
+        workEntries,
+      )
+        .filter((e) => isThisMonth(e.work_date))
         .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
       const includedHours = contract.included_support_hours ?? 0;
       const overageHours = Math.max(0, hoursUsed - includedHours);
@@ -129,20 +134,20 @@ export function computeContractHoursBurns(
 }
 
 /**
- * Asset dollars deployed against a contract-length budget.
- * Counts hardware for the contract's customer when purchase_date falls in
- * [start_date, end_date]. Assets with a null purchase_date still count when
- * they are assigned to the customer (customer_id set) so demo inventory
- * without purchase dates is not silently excluded.
+ * Asset dollars against a contract-length budget:
+ * hardware purchase_cost (deployed to customer in term) + work-entry
+ * parts_cost and equipment_cost attributed to the contract.
  */
 export function assetSpendForContract(
   contract: Contract,
   assets: HardwareAsset[],
+  workEntries: WorkEntry[] = [],
+  contracts: Contract[] = [],
 ): number {
   const start = safeParse(contract.start_date);
   const end = safeParse(contract.end_date);
 
-  return assets
+  const hardwareSpend = assets
     .filter((asset) => asset.customer_id === contract.customer_id)
     .reduce((sum, asset) => {
       const purchase = safeParse(asset.purchase_date);
@@ -154,16 +159,42 @@ export function assetSpendForContract(
       }
       return sum + (asset.purchase_cost ?? asset.current_value ?? 0);
     }, 0);
+
+  const attributed =
+    contracts.length > 0
+      ? workEntriesAttributedToContract(contract, contracts, workEntries)
+      : workEntries.filter((e) => e.contract_id === contract.id);
+
+  const workSpend = attributed.reduce((sum, e) => {
+    const workDate = safeParse(e.work_date);
+    if (workDate) {
+      if (start && workDate < start) return sum;
+      if (end && workDate > end) return sum;
+    }
+    return (
+      sum +
+      Number(e.parts_cost ?? 0) +
+      Number(e.equipment_cost ?? 0)
+    );
+  }, 0);
+
+  return hardwareSpend + workSpend;
 }
 
 export function computeContractAssetBurns(
   contracts: Contract[],
   assets: HardwareAsset[],
+  workEntries: WorkEntry[] = [],
 ): ContractAssetBurn[] {
   return contracts
-    .filter((c) => c.contract_status === "Active")
+    .filter((c) => c.contract_status !== "Canceled")
     .map((contract) => {
-      const assetSpend = assetSpendForContract(contract, assets);
+      const assetSpend = assetSpendForContract(
+        contract,
+        assets,
+        workEntries,
+        contracts,
+      );
       const includedBudget = contract.included_asset_budget ?? 0;
       const overageAmount = Math.max(0, assetSpend - includedBudget);
       const burnPercent =
@@ -180,6 +211,51 @@ export function computeContractAssetBurns(
         isOver: includedBudget > 0 && assetSpend > includedBudget,
       };
     });
+}
+
+/**
+ * Contract that should own unlinked (null contract_id) work for a customer:
+ * primary Active, else the customer's only open (non-canceled/expired) contract.
+ */
+export function pickContractForCustomerWork(
+  contracts: Contract[],
+  customerId: string,
+): Contract | null {
+  const forCustomer = contracts.filter(
+    (c) =>
+      c.customer_id === customerId &&
+      c.contract_status !== "Canceled" &&
+      c.contract_status !== "Expired",
+  );
+  const primary = pickPrimaryActiveContract(forCustomer);
+  if (primary) return primary;
+  if (forCustomer.length === 1) return forCustomer[0];
+  const pending = forCustomer.filter(
+    (c) =>
+      c.contract_status === "Pending Approval" ||
+      c.contract_status === "Active",
+  );
+  if (pending.length === 1) return pending[0];
+  return null;
+}
+
+/** Direct contract_id matches plus orphan work attributed to this contract. */
+export function workEntriesAttributedToContract(
+  contract: Contract,
+  contracts: Contract[],
+  workEntries: WorkEntry[],
+): WorkEntry[] {
+  const direct = workEntries.filter((e) => e.contract_id === contract.id);
+  const orphanOwner = pickContractForCustomerWork(
+    contracts,
+    contract.customer_id,
+  );
+  if (!orphanOwner || orphanOwner.id !== contract.id) return direct;
+  const orphans = workEntries.filter(
+    (e) => !e.contract_id && e.customer_id === contract.customer_id,
+  );
+  if (orphans.length === 0) return direct;
+  return [...direct, ...orphans];
 }
 
 /**

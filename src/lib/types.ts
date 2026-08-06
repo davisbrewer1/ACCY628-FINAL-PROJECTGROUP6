@@ -547,7 +547,7 @@ export interface ServiceCatalogItem {
 export interface HardwareAsset {
   id: string;
   asset_number: string;
-  customer_id: string;
+  customer_id: string | null;
   quantity: number;
   location: string | null;
   category: HardwareCategory | string;
@@ -702,6 +702,39 @@ export interface InventoryReorderRequest {
   admin_notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface TechnicianPartsBudget {
+  technician_id: string;
+  monthly_limit: number;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface InventoryPartOrder {
+  id: string;
+  technician_id: string;
+  part_id: string;
+  quantity: number;
+  unit_cost: number;
+  total_cost: number;
+  ordered_by: string | null;
+  created_at: string;
+}
+
+export type BudgetIncreaseRequestStatus = "Pending" | "Approved" | "Rejected";
+
+export interface TechnicianBudgetIncreaseRequest {
+  id: string;
+  technician_id: string;
+  requested_limit: number;
+  current_limit: number;
+  reason: string | null;
+  status: BudgetIncreaseRequestStatus | string;
+  reviewed_by: string | null;
+  review_notes: string | null;
+  created_at: string;
+  reviewed_at: string | null;
 }
 
 export interface SecurityScore {

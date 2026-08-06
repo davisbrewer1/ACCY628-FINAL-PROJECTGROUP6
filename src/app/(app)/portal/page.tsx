@@ -8,11 +8,13 @@ import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
+import { PortalContractLockBanner } from "@/components/PortalContractLockBanner";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
+import { contractsUnlockPortal } from "@/lib/customer-access";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -131,6 +133,7 @@ export default function PortalPage() {
 
   const activeContracts = contracts.filter((c) => c.contract_status === "Active");
   const activeContract = activeContracts[0];
+  const portalLocked = !contractsUnlockPortal(contracts);
 
   const monthHours = useMemo(
     () =>
@@ -207,12 +210,20 @@ export default function PortalPage() {
         title="Client admin portal"
         description={`${customer?.customer_name ?? "Your organization"} — contracts, assets, security health, and support.`}
         action={
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => dialogRef.current?.showModal()}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={portalLocked}
+            title={portalLocked ? "Requires an active service contract" : undefined}
+            onClick={() => dialogRef.current?.showModal()}
+          >
             <Plus className="size-4" />
             Support Request
           </button>
         }
       />
+
+      <PortalContractLockBanner locked={portalLocked} />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard

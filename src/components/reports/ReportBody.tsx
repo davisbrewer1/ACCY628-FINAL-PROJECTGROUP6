@@ -452,7 +452,7 @@ function HardwareLifecycleReport({ dataset }: { dataset: ReportDataset }) {
         : null;
     return {
       asset: a.asset_number || a.asset_tag || a.id.slice(0, 8),
-      customer: customerName(a.customer_id),
+      customer: a.customer_id ? customerName(a.customer_id) : "Inventory",
       model: [a.manufacturer, a.model].filter(Boolean).join(" ") || "—",
       ageYears,
       warranty: a.warranty_expiration ?? "—",
@@ -567,7 +567,7 @@ function AssetUtilizationReport({ dataset }: { dataset: ReportDataset }) {
     };
     entry.count += 1;
     entry.qty += a.quantity ?? 1;
-    entry.customers.add(a.customer_id);
+    if (a.customer_id) entry.customers.add(a.customer_id);
     bySku.set(sku, entry);
   }
 

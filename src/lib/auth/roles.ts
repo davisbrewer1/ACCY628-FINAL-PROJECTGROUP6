@@ -96,7 +96,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/hardware",
     label: "Hardware Assets",
     icon: "Monitor",
-    roles: ["administrator", "technician", "client_admin"],
+    roles: ["administrator", "service_manager", "account_manager", "technician", "client_admin"],
   },
   {
     href: "/time-costs",

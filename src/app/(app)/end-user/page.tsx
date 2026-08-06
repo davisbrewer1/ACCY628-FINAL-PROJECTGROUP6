@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
+import { usePortalAccess } from "@/components/PortalAccessProvider";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { isOpenTicket } from "@/lib/dashboard-stats";
 import { toClientInvoiceStatus } from "@/lib/client-billing";
@@ -179,6 +180,7 @@ function buildRecentUpdates(input: {
 
 export default function EndUserPage() {
   const { activeRole } = useDemoRole();
+  const { locked: portalLocked } = usePortalAccess();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -393,16 +395,44 @@ export default function EndUserPage() {
             Open the menu for support tickets, devices, billing, contracts, and settings.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Link href="/end-user/support" className="btn btn-primary btn-sm">
+            <Link
+              href="/end-user/support"
+              className={`btn btn-primary btn-sm ${portalLocked ? "btn-disabled" : ""}`}
+              aria-disabled={portalLocked}
+              onClick={(event) => {
+                if (portalLocked) event.preventDefault();
+              }}
+            >
               Support Tickets
             </Link>
-            <Link href="/end-user/devices" className="btn btn-outline btn-sm">
+            <Link
+              href="/end-user/devices"
+              className={`btn btn-outline btn-sm ${portalLocked ? "btn-disabled" : ""}`}
+              aria-disabled={portalLocked}
+              onClick={(event) => {
+                if (portalLocked) event.preventDefault();
+              }}
+            >
               My Devices
             </Link>
-            <Link href="/end-user/billing" className="btn btn-outline btn-sm">
+            <Link
+              href="/end-user/billing"
+              className={`btn btn-outline btn-sm ${portalLocked ? "btn-disabled" : ""}`}
+              aria-disabled={portalLocked}
+              onClick={(event) => {
+                if (portalLocked) event.preventDefault();
+              }}
+            >
               Billing
             </Link>
-            <Link href="/end-user/contracts" className="btn btn-outline btn-sm">
+            <Link
+              href="/end-user/contracts"
+              className={`btn btn-outline btn-sm ${portalLocked ? "btn-disabled" : ""}`}
+              aria-disabled={portalLocked}
+              onClick={(event) => {
+                if (portalLocked) event.preventDefault();
+              }}
+            >
               My Contracts
             </Link>
           </div>

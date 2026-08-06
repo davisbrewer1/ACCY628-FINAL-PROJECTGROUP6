@@ -7,9 +7,39 @@ import {
   hoursBetween,
 } from "@/lib/calculations";
 import type { PartUsageInput } from "@/lib/autoCostCalculator";
+import { pickContractForCustomerWork } from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/actions/customers";
+import type { Contract } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+async function resolveWorkContractId(
+  supabase: SupabaseClient,
+  formData: FormData,
+  ticketId: string,
+  customerId: string,
+): Promise<string | null> {
+  const formContractId = String(formData.get("contract_id") ?? "").trim() || null;
+  if (formContractId) return formContractId;
+
+  const { data: ticket } = await supabase
+    .from("service_tickets")
+    .select("contract_id")
+    .eq("id", ticketId)
+    .maybeSingle();
+  if (ticket?.contract_id) return ticket.contract_id as string;
+
+  const { data: customerContracts } = await supabase
+    .from("contracts")
+    .select("*")
+    .eq("customer_id", customerId);
+  return (
+    pickContractForCustomerWork(
+      (customerContracts as Contract[]) ?? [],
+      customerId,
+    )?.id ?? null
+  );
+}
 
 function parseNumber(value: FormDataEntryValue | null): number | null {
   if (value == null || value === "") return null;
@@ -308,10 +338,17 @@ export async function createWorkEntry(formData: FormData): Promise<ActionResult>
     return { success: false, message: stockError };
   }
 
+  const contractId = await resolveWorkContractId(
+    supabase,
+    formData,
+    ticketId,
+    customerId,
+  );
+
   const { error } = await supabase.from("work_entries").insert({
     ticket_id: ticketId,
     customer_id: customerId,
-    contract_id: String(formData.get("contract_id") ?? "").trim() || null,
+    contract_id: contractId,
     technician_id: technicianId,
     ...payload,
     parts_used: resolvedParts.parts,
@@ -404,12 +441,19 @@ export async function updateWorkEntry(formData: FormData): Promise<ActionResult>
     return { success: false, message: "Hours worked cannot be negative." };
   }
 
+  const contractId = await resolveWorkContractId(
+    supabase,
+    formData,
+    ticketId,
+    customerId,
+  );
+
   const { error } = await supabase
     .from("work_entries")
     .update({
       ticket_id: ticketId,
       customer_id: customerId,
-      contract_id: String(formData.get("contract_id") ?? "").trim() || null,
+      contract_id: contractId,
       ...payload,
       parts_used: resolvedParts.parts,
     })

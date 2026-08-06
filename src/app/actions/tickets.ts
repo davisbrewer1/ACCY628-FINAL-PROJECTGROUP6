@@ -3,6 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/actions/customers";
+import {
+  contractsUnlockPortal,
+  pickPrimaryActiveContract,
+  PORTAL_LOCK_MESSAGE,
+} from "@/lib/customer-access";
+import { pickContractForCustomerWork } from "@/lib/manager-ops";
 import { insertNotification } from "@/lib/notifications";
 import {
   composeCategoryLabel,
@@ -10,6 +16,18 @@ import {
   normalizePriority,
 } from "@/lib/ticket-ops";
 import type { Contract } from "@/lib/types";
+
+async function loadActiveContractsForCustomer(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  customerId: string,
+): Promise<Contract[]> {
+  const { data } = await supabase
+    .from("contracts")
+    .select("*")
+    .eq("customer_id", customerId)
+    .eq("contract_status", "Active");
+  return (data as Contract[]) ?? [];
+}
 
 export async function createServiceTicket(
   formData: FormData,
@@ -35,6 +53,19 @@ export async function createServiceTicket(
   const category =
     composeCategoryLabel(ticketType, categoryOnly) || categoryOnly || null;
 
+  const customerContracts = await loadActiveContractsForCustomer(
+    supabase,
+    customerId,
+  );
+  // Also load pending so manager tickets link before activation.
+  const { data: allOpen } = await supabase
+    .from("contracts")
+    .select("*")
+    .eq("customer_id", customerId)
+    .neq("contract_status", "Canceled")
+    .neq("contract_status", "Expired");
+  const openContracts = (allOpen as Contract[]) ?? customerContracts;
+
   let contract: Contract | null = null;
   if (contractId) {
     const { data } = await supabase
@@ -44,15 +75,9 @@ export async function createServiceTicket(
       .maybeSingle();
     contract = data;
   } else {
-    const { data } = await supabase
-      .from("contracts")
-      .select("*")
-      .eq("customer_id", customerId)
-      .eq("contract_status", "Active")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    contract = data;
+    contract =
+      pickPrimaryActiveContract(openContracts) ??
+      pickContractForCustomerWork(openContracts, customerId);
   }
 
   const openedAt =
@@ -141,6 +166,15 @@ export async function createPortalTicket(
     return { success: false, message: "Ticket title is required." };
   }
 
+  const activeContracts = await loadActiveContractsForCustomer(
+    supabase,
+    customerId,
+  );
+  if (!contractsUnlockPortal(activeContracts)) {
+    return { success: false, message: PORTAL_LOCK_MESSAGE };
+  }
+  const primaryContract = pickPrimaryActiveContract(activeContracts);
+
   const requestType = String(formData.get("request_type") ?? "support").trim();
   const category =
     String(formData.get("category") ?? "").trim() ||
@@ -159,6 +193,7 @@ export async function createPortalTicket(
   const { error } = await supabase.from("service_tickets").insert({
     ticket_number: ticketNumber,
     customer_id: customerId,
+    contract_id: primaryContract?.id ?? null,
     title,
     description: String(formData.get("description") ?? "").trim() || null,
     category,

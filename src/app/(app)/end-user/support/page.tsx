@@ -8,6 +8,7 @@ import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
+import { usePortalAccess } from "@/components/PortalAccessProvider";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -63,6 +64,7 @@ function issueTypeLabel(ticket: ServiceTicket): string {
 
 export default function EndUserSupportPage() {
   const { activeRole } = useDemoRole();
+  const { locked: portalLocked } = usePortalAccess();
   const { showToast } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const detailRef = useRef<HTMLDialogElement>(null);
@@ -307,6 +309,10 @@ export default function EndUserSupportPage() {
   }
 
   function openDialog() {
+    if (portalLocked) {
+      showToast("A manager must assign an active service contract first.");
+      return;
+    }
     setError(null);
     setIssueCategory("");
     dialogRef.current?.showModal();
@@ -374,7 +380,17 @@ export default function EndUserSupportPage() {
         title="Support tickets"
         description="Submit AI, security, or software/hardware support tickets. Click an open ticket to see live status updates."
         action={
-          <button type="button" className="btn btn-primary btn-sm" onClick={openDialog}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={openDialog}
+            disabled={portalLocked}
+            title={
+              portalLocked
+                ? "Requires an active service contract"
+                : undefined
+            }
+          >
             <Plus className="size-4" />
             New Support Ticket
           </button>
@@ -394,7 +410,12 @@ export default function EndUserSupportPage() {
               title="No open tickets"
               description="Submit a support ticket to get help from the Nexus team."
               action={
-                <button type="button" className="btn btn-primary" onClick={openDialog}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={openDialog}
+                  disabled={portalLocked}
+                >
                   Submit Ticket
                 </button>
               }

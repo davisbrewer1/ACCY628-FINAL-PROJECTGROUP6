@@ -10,7 +10,12 @@ import {
 } from "@/lib/plan-pricing";
 import { computeContractAssetBurns } from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/server";
-import type { Contract, HardwareAsset, ServicePlan } from "@/lib/types";
+import type {
+  Contract,
+  HardwareAsset,
+  ServicePlan,
+  WorkEntry,
+} from "@/lib/types";
 
 function parseNumber(value: FormDataEntryValue | null): number | null {
   if (value == null || value === "") return null;
@@ -325,10 +330,14 @@ export async function syncAssetOverageInvoices(): Promise<
     };
   }
 
-  const { data: assets } = await supabase.from("hardware_assets").select("*");
+  const [{ data: assets }, { data: workEntries }] = await Promise.all([
+    supabase.from("hardware_assets").select("*"),
+    supabase.from("work_entries").select("*"),
+  ]);
   const burns = computeContractAssetBurns(
     active,
     (assets ?? []) as HardwareAsset[],
+    (workEntries ?? []) as WorkEntry[],
   );
   const overBurns = burns.filter((b) => b.isOver && b.overageEstimate > 0);
 

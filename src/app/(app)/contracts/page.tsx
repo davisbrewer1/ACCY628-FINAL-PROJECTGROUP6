@@ -2,8 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus } from "lucide-react";
-import { createContract } from "@/app/actions/contracts";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  createContract,
+  deleteContract,
+  updateContract,
+} from "@/app/actions/contracts";
 import { calcProfitMargin } from "@/lib/calculations";
 import { isThisMonth } from "@/lib/dashboard-stats";
 import { EmptyState } from "@/components/EmptyState";
@@ -20,6 +24,7 @@ import {
 } from "@/lib/manager-ops";
 import {
   formatLateFeePolicy,
+  PLAN_CASH_BILLING_GUIDANCE,
   planRecognizedMonthly,
   REVENUE_RECOGNITION_GUIDANCE,
 } from "@/lib/plan-pricing";
@@ -49,6 +54,8 @@ interface ContractRow extends Contract {
   nextInvoiceHint: string | null;
 }
 
+type DialogMode = "create" | "edit";
+
 export default function ContractsPage() {
   const searchParams = useSearchParams();
   const filter = searchParams.get("filter") ?? "all";
@@ -64,6 +71,9 @@ export default function ContractsPage() {
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [dialogMode, setDialogMode] = useState<DialogMode>("create");
+  const [editingContract, setEditingContract] = useState<Contract | null>(null);
+  const [showCanceled, setShowCanceled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -105,6 +115,18 @@ export default function ContractsPage() {
         ? planRecognizedMonthly(selectedPlan, null, null)
         : null;
 
+  const planSelectOptions = useMemo(() => {
+    const options = [...activePlans];
+    if (
+      editingContract?.plan_id &&
+      !options.some((p) => p.id === editingContract.plan_id)
+    ) {
+      const retired = planById.get(editingContract.plan_id);
+      if (retired) options.unshift(retired);
+    }
+    return options;
+  }, [activePlans, editingContract, planById]);
+
   const renewals90Ids = useMemo(
     () => new Set(getRenewalsInDays(contracts, 90).map((c) => c.id)),
     [contracts],
@@ -122,7 +144,7 @@ export default function ContractsPage() {
       ]),
     );
     const assetBurns = new Map(
-      computeContractAssetBurns(contracts, assets).map((b) => [
+      computeContractAssetBurns(contracts, assets, workEntries).map((b) => [
         b.contractId,
         b,
       ]),
@@ -168,33 +190,69 @@ export default function ContractsPage() {
   }, [contracts, customers, workEntries, profiles, assets, planById]);
 
   const filteredRows = useMemo(() => {
+    let list = rows;
+    if (!showCanceled) {
+      list = list.filter((r) => r.contract_status !== "Canceled");
+    }
     if (filter === "renewals") {
-      return rows.filter((r) => renewals90Ids.has(r.id));
+      return list.filter((r) => renewals90Ids.has(r.id));
     }
     if (filter === "over-hours") {
-      return rows.filter((r) => r.isOver);
+      return list.filter((r) => r.isOver);
     }
-    return rows;
-  }, [rows, filter, renewals90Ids]);
+    return list;
+  }, [rows, filter, renewals90Ids, showCanceled]);
 
   function openCreateDialog() {
     setError(null);
+    setDialogMode("create");
+    setEditingContract(null);
     setSelectedPlanId(activePlans[0]?.id ?? "");
     setStartDate("");
     setEndDate("");
     dialogRef.current?.showModal();
   }
 
+  function openEditDialog(contract: Contract) {
+    setError(null);
+    setDialogMode("edit");
+    setEditingContract(contract);
+    setSelectedPlanId(contract.plan_id ?? activePlans[0]?.id ?? "");
+    setStartDate(contract.start_date ?? "");
+    setEndDate(contract.end_date ?? "");
+    dialogRef.current?.showModal();
+  }
+
   function handleSubmit(formData: FormData) {
     setError(null);
     startTransition(async () => {
-      const result = await createContract(formData);
+      const result =
+        dialogMode === "edit"
+          ? await updateContract(formData)
+          : await createContract(formData);
       if (result.success) {
         showToast(result.message);
         dialogRef.current?.close();
         await loadData();
       } else {
         setError(result.message);
+      }
+    });
+  }
+
+  function handleDelete(contract: ContractRow) {
+    const confirmed = window.confirm(
+      `Delete “${contract.contract_name}”?\n\n` +
+        "If hours, equipment, hardware spend, or invoices exist under this contract, it will be canceled (soft delete) instead of removed.",
+    );
+    if (!confirmed) return;
+    startTransition(async () => {
+      const result = await deleteContract(contract.id);
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+      } else {
+        showToast(result.message);
       }
     });
   }
@@ -214,6 +272,8 @@ export default function ContractsPage() {
         ? "Showing contracts over included hours"
         : null;
 
+  const formKey = editingContract?.id ?? "create";
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -229,6 +289,25 @@ export default function ContractsPage() {
 
       <div className="alert alert-info text-sm">
         <span>{REVENUE_RECOGNITION_GUIDANCE}</span>
+      </div>
+      <div className="alert alert-info text-sm">
+        <span>
+          {PLAN_CASH_BILLING_GUIDANCE} Editing a contract updates recognized MRR
+          going forward and future cash-cadence invoices only; already-issued
+          invoices and payments stay historical.
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="label cursor-pointer gap-2 py-0">
+          <input
+            type="checkbox"
+            className="checkbox checkbox-sm"
+            checked={showCanceled}
+            onChange={(event) => setShowCanceled(event.target.checked)}
+          />
+          <span className="label-text text-sm">Show canceled</span>
+        </label>
       </div>
 
       {filterLabel ? (
@@ -267,6 +346,7 @@ export default function ContractsPage() {
                   <th>Renewal owner</th>
                   <th>Next invoice</th>
                   <th>Margin</th>
+                  <th className="w-24">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -274,7 +354,11 @@ export default function ContractsPage() {
                   <tr
                     key={row.id}
                     className={
-                      row.isOver || row.assetIsOver ? "bg-warning/5" : undefined
+                      row.contract_status === "Canceled"
+                        ? "opacity-60"
+                        : row.isOver || row.assetIsOver
+                          ? "bg-warning/5"
+                          : undefined
                     }
                   >
                     <td className="font-medium">{row.contract_name}</td>
@@ -358,6 +442,28 @@ export default function ContractsPage() {
                         ? formatPercent(row.profitMargin)
                         : "—"}
                     </td>
+                    <td>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs"
+                          title="Edit contract"
+                          onClick={() => openEditDialog(row)}
+                          disabled={isPending}
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs text-error"
+                          title="Delete or cancel contract"
+                          onClick={() => handleDelete(row)}
+                          disabled={isPending || row.contract_status === "Canceled"}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -368,13 +474,18 @@ export default function ContractsPage() {
 
       <dialog ref={dialogRef} className="modal">
         <div className="modal-box max-h-[90vh] max-w-2xl overflow-y-auto">
-          <h3 className="text-lg font-bold">Add Contract</h3>
+          <h3 className="text-lg font-bold">
+            {dialogMode === "edit" ? "Edit Contract" : "Add Contract"}
+          </h3>
           {error ? (
             <div className="alert alert-error mt-4 text-sm">
               <span>{error}</span>
             </div>
           ) : null}
-          <form action={handleSubmit} className="mt-4 space-y-6">
+          <form key={formKey} action={handleSubmit} className="mt-4 space-y-6">
+            {dialogMode === "edit" && editingContract ? (
+              <input type="hidden" name="contract_id" value={editingContract.id} />
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField label="Plan" htmlFor="plan_id" required className="sm:col-span-2">
                 <select
@@ -388,10 +499,11 @@ export default function ContractsPage() {
                   <option value="" disabled>
                     Select a plan
                   </option>
-                  {activePlans.map((plan) => (
+                  {planSelectOptions.map((plan) => (
                     <option key={plan.id} value={plan.id}>
                       {plan.name} · {plan.pricing_model} ·{" "}
                       {formatCurrency(plan.base_price)}
+                      {!plan.active ? " (retired)" : ""}
                     </option>
                   ))}
                 </select>
@@ -455,6 +567,7 @@ export default function ContractsPage() {
                   name="contract_name"
                   className="input input-bordered w-full"
                   required
+                  defaultValue={editingContract?.contract_name ?? ""}
                 />
               </FormField>
               <FormField label="Customer" htmlFor="customer_id" required>
@@ -463,7 +576,7 @@ export default function ContractsPage() {
                   name="customer_id"
                   className="select select-bordered w-full"
                   required
-                  defaultValue=""
+                  defaultValue={editingContract?.customer_id ?? ""}
                 >
                   <option value="" disabled>
                     Select customer
@@ -480,12 +593,21 @@ export default function ContractsPage() {
                   id="contract_status"
                   name="contract_status"
                   className="select select-bordered w-full"
-                  defaultValue="Draft"
+                  defaultValue={editingContract?.contract_status ?? "Draft"}
+                  onChange={(event) => {
+                    const approval = document.getElementById(
+                      "approval_status",
+                    ) as HTMLSelectElement | null;
+                    if (event.target.value === "Active" && approval) {
+                      approval.value = "Approved";
+                    }
+                  }}
                 >
                   <option value="Draft">Draft</option>
                   <option value="Pending Approval">Pending Approval</option>
                   <option value="Active">Active</option>
                   <option value="Expired">Expired</option>
+                  <option value="Canceled">Canceled</option>
                 </select>
               </FormField>
               <FormField label="Start date" htmlFor="start_date" required>
@@ -516,6 +638,7 @@ export default function ContractsPage() {
                   name="renewal_date"
                   type="date"
                   className="input input-bordered w-full"
+                  defaultValue={editingContract?.renewal_date ?? ""}
                 />
               </FormField>
               <FormField label="Automatic renewal" htmlFor="automatic_renewal">
@@ -523,7 +646,13 @@ export default function ContractsPage() {
                   id="automatic_renewal"
                   name="automatic_renewal"
                   className="select select-bordered w-full"
-                  defaultValue="true"
+                  defaultValue={
+                    editingContract
+                      ? editingContract.automatic_renewal
+                        ? "true"
+                        : "false"
+                      : "true"
+                  }
                 >
                   <option value="true">Yes</option>
                   <option value="false">No</option>
@@ -534,7 +663,7 @@ export default function ContractsPage() {
                   id="approval_status"
                   name="approval_status"
                   className="select select-bordered w-full"
-                  defaultValue="Pending"
+                  defaultValue={editingContract?.approval_status ?? "Pending"}
                 >
                   <option value="Pending">Pending</option>
                   <option value="Approved">Approved</option>
@@ -547,14 +676,16 @@ export default function ContractsPage() {
                   name="notes"
                   className="textarea textarea-bordered w-full"
                   rows={2}
+                  defaultValue={editingContract?.notes ?? ""}
                 />
               </FormField>
             </div>
 
             <div className="alert alert-info text-sm">
               <span>
-                Commercial terms come from the selected plan and are snapshotted
-                onto this contract. Active status requires Approved approval.
+                {dialogMode === "edit"
+                  ? "Changing the plan re-snapshots commercial terms onto this contract. Future plan invoices use the new fee; already-issued invoices are not rewritten. Set status to Active to approve and activate."
+                  : "Commercial terms come from the selected plan and are snapshotted onto this contract. Set status to Active to approve and activate in one step."}
               </span>
             </div>
 
@@ -569,10 +700,12 @@ export default function ContractsPage() {
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={isPending || activePlans.length === 0}
+                disabled={isPending || planSelectOptions.length === 0}
               >
                 {isPending ? (
                   <span className="loading loading-spinner loading-sm" />
+                ) : dialogMode === "edit" ? (
+                  "Save Changes"
                 ) : (
                   "Save Contract"
                 )}

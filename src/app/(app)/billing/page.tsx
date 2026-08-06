@@ -108,10 +108,10 @@ export default function BillingPage() {
 
   const assetBurns = useMemo(
     () =>
-      computeContractAssetBurns(contracts, assets).filter(
+      computeContractAssetBurns(contracts, assets, workEntries).filter(
         (b) => b.isOver && b.overageEstimate > 0,
       ),
-    [contracts, assets],
+    [contracts, assets, workEntries],
   );
 
   const syncedAssetContractIds = useMemo(() => {
