@@ -34,7 +34,7 @@ const SERVICES = [
   {
     title: "Cybersecurity Monitoring",
     problem: "See endpoint, patch, backup, and firewall risk before it becomes an outage.",
-    includes: "Health scores, alert triage, recommended remediations",
+    includes: "Alert triage, recommended remediations",
     icon: Shield,
   },
   {

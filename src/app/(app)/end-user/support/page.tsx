@@ -421,6 +421,17 @@ export default function EndUserSupportPage() {
                   </div>
                 )}
               </div>
+
+              {kind === "open" &&
+              ticket.customer_rescheduled &&
+              ticket.locked_service_date ? (
+                <div className="border-t border-base-300 px-4 py-2" role="status">
+                  <span className="badge badge-warning badge-sm">
+                    Rescheduled ·{" "}
+                    {formatLockedServiceDateLabel(ticket.locked_service_date)}
+                  </span>
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -667,8 +678,8 @@ export default function EndUserSupportPage() {
                     {rescheduleOpen ? (
                       <form action={handleReschedule} className="mt-3 space-y-3">
                         <p className="text-sm text-base-content/70">
-                          Pick a new available day. Your visit comes off the
-                          technician&apos;s calendar until they place it again.
+                          Pick a new available day. Your technician will be
+                          notified to place a new time.
                         </p>
                         <ServiceDatePicker allowAsap={false} />
                         <button
@@ -696,20 +707,49 @@ export default function EndUserSupportPage() {
                         available visit window.
                       </p>
                     ) : selectedTicket.locked_service_date ? (
-                      <p>
-                        Requested service day:{" "}
-                        <span className="font-semibold">
-                          {formatLockedServiceDateLabel(
-                            selectedTicket.locked_service_date,
-                          )}
-                        </span>
-                        . An arrival window appears once your technician places
-                        this visit
-                        {selectedTicket.customer_rescheduled
-                          ? " (reschedule received — awaiting new placement)"
-                          : ""}
-                        .
-                      </p>
+                      <div className="space-y-3">
+                        <p>
+                          Requested service day:{" "}
+                          <span className="font-semibold">
+                            {formatLockedServiceDateLabel(
+                              selectedTicket.locked_service_date,
+                            )}
+                          </span>
+                          . An arrival window appears once your technician places
+                          this visit
+                          .
+                        </p>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline"
+                          onClick={() => {
+                            setError(null);
+                            setRescheduleOpen((open) => !open);
+                          }}
+                        >
+                          {rescheduleOpen ? "Cancel reschedule" : "Reschedule"}
+                        </button>
+                        {rescheduleOpen ? (
+                          <form action={handleReschedule} className="space-y-3">
+                            <p className="text-sm text-base-content/70">
+                              Pick a new day. Your technician will be notified to
+                              place a new time.
+                            </p>
+                            <ServiceDatePicker allowAsap={false} />
+                            <button
+                              type="submit"
+                              className="btn btn-primary btn-sm"
+                              disabled={isPending}
+                            >
+                              {isPending ? (
+                                <span className="loading loading-spinner loading-sm" />
+                              ) : (
+                                "Confirm new day"
+                              )}
+                            </button>
+                          </form>
+                        ) : null}
+                      </div>
                     ) : (
                       <p>
                         A technician is assigned. An expected arrival window will
@@ -816,12 +856,23 @@ export default function EndUserSupportPage() {
                     Service method
                   </p>
                   <p className="mt-1 font-medium">
-                    {selectedTicket.service_method ?? "To be determined"}
+                    {selectedTicket.service_method === "On-site"
+                      ? "In-person"
+                      : selectedTicket.service_method ?? "To be determined"}
                   </p>
                 </div>
                 <div className="rounded-box border border-base-300 p-3">
                   <p className="text-xs uppercase tracking-wide text-base-content/60">Location</p>
-                  <p className="mt-1 font-medium">{selectedTicket.location ?? "—"}</p>
+                  <p className="mt-1 font-medium">
+                    {selectedTicket.location === "On-site" ||
+                    selectedTicket.location === "In-person"
+                      ? "In-person"
+                      : selectedTicket.location ??
+                        (selectedTicket.service_method === "On-site"
+                          ? "In-person"
+                          : selectedTicket.service_method) ??
+                        "-"}
+                  </p>
                 </div>
                 <div className="rounded-box border border-base-300 p-3">
                   <p className="text-xs uppercase tracking-wide text-base-content/60">Device</p>
@@ -883,7 +934,13 @@ export default function EndUserSupportPage() {
                               </p>
                               <p className="text-xs text-base-content/60">
                                 {formatDate(entry.work_date ?? entry.created_at)}
-                                {entry.service_method ? ` Â· ${entry.service_method}` : ""}
+                                {entry.service_method
+                                  ? ` - ${
+                                      entry.service_method === "On-site"
+                                        ? "In-person"
+                                        : entry.service_method
+                                    }`
+                                  : ""}
                                 {entry.hours_worked != null
                                   ? ` Â· ${entry.hours_worked} hrs`
                                   : ""}
@@ -908,6 +965,18 @@ export default function EndUserSupportPage() {
                   </div>
                 )}
               </div>
+
+              {selectedTicket.customer_rescheduled &&
+              selectedTicket.locked_service_date ? (
+                <div role="status">
+                  <span className="badge badge-warning">
+                    Rescheduled ·{" "}
+                    {formatLockedServiceDateLabel(
+                      selectedTicket.locked_service_date,
+                    )}
+                  </span>
+                </div>
+              ) : null}
 
               <div className="modal-action">
                 <button type="button" className="btn" onClick={closeTicketDetails}>
@@ -1109,14 +1178,20 @@ export default function EndUserSupportPage() {
               </FormField>
             </div>
 
-            <FormField label="Office location" htmlFor="location" required>
-              <input
-                id="location"
-                name="location"
-                className="input input-bordered w-full"
-                placeholder="Office, floor, desk, or remote"
+            <FormField label="Location" htmlFor="service_method" required>
+              <select
+                id="service_method"
+                name="service_method"
+                className="select select-bordered w-full"
+                defaultValue=""
                 required
-              />
+              >
+                <option value="" disabled>
+                  Select location
+                </option>
+                <option value="Remote">Remote</option>
+                <option value="On-site">In-person</option>
+              </select>
             </FormField>
 
             <FormField

@@ -19,10 +19,11 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { useToast } from "@/components/Toast";
 import {
+  formatPayableInvoiceOption,
+  getInvoicePurpose,
   sumOutstandingBalance,
   toClientInvoiceStatus,
 } from "@/lib/client-billing";
-import { getInvoiceCategory } from "@/lib/device-utils";
 import { formatCurrency, formatDate, formatHours } from "@/lib/format";
 import {
   buildPortalPlanBillingSummary,
@@ -191,16 +192,18 @@ export default function EndUserBillingPage() {
   const serviceInvoices = useMemo(
     () =>
       invoices.filter((invoice) => {
-        const category = getInvoiceCategory(invoice);
-        return category === "Services" || category === "Mixed";
+        const purpose = getInvoicePurpose(invoice);
+        return purpose !== "Hardware overbilling";
       }),
     [invoices],
   );
   const hardwareInvoices = useMemo(
     () =>
       invoices.filter((invoice) => {
-        const category = getInvoiceCategory(invoice);
-        return category === "Hardware purchase" || category === "Mixed";
+        const purpose = getInvoicePurpose(invoice);
+        return (
+          purpose === "Hardware overbilling" || purpose === "Mixed charges"
+        );
       }),
     [invoices],
   );
@@ -481,9 +484,11 @@ export default function EndUserBillingPage() {
                   <option value="">Choose an invoice</option>
                   {unpaidInvoices.map((invoice) => (
                     <option key={invoice.id} value={invoice.id}>
-                      {invoice.invoice_number} · {getInvoiceCategory(invoice)} · Due{" "}
-                      {formatDate(invoice.due_date)} · Balance{" "}
-                      {formatCurrency(invoice.remaining_balance)}
+                      {formatPayableInvoiceOption(
+                        invoice,
+                        formatDate(invoice.due_date),
+                        formatCurrency(invoice.remaining_balance),
+                      )}
                     </option>
                   ))}
                 </select>
@@ -495,8 +500,11 @@ export default function EndUserBillingPage() {
                     <div>
                       <p className="font-semibold">{selectedPayInvoice.invoice_number}</p>
                       <p className="text-xs text-base-content/60">
-                        {getInvoiceCategory(selectedPayInvoice)} · Due{" "}
-                        {formatDate(selectedPayInvoice.due_date)}
+                        {getInvoicePurpose(selectedPayInvoice)}
+                        {selectedPayInvoice.billing_period
+                          ? ` - Period ${selectedPayInvoice.billing_period}`
+                          : ""}{" "}
+                        - Due {formatDate(selectedPayInvoice.due_date)}
                       </p>
                     </div>
                     <div className="text-right">
@@ -609,7 +617,7 @@ export default function EndUserBillingPage() {
                   invoice.amount_paid,
                   invoice.remaining_balance,
                 );
-                const category = getInvoiceCategory(invoice);
+                const purpose = getInvoicePurpose(invoice);
                 const serviceAmount =
                   (invoice.recurring_service_fee ?? 0) +
                   (invoice.additional_support_charges ?? 0) +
@@ -633,19 +641,22 @@ export default function EndUserBillingPage() {
                         <p className="mt-1 text-xs text-base-content/60">
                           Issued {formatDate(invoice.invoice_date)} · Due{" "}
                           {formatDate(invoice.due_date)}
+                          {invoice.billing_period
+                            ? ` · Period ${invoice.billing_period}`
+                            : ""}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-1">
                         <span
                           className={`badge badge-sm ${
-                            category === "Hardware purchase"
+                            purpose === "Hardware overbilling"
                               ? "badge-info"
-                              : category === "Mixed"
+                              : purpose === "Mixed charges"
                                 ? "badge-secondary"
                                 : "badge-ghost"
                           }`}
                         >
-                          {category}
+                          {purpose}
                         </span>
                         <StatusBadge status={clientStatus} />
                       </div>

@@ -19,8 +19,7 @@ import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { useToast } from "@/components/Toast";
-import { toClientInvoiceStatus } from "@/lib/client-billing";
-import { getInvoiceCategory } from "@/lib/device-utils";
+import { getInvoicePurpose, toClientInvoiceStatus } from "@/lib/client-billing";
 import { formatCurrency, formatDate, formatHours } from "@/lib/format";
 import { buildPortalInvoiceLineItems } from "@/lib/portal-billing";
 import { createClient } from "@/lib/supabase/client";
@@ -142,7 +141,7 @@ export default function EndUserInvoiceDetailPage() {
     invoice?.amount_paid,
     invoice?.remaining_balance,
   );
-  const invoiceCategory = invoice ? getInvoiceCategory(invoice) : "Services";
+  const invoicePurpose = invoice ? getInvoicePurpose(invoice) : "Invoice";
   const linkedHours = workEntries.reduce(
     (sum, entry) => sum + (entry.hours_worked ?? 0),
     0,
@@ -242,7 +241,7 @@ export default function EndUserInvoiceDetailPage() {
 
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge status={clientStatus} />
-        <span className="badge badge-sm badge-outline">{invoiceCategory}</span>
+        <span className="badge badge-sm badge-outline">{invoicePurpose}</span>
         <span className="text-sm text-base-content/60">
           Issued {formatDate(invoice.invoice_date)} · Due {formatDate(invoice.due_date)}
         </span>

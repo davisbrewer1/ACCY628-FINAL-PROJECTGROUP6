@@ -287,8 +287,16 @@ export interface ServiceTicket {
   original_requested_date?: string | null;
   /** Tech placed the visit on the day after the locked service date. */
   scheduled_off_requested_day?: boolean | null;
-  /** Customer rescheduled; ticket returned to Needs scheduling. */
+  /** Customer asked to move the visit; show reschedule tag until re-placed. */
   customer_rescheduled?: boolean | null;
+  /** Technician marked On the way (on-site); persists across logout. */
+  en_route?: boolean | null;
+  /** Banked seconds for the live work timer (excludes current segment). */
+  live_timer_banked_seconds?: number | null;
+  /** Wall-clock start of the current unpaused timer segment. */
+  live_timer_segment_started_at?: string | null;
+  /** True while the live timer is paused. */
+  live_timer_paused?: boolean | null;
 }
 
 export interface TicketHourExtensionRequest {

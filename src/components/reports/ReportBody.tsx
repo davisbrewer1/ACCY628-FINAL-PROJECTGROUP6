@@ -479,7 +479,6 @@ function HardwareLifecycleReport({ dataset }: { dataset: ReportDataset }) {
       value: a.current_value,
       unsupported: a.unsupported_os || a.nearing_eol,
       needsReplacement: a.needs_replacement,
-      failures: a.health_score != null && a.health_score < 50,
       repairs: repairsByAsset.get(a.id) ?? 0,
     };
   });
@@ -542,7 +541,6 @@ function HardwareLifecycleReport({ dataset }: { dataset: ReportDataset }) {
               {[
                 row.unsupported ? "Unsupported" : null,
                 row.needsReplacement ? "Replace" : null,
-                row.failures ? "Low health" : null,
               ]
                 .filter(Boolean)
                 .join(", ") || "—"}
@@ -708,15 +706,13 @@ function AssetUtilizationReport({ dataset }: { dataset: ReportDataset }) {
 
 function SecurityRiskReport({ dataset }: { dataset: ReportDataset }) {
   const { securityScores, securityAlerts, hardware } = dataset;
-  const avgHealth = avg(securityScores.map((s) => s.health_score));
   const critical = securityAlerts.filter(
     (a) => a.severity === "Critical" && a.status !== "Resolved",
   );
   const highRiskDevices = hardware.filter(
     (a) =>
       a.missing_security_updates ||
-      a.unsupported_os ||
-      (a.health_score != null && a.health_score < 40),
+      a.unsupported_os,
   );
   const avgPatch = avg(
     securityScores
@@ -735,10 +731,6 @@ function SecurityRiskReport({ dataset }: { dataset: ReportDataset }) {
         What should I worry about / pay attention to?
       </p>
       <MetricGrid>
-        <MetricTile
-          label="Security Health Score (avg)"
-          value={avgHealth != null ? avgHealth.toFixed(0) : "—"}
-        />
         <MetricTile label="Critical vulnerabilities / alerts" value={critical.length} />
         <MetricTile label="High-risk devices" value={highRiskDevices.length} />
         <MetricTile
@@ -767,11 +759,10 @@ function SecurityRiskReport({ dataset }: { dataset: ReportDataset }) {
         <MetricTile label="Failed logins" value={NA} />
       </MetricGrid>
 
-      <ReportTable headers={["Customer score", "Health", "Patch %", "MFA %", "Firewall"]}>
+      <ReportTable headers={["Customer", "Patch %", "MFA %", "Firewall"]}>
         {securityScores.map((s) => (
           <tr key={s.id}>
             <td className="font-mono text-xs">{s.customer_id.slice(0, 8)}</td>
-            <td>{s.health_score}</td>
             <td>
               {s.patch_compliance_pct != null
                 ? formatPercent(s.patch_compliance_pct)
@@ -1245,8 +1236,6 @@ function CustomerTechnologyReport({
     customers,
     hardware,
     tickets,
-    securityScores,
-    aiPlatforms,
     contracts,
     invoices,
     recommendations,
@@ -1261,13 +1250,6 @@ function CustomerTechnologyReport({
       t.status !== "Completed" &&
       t.status !== "Closed" &&
       t.status !== "Cancelled",
-  );
-  const score = securityScores.find((s) => s.customer_id === customerId);
-  const aiScore = avg(
-    aiPlatforms
-      .filter((p) => p.customer_id === customerId)
-      .map((p) => p.health_score)
-      .filter((n): n is number => n != null),
   );
   const custContracts = contracts.filter((c) => c.customer_id === customerId);
   const monthlyCosts = sum(
@@ -1303,14 +1285,6 @@ function CustomerTechnologyReport({
             <MetricTile label="Devices covered" value={devices.length} />
             <MetricTile label="Warranty expiring soon" value={warrantySoon} />
             <MetricTile label="Open tickets" value={openTickets.length} />
-            <MetricTile
-              label="Security score"
-              value={score?.health_score ?? customer.technology_health_score ?? "—"}
-            />
-            <MetricTile
-              label="AI score"
-              value={aiScore != null ? aiScore.toFixed(0) : "—"}
-            />
             <MetricTile label="Active contracts" value={custContracts.filter((c) => c.contract_status === "Active").length} />
             <MetricTile label="Monthly costs (MRR)" value={formatCurrency(monthlyCosts)} />
             <MetricTile

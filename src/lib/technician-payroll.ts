@@ -15,6 +15,9 @@ import type { WorkEntry } from "@/lib/types";
 /** Typical mid-range US IT support / MSP field technician pay rate. */
 export const DEFAULT_TECH_HOURLY_RATE = 38;
 
+/** Paid hours credited each weekday for salary-style tech pay (not billable hours). */
+export const STANDARD_PAID_HOURS_PER_DAY = 8;
+
 /** Annual PTO allotment when not set on the technician record (10 days). */
 export const DEFAULT_ANNUAL_PTO_HOURS = 80;
 
@@ -31,6 +34,38 @@ export function getCurrentPayPeriod(reference = new Date()): { start: Date; end:
   const end = addDays(start, 13);
   end.setHours(23, 59, 59, 999);
   return { start, end };
+}
+
+export function isWeekend(date: Date): boolean {
+  const day = getDay(date);
+  return day === 0 || day === 6;
+}
+
+/** Count Monday-Friday days in an inclusive date range. */
+export function countWeekdaysInRange(start: Date, end: Date): number {
+  const rangeStart = new Date(start);
+  rangeStart.setHours(0, 0, 0, 0);
+  const rangeEnd = new Date(end);
+  rangeEnd.setHours(0, 0, 0, 0);
+
+  let count = 0;
+  for (
+    let cursor = rangeStart;
+    cursor.getTime() <= rangeEnd.getTime();
+    cursor = addDays(cursor, 1)
+  ) {
+    if (!isWeekend(cursor)) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Salary-style paid hours for a pay period: 8 hours per weekday.
+ * Independent of work-entry / schedule hours (those are for client billing).
+ */
+export function salariedHoursInPayPeriod(reference = new Date()): number {
+  const { start, end } = getCurrentPayPeriod(reference);
+  return countWeekdaysInRange(start, end) * STANDARD_PAID_HOURS_PER_DAY;
 }
 
 /** Parse YYYY-MM-DD (or ISO datetime) as a local calendar date at midnight. */
@@ -91,11 +126,6 @@ export function getMonthGridDays(reference: Date): Date[] {
   const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   return eachDayOfInterval({ start: gridStart, end: gridEnd });
-}
-
-export function isWeekend(date: Date): boolean {
-  const day = getDay(date);
-  return day === 0 || day === 6;
 }
 
 export { isSameMonth, format, startOfMonth, endOfMonth };

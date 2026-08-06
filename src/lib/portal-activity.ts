@@ -129,7 +129,7 @@ export function buildRecentUpdates(
     updates.push({
       id: `firewall-${securityScore.id}`,
       title: "Firewall / security posture updated",
-      detail: `Firewall status: ${securityScore.firewall_status ?? "Reviewed"} · Health score ${securityScore.health_score}`,
+      detail: `Firewall status: ${securityScore.firewall_status ?? "Reviewed"}`,
       at: securityScore.last_assessed_at ?? securityScore.created_at,
       href: "/end-user/security-concern",
     });

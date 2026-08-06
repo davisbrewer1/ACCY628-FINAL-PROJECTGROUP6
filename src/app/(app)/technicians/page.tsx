@@ -6,6 +6,7 @@ import { Check, Plus, Star, Trash2, X } from "lucide-react";
 import { reviewPtoRequest } from "@/app/actions/pto";
 import { createTechnician, deleteTechnician } from "@/app/actions/technicians";
 import { AdminTechnicianPortalSwitcher } from "@/components/admin/AdminTechnicianPortalSwitcher";
+import { canViewTechnicianPortalAs } from "@/lib/admin-technician-view";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
@@ -73,7 +74,7 @@ export default function TechniciansPage() {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const canManage = MANAGER_ROLES.has(activeRole);
-  const isAdmin = realRole === "administrator";
+  const canViewTechPortal = canViewTechnicianPortalAs(realRole);
 
   async function loadData() {
     const supabase = createClient();
@@ -280,7 +281,7 @@ export default function TechniciansPage() {
 
   return (
     <div className="space-y-6">
-      {isAdmin ? (
+      {canViewTechPortal ? (
         <AdminTechnicianPortalSwitcher
           variant="panel"
           navigateOnChange

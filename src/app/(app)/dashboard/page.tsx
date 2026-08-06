@@ -39,7 +39,6 @@ import type {
   Invoice,
   Recommendation,
   SecurityAlert,
-  SecurityScore,
   ServiceTicket,
   TicketExpense,
   WorkEntry,
@@ -55,7 +54,6 @@ export default function ExecutiveDashboardPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [hardware, setHardware] = useState<HardwareAsset[]>([]);
-  const [securityScores, setSecurityScores] = useState<SecurityScore[]>([]);
   const [securityAlerts, setSecurityAlerts] = useState<SecurityAlert[]>([]);
   const [aiPlatforms, setAiPlatforms] = useState<AiPlatform[]>([]);
   const [aiRisks, setAiRisks] = useState<AiRisk[]>([]);
@@ -73,7 +71,6 @@ export default function ExecutiveDashboardPage() {
         i,
         a,
         h,
-        ss,
         sa,
         ai,
         risks,
@@ -87,7 +84,6 @@ export default function ExecutiveDashboardPage() {
         supabase.from("invoices").select("*"),
         supabase.from("alerts").select("*").eq("resolved", false),
         supabase.from("hardware_assets").select("*"),
-        supabase.from("security_scores").select("*"),
         supabase.from("security_alerts").select("*").eq("status", "Open"),
         supabase.from("ai_platforms").select("*"),
         supabase.from("ai_risks").select("*").eq("status", "Open"),
@@ -101,7 +97,6 @@ export default function ExecutiveDashboardPage() {
       setInvoices(i.data ?? []);
       setAlerts(a.data ?? []);
       setHardware(h.data ?? []);
-      setSecurityScores(ss.data ?? []);
       setSecurityAlerts(sa.data ?? []);
       setAiPlatforms(ai.data ?? []);
       setAiRisks(risks.data ?? []);
@@ -129,14 +124,6 @@ export default function ExecutiveDashboardPage() {
     () => hardware.reduce((sum, asset) => sum + Number(asset.current_value ?? 0), 0),
     [hardware],
   );
-
-  const avgCyber = useMemo(() => {
-    if (securityScores.length === 0) return null;
-    return (
-      securityScores.reduce((sum, s) => sum + Number(s.health_score ?? 0), 0) /
-      securityScores.length
-    );
-  }, [securityScores]);
 
   const avgAiSecurity = useMemo(() => {
     if (aiPlatforms.length === 0) return null;
@@ -228,7 +215,7 @@ export default function ExecutiveDashboardPage() {
     <div className="space-y-6">
       <PageHeader
         title="Executive overview"
-        description="MRR, profitability, inventory, AI adoption, cyber posture, SLA, renewals, and risk — without operational ticket assignment."
+        description="MRR, profitability, inventory, AI adoption, SLA, renewals, and risk — without operational ticket assignment."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -253,12 +240,6 @@ export default function ExecutiveDashboardPage() {
           title="AI security / compliance"
           value={avgAiSecurity != null ? avgAiSecurity.toFixed(0) : "—"}
           hint="Average platform compliance score"
-        />
-        <StatCard
-          title="Cyber posture"
-          value={avgCyber != null ? avgCyber.toFixed(0) : "—"}
-          hint="Average customer security health score"
-          tone={avgCyber != null && avgCyber < 70 ? "warning" : "success"}
         />
         <StatCard
           title="Critical incidents"

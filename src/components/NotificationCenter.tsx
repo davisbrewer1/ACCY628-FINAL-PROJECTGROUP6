@@ -139,7 +139,7 @@ const TYPE_META: Record<
     label: "Customer reschedule",
     Icon: CalendarClock,
     className: "text-warning",
-    href: "/technician",
+    href: "/technician?needsScheduling=1",
   },
 };
 
@@ -168,6 +168,17 @@ function formatExact(value: string) {
   } catch {
     return value;
   }
+}
+
+function toPlainText(value: string): string {
+  return value
+    .replace(/Â·/g, " - ")
+    .replace(/\u00c2\u00b7/g, " - ")
+    .replace(/[·•]/g, " - ")
+    .replace(/[—–−]/g, " - ")
+    .replace(/[^\w\s:.,'"!?()/-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function NotificationCenter() {
@@ -274,7 +285,7 @@ export function NotificationCenter() {
           id: `unassigned-${ticket.id}`,
           technician_id: "",
           type: "ticket_unassigned",
-          message: `Unassigned ticket needs a technician — ${ticket.ticket_number}: ${ticket.title} (${priority})`,
+          message: `Unassigned ticket needs a technician - ${ticket.ticket_number}: ${ticket.title} (${priority})`,
           created_at: opened,
           read: false,
         };
@@ -738,10 +749,10 @@ export function NotificationCenter() {
                           {meta.label}
                         </p>
                         <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap text-black">
-                          {selected.message}
+                          {toPlainText(selected.message)}
                         </p>
                         <p className="mt-2 text-xs text-black/50">
-                          {formatExact(selected.created_at)} ·{" "}
+                          {formatExact(selected.created_at)} -{" "}
                           {formatRelative(selected.created_at)}
                         </p>
                       </div>
@@ -892,7 +903,7 @@ export function NotificationCenter() {
                                 ) : null}
                               </span>
                               <span className="mt-0.5 line-clamp-2 block text-sm leading-snug text-black">
-                                {notification.message}
+                                {toPlainText(notification.message)}
                               </span>
                               <span className="mt-1 block text-xs text-black/50">
                                 {formatRelative(notification.created_at)}

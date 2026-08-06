@@ -13,8 +13,6 @@ import { StatusBadge } from "@/components/StatusBadge";
 import {
   coverageLabel,
   deviceDisplayName,
-  getDeviceHealthScore,
-  healthTone,
 } from "@/lib/device-utils";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
@@ -125,7 +123,6 @@ export default function EndUserDeviceDetailPage() {
   }, [assetId]);
 
   const latestMonitoring = monitoring[0] ?? null;
-  const health = asset ? getDeviceHealthScore(asset) : 0;
 
   const supportHistory = useMemo(() => {
     const ticketRows = tickets.map((ticket) => ({
@@ -218,13 +215,7 @@ export default function EndUserDeviceDetailPage() {
         </span>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Current health score"
-          value={`${health}/100`}
-          tone={healthTone(health)}
-          hint={latestMonitoring?.alert_summary ?? "Based on lifecycle and security signals"}
-        />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard title="Purchase date" value={formatDate(asset.purchase_date)} />
         <StatCard
           title="Replacement date"

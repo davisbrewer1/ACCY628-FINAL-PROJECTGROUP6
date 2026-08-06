@@ -497,7 +497,7 @@ export function AssetDetailDrawer({
                 ) : null}
               </CollapsibleSection>
 
-              <CollapsibleSection title="Health & Monitoring">
+              <CollapsibleSection title="Monitoring">
                 <dl className="space-y-2">
                   <InfoRow
                     label="Last check-in"

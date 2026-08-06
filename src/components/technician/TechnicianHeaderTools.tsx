@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bell, MessageSquare, Shield, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Bell, CalendarClock, MessageSquare, Shield, X } from "lucide-react";
 import { KnowledgeBasePanel } from "@/components/KnowledgeBasePanel";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -10,7 +11,16 @@ import {
   isWorkOutstandingPastDue,
 } from "@/lib/calculations";
 import { isOpenTicket } from "@/lib/dashboard-stats";
-import type { ServiceTicket } from "@/lib/types";
+import {
+  ADMIN_VIEW_TECH_EVENT,
+  readAdminViewTechnicianId,
+} from "@/lib/admin-technician-view";
+import {
+  fetchNotifications,
+  subscribeToNotifications,
+} from "@/lib/notifications";
+import { formatLockedServiceDateLabel } from "@/lib/technician-schedule";
+import type { AppNotification, ServiceTicket } from "@/lib/types";
 import { formatDistanceToNow } from "date-fns";
 
 const MANAGER_MESSAGES = [
@@ -35,13 +45,12 @@ type NotificationItem = {
   title: string;
   body: string;
   createdAt: string;
-  /** Milliseconds since epoch used for assignment age sorting. */
   receivedAtMs: number;
   security: boolean;
-  source: "manager" | "assignment" | "overdue";
+  source: "manager" | "assignment" | "overdue" | "reschedule" | "inbox";
   priority: string;
-  /** Hours past due (overdue only); higher = more urgent. */
   overdueHours: number;
+  href?: string;
 };
 
 function priorityRank(priority: string | null | undefined): number {
@@ -65,7 +74,6 @@ function toTimestamp(value: string | null | undefined): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-/** When the tech received / was given the assignment (earliest reliable timestamp). */
 function ticketReceivedAtMs(ticket: ServiceTicket): number {
   const created = toTimestamp(ticket.created_at);
   const opened = toTimestamp(ticket.opened_at);
@@ -78,17 +86,12 @@ function isCompletedTicket(status: string | null | undefined): boolean {
   return value === "completed" || value === "closed" || value === "cancelled";
 }
 
-/**
- * Notifications tab order:
- * 1) Past due (highest urgency first)
- * 2) Security risk (nonΓÇôpast-due)
- * 3) Remaining assignments by priority
- */
 function compareWorkNotifications(
   a: NotificationItem,
   b: NotificationItem,
 ): number {
   const groupRank = (item: NotificationItem) => {
+    if (item.source === "reschedule") return 4;
     if (item.source === "overdue" || item.overdueHours > 0) return 3;
     if (item.security) return 2;
     return 1;
@@ -103,12 +106,15 @@ function compareWorkNotifications(
   const priorityDiff = priorityRank(b.priority) - priorityRank(a.priority);
   if (priorityDiff !== 0) return priorityDiff;
 
-  return a.receivedAtMs - b.receivedAtMs;
+  return b.receivedAtMs - a.receivedAtMs;
 }
 
 function ticketIdFromNotification(item: NotificationItem): string | null {
   if (item.id.startsWith("overdue-")) return item.id.slice("overdue-".length);
   if (item.id.startsWith("assign-")) return item.id.slice("assign-".length);
+  if (item.id.startsWith("reschedule-")) {
+    return item.id.slice("reschedule-".length);
+  }
   return null;
 }
 
@@ -134,16 +140,28 @@ interface TechnicianHeaderToolsProps {
   technicianId?: string | null;
 }
 
+/** Keep notification copy as plain letters, spaces, and simple punctuation. */
+function toPlainText(value: string): string {
+  return value
+    .replace(/Â·/g, " - ")
+    .replace(/\u00c2\u00b7/g, " - ")
+    .replace(/[·•]/g, " - ")
+    .replace(/[—–−]/g, " - ")
+    .replace(/[^\w\s:.,'"!?()/-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildOverdueBody(ticket: ServiceTicket): string {
   const opened = ticket.opened_at ?? ticket.created_at;
   const openDays = daysOpen(opened) ?? 0;
   const dueDays = getWorkOutstandingDueDays(ticket.priority);
   const parts = [
-    `${ticket.ticket_number} ΓÇö ${ticket.title}`,
-    `${ticket.priority ?? "Medium"} priority ┬╖ ${ticket.status ?? "Open"}`,
+    `${ticket.ticket_number} - ${ticket.title}`,
+    `${ticket.priority ?? "Medium"} priority - ${ticket.status ?? "Open"}`,
     dueDays === 0
-      ? `Due immediately ┬╖ open ${openDays === 0 ? "today" : `${openDays} day${openDays === 1 ? "" : "s"}`}`
-      : `Due within ${dueDays} day${dueDays === 1 ? "" : "s"} ┬╖ open ${openDays} day${openDays === 1 ? "" : "s"}`,
+      ? `Due immediately - open ${openDays === 0 ? "today" : `${openDays} day${openDays === 1 ? "" : "s"}`}`
+      : `Due within ${dueDays} day${dueDays === 1 ? "" : "s"} - open ${openDays} day${openDays === 1 ? "" : "s"}`,
   ];
 
   if (ticket.requester_name) {
@@ -156,17 +174,24 @@ function buildOverdueBody(ticket: ServiceTicket): string {
     parts.push("Security incident");
   }
 
-  return parts.join(" ┬╖ ");
+  return toPlainText(parts.join(" - "));
 }
 
 export function TechnicianHeaderTools({
   technicianId,
 }: TechnicianHeaderToolsProps) {
+  const router = useRouter();
   const [panelOpen, setPanelOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"notifications" | "messages">(
     "notifications",
   );
+  const [resolvedTechnicianId, setResolvedTechnicianId] = useState<
+    string | null
+  >(technicianId ?? null);
   const [assignedTickets, setAssignedTickets] = useState<ServiceTicket[]>([]);
+  const [inboxNotifications, setInboxNotifications] = useState<
+    AppNotification[]
+  >([]);
   const [dismissedManagerIds, setDismissedManagerIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -175,18 +200,43 @@ export function TechnicianHeaderTools({
     setDismissedManagerIds(readDismissedManagerIds());
   }, []);
 
+  // Prefer admin "view as" tech when managers open My Work without a tech profile.
   useEffect(() => {
-    if (!technicianId) return;
+    function syncViewAs() {
+      const viewAs = readAdminViewTechnicianId();
+      setResolvedTechnicianId(viewAs || technicianId || null);
+    }
+    syncViewAs();
+    window.addEventListener(ADMIN_VIEW_TECH_EVENT, syncViewAs);
+    window.addEventListener("storage", syncViewAs);
+    return () => {
+      window.removeEventListener(ADMIN_VIEW_TECH_EVENT, syncViewAs);
+      window.removeEventListener("storage", syncViewAs);
+    };
+  }, [technicianId]);
+
+  useEffect(() => {
+    if (!resolvedTechnicianId) {
+      setAssignedTickets([]);
+      setInboxNotifications([]);
+      return;
+    }
 
     async function load() {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("service_tickets")
-        .select("*")
-        .eq("assigned_technician_id", technicianId)
-        .order("created_at", { ascending: true })
-        .limit(100);
+      const [{ data }, inbox] = await Promise.all([
+        supabase
+          .from("service_tickets")
+          .select("*")
+          .eq("assigned_technician_id", resolvedTechnicianId)
+          .order("created_at", { ascending: true })
+          .limit(100),
+        fetchNotifications(supabase, resolvedTechnicianId!).catch(
+          () => [] as AppNotification[],
+        ),
+      ]);
       setAssignedTickets(data ?? []);
+      setInboxNotifications(inbox);
     }
 
     void load();
@@ -197,11 +247,36 @@ export function TechnicianHeaderTools({
       void load();
     };
     window.addEventListener("focus", onFocus);
+
+    const supabase = createClient();
+    const unsubscribe = subscribeToNotifications(
+      supabase,
+      resolvedTechnicianId,
+      {
+        onInsert: (notification) => {
+          setInboxNotifications((prev) => [notification, ...prev]);
+        },
+        onUpdate: (notification) => {
+          setInboxNotifications((prev) =>
+            prev.map((item) =>
+              item.id === notification.id ? notification : item,
+            ),
+          );
+        },
+        onDelete: (notificationId) => {
+          setInboxNotifications((prev) =>
+            prev.filter((item) => item.id !== notificationId),
+          );
+        },
+      },
+    );
+
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocus);
+      unsubscribe();
     };
-  }, [technicianId]);
+  }, [resolvedTechnicianId]);
 
   function dismissManagerMessage(id: string) {
     setDismissedManagerIds((current) => {
@@ -220,6 +295,56 @@ export function TechnicianHeaderTools({
       ),
     [assignedTickets],
   );
+
+  const rescheduleNotifications = useMemo((): NotificationItem[] => {
+    return openTickets
+      .filter(
+        (ticket) =>
+          Boolean(ticket.customer_rescheduled) && !ticket.scheduled_start,
+      )
+      .map((ticket) => {
+        const dayLabel = ticket.locked_service_date
+          ? formatLockedServiceDateLabel(ticket.locked_service_date)
+          : "a new day";
+        const receivedAtMs = Date.now();
+        return {
+          id: `reschedule-${ticket.id}`,
+          title: toPlainText(`Reschedule: ${ticket.ticket_number}`),
+          body: toPlainText(
+            `Customer requested ${dayLabel}. Place a new time in Needs scheduling - ${ticket.title}`,
+          ),
+          createdAt: new Date(receivedAtMs).toISOString(),
+          receivedAtMs,
+          security: Boolean(ticket.cybersecurity_incident),
+          source: "reschedule" as const,
+          priority: ticket.priority ?? "High",
+          overdueHours: 0,
+          href: "/technician?needsScheduling=1",
+        };
+      });
+  }, [openTickets]);
+
+  const inboxItems = useMemo((): NotificationItem[] => {
+    return inboxNotifications.map((item) => {
+      const isReschedule = item.type === "customer_reschedule";
+      return {
+        id: `inbox-${item.id}`,
+        title: toPlainText(
+          isReschedule
+            ? "Customer reschedule request"
+            : item.type.replaceAll("_", " "),
+        ),
+        body: toPlainText(item.message),
+        createdAt: item.created_at,
+        receivedAtMs: toTimestamp(item.created_at) ?? 0,
+        security: false,
+        source: isReschedule ? ("reschedule" as const) : ("inbox" as const),
+        priority: isReschedule ? "High" : "Medium",
+        overdueHours: 0,
+        href: isReschedule ? "/technician?needsScheduling=1" : "/technician",
+      };
+    });
+  }, [inboxNotifications]);
 
   const overdueNotifications = useMemo((): NotificationItem[] => {
     const now = Date.now();
@@ -261,7 +386,8 @@ export function TechnicianHeaderTools({
     return openTickets
       .filter(
         (ticket) =>
-          ticket.status === "New" || ticket.status === "Assigned",
+          !ticket.customer_rescheduled &&
+          (ticket.status === "New" || ticket.status === "Assigned"),
       )
       .map((ticket) => {
         const receivedAtMs = ticketReceivedAtMs(ticket);
@@ -270,7 +396,9 @@ export function TechnicianHeaderTools({
           title: ticket.cybersecurity_incident
             ? `Security work assigned: ${ticket.title}`
             : `New assignment: ${ticket.title}`,
-          body: `${ticket.ticket_number} ┬╖ ${ticket.priority ?? "Medium"} priority ┬╖ ${ticket.status}`,
+          body: toPlainText(
+            `${ticket.ticket_number} - ${ticket.priority ?? "Medium"} priority - ${ticket.status}`,
+          ),
           createdAt: new Date(receivedAtMs).toISOString(),
           receivedAtMs,
           security: Boolean(ticket.cybersecurity_incident),
@@ -293,10 +421,28 @@ export function TechnicianHeaderTools({
       return !ticketId || !pastDueTicketIds.has(ticketId);
     });
 
-    return [...overdueNotifications, ...regularAssignments].sort(
-      compareWorkNotifications,
+    const ticketNumbers = new Set(
+      rescheduleNotifications.map((item) =>
+        item.title.replace(/^Reschedule(?: tag)?: /, ""),
+      ),
     );
-  }, [assignmentNotifications, overdueNotifications]);
+    const extraInbox = inboxItems.filter((item) => {
+      if (item.source !== "reschedule") return true;
+      return ![...ticketNumbers].some((number) => item.body.includes(number));
+    });
+
+    return [
+      ...rescheduleNotifications,
+      ...extraInbox,
+      ...overdueNotifications,
+      ...regularAssignments,
+    ].sort(compareWorkNotifications);
+  }, [
+    assignmentNotifications,
+    overdueNotifications,
+    rescheduleNotifications,
+    inboxItems,
+  ]);
 
   const managerMessages = useMemo((): NotificationItem[] => {
     return MANAGER_MESSAGES.filter(
@@ -319,6 +465,12 @@ export function TechnicianHeaderTools({
   const activeItems =
     activeTab === "messages" ? managerMessages : workNotifications;
   const unreadCount = workNotifications.length + managerMessages.length;
+
+  function openItem(item: NotificationItem) {
+    if (!item.href) return;
+    setPanelOpen(false);
+    router.push(item.href);
+  }
 
   return (
     <div className="relative flex items-center gap-2">
@@ -354,7 +506,7 @@ export function TechnicianHeaderTools({
                 <p className="text-xs text-base-content/60">
                   {activeTab === "messages"
                     ? "Messages from your manager"
-                    : "Past due first, then security risk"}
+                    : "Reschedules first, then past due and assignments"}
                 </p>
               </div>
               <button
@@ -422,21 +574,32 @@ export function TechnicianHeaderTools({
                   <article
                     key={item.id}
                     className={`rounded-xl border p-3 ${
-                      item.source === "overdue"
+                      item.source === "reschedule"
                         ? "border-warning/40 bg-warning/10"
-                        : item.security
-                          ? "border-error/40 bg-error/10"
-                          : item.source === "manager"
-                            ? "border-info/30 bg-info/10"
-                            : "border-base-300 bg-base-200/60"
-                    }`}
+                        : item.source === "overdue"
+                          ? "border-warning/40 bg-warning/10"
+                          : item.security
+                            ? "border-error/40 bg-error/10"
+                            : item.source === "manager"
+                              ? "border-info/30 bg-info/10"
+                              : "border-base-300 bg-base-200/60"
+                    } ${item.href ? "cursor-pointer transition hover:brightness-110" : ""}`}
+                    onClick={() => openItem(item)}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="text-sm font-semibold text-base-content">
-                        {item.title}
+                        {toPlainText(item.title)}
                       </h3>
                       <div className="flex shrink-0 items-center gap-1">
-                        {item.source === "overdue" ? (
+                        {item.source === "reschedule" ? (
+                          <span className="badge badge-sm badge-warning gap-1">
+                            <CalendarClock
+                              className="size-3"
+                              aria-hidden="true"
+                            />
+                            Reschedule
+                          </span>
+                        ) : item.source === "overdue" ? (
                           <span className="badge badge-sm badge-warning">
                             Past due
                           </span>
@@ -449,6 +612,8 @@ export function TechnicianHeaderTools({
                           <span className="badge badge-sm badge-info">
                             Manager
                           </span>
+                        ) : item.source === "inbox" ? (
+                          <span className="badge badge-sm">Alert</span>
                         ) : (
                           <span className="badge badge-sm badge-ghost">
                             Assignment
@@ -459,14 +624,19 @@ export function TechnicianHeaderTools({
                             type="button"
                             className="btn btn-ghost btn-xs btn-square"
                             aria-label="Dismiss manager message"
-                            onClick={() => dismissManagerMessage(item.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              dismissManagerMessage(item.id);
+                            }}
                           >
                             <X className="size-3.5" />
                           </button>
                         ) : null}
                       </div>
                     </div>
-                    <p className="mt-1 text-xs text-base-content/70">{item.body}</p>
+                    <p className="mt-1 text-xs text-base-content/70">
+                      {toPlainText(item.body)}
+                    </p>
                     <p className="mt-2 text-[11px] text-base-content/50">
                       {formatDistanceToNow(new Date(item.receivedAtMs), {
                         addSuffix: true,

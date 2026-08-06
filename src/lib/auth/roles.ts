@@ -74,10 +74,16 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "service_manager", "account_manager", "billing"],
   },
   {
+    href: "/revenue-expenses",
+    label: "Revenue & Expenses",
+    icon: "CircleDollarSign",
+    roles: ["administrator", "service_manager"],
+  },
+  {
     href: "/billing",
     label: "Billing",
     icon: "Receipt",
-    roles: ["administrator", "billing", "account_manager"],
+    roles: ["administrator", "billing", "account_manager", "service_manager"],
   },
   {
     href: "/reports",
@@ -180,13 +186,8 @@ export function getDefaultDashboard(role: UserRole): string {
 }
 
 export const DEMO_ROLES: UserRole[] = [
-  "administrator",
-  "executive",
   "service_manager",
-  "account_manager",
   "technician",
-  "billing",
-  "client_admin",
   "client_user",
 ];
 
@@ -201,6 +202,7 @@ export const PROTECTED_ROUTE_PREFIXES = [
   "/service-tickets",
   "/technicians",
   "/time-costs",
+  "/revenue-expenses",
   "/billing",
   "/reports",
   "/technician",

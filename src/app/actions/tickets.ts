@@ -15,6 +15,8 @@ import {
   computeSlaTargets,
   normalizePriority,
 } from "@/lib/ticket-ops";
+import { allocateNextTicketNumber } from "@/lib/ticket-numbers";
+import { buildApprovedPtoDateSet } from "@/lib/technician-pto";
 import type { Contract } from "@/lib/types";
 
 async function loadActiveContractsForCustomer(
@@ -55,7 +57,7 @@ export async function createServiceTicket(
     data: { user },
   } = await supabase.auth.getUser();
 
-  const ticketNumber = `TKT-${Date.now().toString().slice(-8)}`;
+  const ticketNumber = await allocateNextTicketNumber(supabase);
   const priority = normalizePriority(String(formData.get("priority") ?? "Medium"));
   const contractId = String(formData.get("contract_id") ?? "").trim() || null;
   const ticketType = String(formData.get("ticket_type") ?? "").trim();
@@ -203,7 +205,7 @@ export async function createPortalTicket(
         ? "Cybersecurity"
         : null);
 
-  const ticketNumber = `TKT-${Date.now().toString().slice(-8)}`;
+  const ticketNumber = await allocateNextTicketNumber(supabase);
 
   const {
     data: { user },
@@ -226,6 +228,22 @@ export async function createPortalTicket(
     ? "Critical"
     : String(formData.get("priority") ?? "Medium").trim() || "Medium";
 
+  const serviceMethodRaw = String(formData.get("service_method") ?? "").trim();
+  const serviceMethod =
+    serviceMethodRaw.toLowerCase() === "remote"
+      ? "Remote"
+      : serviceMethodRaw.toLowerCase() === "on-site" ||
+          serviceMethodRaw.toLowerCase() === "in-person"
+        ? "On-site"
+        : "";
+
+  if (!serviceMethod) {
+    return {
+      success: false,
+      message: "Choose Remote or In-person for location.",
+    };
+  }
+
   const { error } = await supabase.from("service_tickets").insert({
     ticket_number: ticketNumber,
     customer_id: customerId,
@@ -234,8 +252,8 @@ export async function createPortalTicket(
     description: String(formData.get("description") ?? "").trim() || null,
     category,
     priority,
-    service_method: String(formData.get("service_method") ?? "").trim() || null,
-    location: String(formData.get("location") ?? "").trim() || null,
+    service_method: serviceMethod,
+    location: serviceMethod === "Remote" ? "Remote" : "In-person",
     requester_name: String(formData.get("requester_name") ?? "").trim() || null,
     severity: priority,
     is_asap: isAsap,
@@ -316,11 +334,35 @@ export async function assignTickets(
 
   const { data: existing, error: fetchError } = await supabase
     .from("service_tickets")
-    .select("id, is_asap")
+    .select("id, is_asap, locked_service_date")
     .in("id", ticketIds);
 
   if (fetchError) {
     return { success: false, message: fetchError.message };
+  }
+
+  const lockedDates = [
+    ...new Set(
+      (existing ?? [])
+        .filter((row) => !row.is_asap && row.locked_service_date)
+        .map((row) => String(row.locked_service_date).slice(0, 10)),
+    ),
+  ];
+
+  if (lockedDates.length > 0) {
+    const { data: ptoRows } = await supabase
+      .from("technician_pto_requests")
+      .select("start_date, end_date, status")
+      .eq("technician_id", technicianId)
+      .eq("status", "Approved");
+    const ptoDays = buildApprovedPtoDateSet(ptoRows ?? []);
+    const conflict = lockedDates.find((day) => ptoDays.has(day));
+    if (conflict) {
+      return {
+        success: false,
+        message: `That technician has approved PTO on ${conflict}. Choose another technician or date.`,
+      };
+    }
   }
 
   // ASAP tickets stay Critical regardless of the modal severity pick.
@@ -521,6 +563,23 @@ export async function updateTicketSchedule(input: {
       return { success: false, message: ticketFetchError.message };
     }
 
+    if (input.scheduledStart && ticketBefore?.assigned_technician_id) {
+      const scheduledDay = new Date(input.scheduledStart);
+      const dayKey = `${scheduledDay.getFullYear()}-${String(scheduledDay.getMonth() + 1).padStart(2, "0")}-${String(scheduledDay.getDate()).padStart(2, "0")}`;
+      const { data: ptoRows } = await supabase
+        .from("technician_pto_requests")
+        .select("start_date, end_date, status")
+        .eq("technician_id", ticketBefore.assigned_technician_id)
+        .eq("status", "Approved");
+      if (buildApprovedPtoDateSet(ptoRows ?? []).has(dayKey)) {
+        return {
+          success: false,
+          message:
+            "That day is blocked by approved PTO. Place the ticket on a non-PTO day.",
+        };
+      }
+    }
+
     if (input.scheduledStart && ticketBefore?.locked_service_date && !ticketBefore.is_asap) {
       const scheduledDay = new Date(input.scheduledStart);
       const scheduledKey = `${scheduledDay.getFullYear()}-${String(scheduledDay.getMonth() + 1).padStart(2, "0")}-${String(scheduledDay.getDate()).padStart(2, "0")}`;
@@ -607,8 +666,9 @@ export async function updateTicketSchedule(input: {
 }
 
 /**
- * Customer reschedules a visit: clear the tech calendar placement, lock the
- * new service day, mark customer_rescheduled, and notify the assigned tech.
+ * Customer reschedules a visit via SECURITY DEFINER RPC (clients cannot
+ * UPDATE service_tickets directly under RLS). Clears calendar placement,
+ * tags the request, and notifies the assigned technician.
  */
 export async function rescheduleCustomerTicket(
   ticketId: string,
@@ -625,7 +685,7 @@ export async function rescheduleCustomerTicket(
   const { data: ticket, error: fetchError } = await supabase
     .from("service_tickets")
     .select(
-      "id, ticket_number, title, customer_id, assigned_technician_id, scheduled_start, locked_service_date",
+      "id, ticket_number, title, customer_id, assigned_technician_id, scheduled_start, locked_service_date, customer_rescheduled",
     )
     .eq("id", ticketId)
     .maybeSingle();
@@ -636,38 +696,44 @@ export async function rescheduleCustomerTicket(
   if (!ticket || ticket.customer_id !== customerId) {
     return { success: false, message: "Ticket not found." };
   }
-  if (!ticket.scheduled_start) {
+  if (!ticket.scheduled_start && !ticket.customer_rescheduled) {
     return {
       success: false,
       message: "Reschedule is available after a technician places your visit.",
     };
   }
 
-  const { error } = await supabase
-    .from("service_tickets")
-    .update({
-      locked_service_date: dateKey,
-      is_asap: false,
-      scheduled_start: null,
-      scheduled_window: null,
-      scheduled_off_requested_day: false,
-      customer_rescheduled: true,
-      status: "Assigned",
-    })
-    .eq("id", ticketId)
-    .eq("customer_id", customerId);
+  const { data: updated, error } = await supabase.rpc(
+    "customer_reschedule_service_ticket",
+    {
+      p_ticket_id: ticketId,
+      p_new_date: dateKey,
+    },
+  );
 
   if (error) {
-    return { success: false, message: error.message };
+    return {
+      success: false,
+      message: error.message.replace(/^.*ERROR:\s*/i, "").split("\n")[0],
+    };
   }
 
+  const row = Array.isArray(updated) ? updated[0] : updated;
+  if (!row) {
+    return {
+      success: false,
+      message: "Reschedule did not save. Try again.",
+    };
+  }
+
+  // Best-effort duplicate notify from the app layer (RPC already inserts one).
   if (ticket.assigned_technician_id) {
     try {
       const { insertNotification } = await import("@/lib/notifications");
       await insertNotification(supabase, {
         technicianId: String(ticket.assigned_technician_id),
         type: "customer_reschedule",
-        message: `Customer rescheduled ${ticket.ticket_number} to ${dateKey}. It is back in Needs scheduling: ${ticket.title}`,
+        message: `Reschedule: ${ticket.ticket_number} -> ${dateKey}. Place a new time in Needs scheduling: ${ticket.title}`,
       });
     } catch (notifyError) {
       console.warn("customer reschedule notification skipped:", notifyError);
@@ -681,6 +747,6 @@ export async function rescheduleCustomerTicket(
   revalidatePath("/service-tickets");
   return {
     success: true,
-    message: `Visit rescheduled to ${dateKey}. Your technician will place a new time window.`,
+    message: `Reschedule requested for ${dateKey}. Your technician was notified and will place a new time.`,
   };
 }

@@ -41,6 +41,7 @@ interface InvoiceRow extends Invoice {
 export default function BillingPage() {
   const searchParams = useSearchParams();
   const filter = searchParams.get("filter") ?? "all";
+  const focusInvoiceId = searchParams.get("invoice")?.trim() ?? "";
   const { showToast } = useToast();
   const invoiceDialogRef = useRef<HTMLDialogElement>(null);
   const paymentDialogRef = useRef<HTMLDialogElement>(null);
@@ -89,6 +90,21 @@ export default function BillingPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch on mount
     void loadData();
   }, []);
+
+  useEffect(() => {
+    if (!focusInvoiceId || invoices.length === 0) return;
+    setSelectedInvoiceId(focusInvoiceId);
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`invoice-row-${focusInvoiceId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [focusInvoiceId, invoices]);
+
+  const focusedInvoice = useMemo(
+    () => invoices.find((invoice) => invoice.id === focusInvoiceId) ?? null,
+    [invoices, focusInvoiceId],
+  );
 
   const customerContracts = useMemo(
     () => contracts.filter((c) => c.customer_id === selectedCustomer),
@@ -316,6 +332,29 @@ export default function BillingPage() {
         </div>
       ) : null}
 
+      {focusInvoiceId ? (
+        <div className="alert alert-info text-sm py-3">
+          <span>
+            {focusedInvoice ? (
+              <>
+                Focused invoice{" "}
+                <span className="font-mono font-semibold">
+                  {focusedInvoice.invoice_number}
+                </span>
+                {" — "}
+                {formatCurrency(focusedInvoice.total_amount)} (
+                {focusedInvoice.status})
+              </>
+            ) : (
+              "Invoice from Revenue & Expenses not found in the current list."
+            )}
+          </span>
+          <a href="/billing" className="link">
+            Clear focus
+          </a>
+        </div>
+      ) : null}
+
       {filter !== "all" ? (
         <div className="alert alert-info text-sm py-2">
           <span>Filtered billing view: {filter}</span>
@@ -357,7 +396,15 @@ export default function BillingPage() {
               </thead>
               <tbody>
                 {filteredRows.map((row) => (
-                  <tr key={row.id}>
+                  <tr
+                    key={row.id}
+                    id={`invoice-row-${row.id}`}
+                    className={
+                      focusInvoiceId === row.id
+                        ? "bg-info/15 outline outline-2 outline-info/40"
+                        : undefined
+                    }
+                  >
                     <td className="font-mono text-sm">{row.invoice_number}</td>
                     <td>
                       <div className="font-medium">{row.customerName}</div>

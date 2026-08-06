@@ -11,8 +11,6 @@ import { StatusBadge } from "@/components/StatusBadge";
 import {
   coverageLabel,
   deviceDisplayName,
-  getDeviceHealthScore,
-  healthTone,
 } from "@/lib/device-utils";
 import { formatDate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
@@ -63,12 +61,6 @@ export default function EndUserDevicesPage() {
     [assets],
   );
 
-  const averageHealth = useMemo(() => {
-    if (assets.length === 0) return 0;
-    const total = assets.reduce((sum, asset) => sum + getDeviceHealthScore(asset), 0);
-    return Math.round(total / assets.length);
-  }, [assets]);
-
   if (activeRole !== "client_user" && activeRole !== "administrator") {
     return (
       <AlertBanner
@@ -100,10 +92,10 @@ export default function EndUserDevicesPage() {
     <div className="space-y-6">
       <PortalPageHeader
         title="My devices"
-        description="Organization devices covered by Nexus. Each card shows health and assignment at a glance — open a device for full details."
+        description="Organization devices covered by Nexus. Each card shows assignment and status at a glance — open a device for full details."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard title="Total devices" value={assets.length} />
         <StatCard
           title="Managed coverage"
@@ -118,11 +110,6 @@ export default function EndUserDevicesPage() {
             ).length
           }
           tone="info"
-        />
-        <StatCard
-          title="Avg. health score"
-          value={`${averageHealth}/100`}
-          tone={healthTone(averageHealth)}
         />
       </div>
 
@@ -144,7 +131,6 @@ export default function EndUserDevicesPage() {
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {assets.map((asset) => {
-              const health = getDeviceHealthScore(asset);
               return (
                 <Link
                   key={asset.id}
@@ -165,26 +151,6 @@ export default function EndUserDevicesPage() {
                         </p>
                       </div>
                       <StatusBadge status={asset.device_status} />
-                    </div>
-
-                    <div className="rounded-box border border-base-300 bg-base-200/40 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-base-content/55">
-                          Health
-                        </span>
-                        <span className="font-semibold">{health}/100</span>
-                      </div>
-                      <progress
-                        className={`progress mt-2 w-full ${
-                          health >= 85
-                            ? "progress-success"
-                            : health >= 50
-                              ? "progress-warning"
-                              : "progress-error"
-                        }`}
-                        value={health}
-                        max={100}
-                      />
                     </div>
 
                     <dl className="grid grid-cols-2 gap-3 text-sm">

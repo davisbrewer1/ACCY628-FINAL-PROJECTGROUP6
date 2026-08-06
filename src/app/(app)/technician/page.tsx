@@ -9,7 +9,14 @@ import {
   resubmitWorkEntry,
   updateWorkEntry,
 } from "@/app/actions/work-entries";
-import { updateTicketSchedule, updateTicketStatus } from "@/app/actions/tickets";
+import { updateTicketSchedule } from "@/app/actions/tickets";
+import {
+  clearLiveTimer,
+  markTicketEnRoute,
+  pauseLiveTimer,
+  resumeLiveTimer,
+  startLiveTimer,
+} from "@/app/actions/live-work-session";
 import { hoursBetween } from "@/lib/calculations";
 import { isOpenTicket } from "@/lib/dashboard-stats";
 import { AlertBanner } from "@/components/AlertBanner";
@@ -27,21 +34,29 @@ import {
 import { useToast } from "@/components/Toast";
 import {
   ADMIN_VIEW_TECH_EVENT,
+  canViewTechnicianPortalAs,
   readAdminViewTechnicianId,
   writeAdminViewTechnicianId,
 } from "@/lib/admin-technician-view";
 import { formatDate, formatHours } from "@/lib/format";
+import { AdminTechnicianPortalSwitcher } from "@/components/admin/AdminTechnicianPortalSwitcher";
 import {
   DEFAULT_ANNUAL_PTO_HOURS,
   DEFAULT_TECH_HOURLY_RATE,
   formatCurrency,
   getCurrentPayPeriod,
+  salariedHoursInPayPeriod,
   sumHoursInRange,
 } from "@/lib/technician-payroll";
 import {
+  formatLockedServiceDateLabel,
   getWorkWeekDays,
   parseScheduledSlot,
 } from "@/lib/technician-schedule";
+import {
+  buildActivePtoDateSet,
+  buildApprovedPtoDateSet,
+} from "@/lib/technician-pto";
 import type { PartUsageInput } from "@/lib/autoCostCalculator";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -54,7 +69,6 @@ import type {
   WorkEntry,
 } from "@/lib/types";
 import {
-  eachDayOfInterval,
   endOfWeek,
   format,
   isSameDay,
@@ -63,7 +77,27 @@ import {
   startOfYear,
 } from "date-fns";
 import { ClipboardPlus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+function isRemoteServiceMethod(method: string | null | undefined): boolean {
+  return (method ?? "").trim().toLowerCase() === "remote";
+}
+
+function ticketHasLiveWorkSession(ticket: ServiceTicket): boolean {
+  return (
+    Boolean(ticket.en_route) ||
+    Boolean(ticket.live_timer_paused) ||
+    Boolean(ticket.live_timer_segment_started_at) ||
+    (ticket.live_timer_banked_seconds ?? 0) > 0
+  );
+}
+
+function toSegmentEpochMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
 
 function TechStat({
   title,
@@ -95,7 +129,11 @@ function nowTimeValue(): string {
 export default function TechnicianWorkspacePage() {
   const { activeRole, realRole } = useDemoRole();
   const { showToast } = useToast();
-  const isAdminViewer = realRole === "administrator";
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const isPortalViewer = canViewTechnicianPortalAs(realRole);
+  const needsSchedulingFocus = searchParams.get("needsScheduling") === "1";
+  const didFocusNeedsScheduling = useRef(false);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [technician, setTechnician] = useState<Technician | null>(null);
@@ -142,7 +180,7 @@ export default function TechnicianWorkspacePage() {
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (!isAdminViewer) {
+    if (!isPortalViewer) {
       setTechnicianOptions([]);
       setViewAsTechnicianId("");
       return;
@@ -179,7 +217,7 @@ export default function TechnicianWorkspacePage() {
     return () => {
       cancelled = true;
     };
-  }, [isAdminViewer]);
+  }, [isPortalViewer]);
 
   const applyAdminTechnicianId = useCallback((nextId: string) => {
     setViewAsTechnicianId(nextId);
@@ -198,10 +236,11 @@ export default function TechnicianWorkspacePage() {
     setError(null);
     setPtoError(null);
     setLoading(true);
+    didFocusNeedsScheduling.current = false;
   }, []);
 
   useEffect(() => {
-    if (!isAdminViewer) return;
+    if (!isPortalViewer) return;
 
     function onExternal(event: Event) {
       const detail = (event as CustomEvent<{ technicianId: string }>).detail;
@@ -211,7 +250,7 @@ export default function TechnicianWorkspacePage() {
 
     window.addEventListener(ADMIN_VIEW_TECH_EVENT, onExternal);
     return () => window.removeEventListener(ADMIN_VIEW_TECH_EVENT, onExternal);
-  }, [applyAdminTechnicianId, isAdminViewer]);
+  }, [applyAdminTechnicianId, isPortalViewer]);
 
   const loadData = useCallback(async () => {
     try {
@@ -239,7 +278,7 @@ export default function TechnicianWorkspacePage() {
       setProfile(profileData);
 
       let techData: Technician | null = null;
-      if (isAdminViewer) {
+      if (isPortalViewer) {
         // Wait until the admin picker has a selection before loading a board.
         if (!viewAsTechnicianId) {
           return;
@@ -308,15 +347,67 @@ export default function TechnicianWorkspacePage() {
       setError("Could not load technician workspace. Refresh and try again.");
     } finally {
       // Keep spinner up for admins until a technician is selected.
-      if (!isAdminViewer || viewAsTechnicianId) {
+      if (!isPortalViewer || viewAsTechnicianId) {
         setLoading(false);
       }
     }
-  }, [isAdminViewer, viewAsTechnicianId]);
+  }, [isPortalViewer, viewAsTechnicianId]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // After a customer reschedule (or ?needsScheduling=1), jump the week calendar
+  // to the locked day and highlight the ticket in Needs scheduling.
+  useEffect(() => {
+    if (needsSchedulingFocus) {
+      didFocusNeedsScheduling.current = false;
+    }
+    if (loading || !technician) return;
+
+    const unscheduled = tickets.filter(
+      (ticket) => isOpenTicket(ticket.status) && !ticket.scheduled_start,
+    );
+    const focusTicket =
+      unscheduled.find((ticket) => Boolean(ticket.customer_rescheduled)) ??
+      (needsSchedulingFocus ? unscheduled[0] : undefined);
+
+    if (!focusTicket) return;
+
+    const shouldAutoFocus =
+      needsSchedulingFocus || Boolean(focusTicket.customer_rescheduled);
+    if (!shouldAutoFocus) return;
+    if (didFocusNeedsScheduling.current && !needsSchedulingFocus) return;
+
+    didFocusNeedsScheduling.current = true;
+    setCalendarMode("week");
+    if (focusTicket.locked_service_date) {
+      try {
+        setCalendarAnchor(parseISO(String(focusTicket.locked_service_date).slice(0, 10)));
+      } catch {
+        setCalendarAnchor(new Date());
+      }
+    }
+    setSelectedTicketId(focusTicket.id);
+
+    const dayLabel = focusTicket.locked_service_date
+      ? formatLockedServiceDateLabel(focusTicket.locked_service_date)
+      : "an open day";
+    showToast(
+      `${focusTicket.ticket_number} is in Needs scheduling — place it on ${dayLabel} with a new time.`,
+    );
+
+    if (needsSchedulingFocus) {
+      router.replace("/technician", { scroll: false });
+    }
+  }, [
+    loading,
+    technician,
+    tickets,
+    needsSchedulingFocus,
+    router,
+    showToast,
+  ]);
 
   // Keep top stats / calendar in sync as tickets are assigned or completed.
   useEffect(() => {
@@ -343,6 +434,12 @@ export default function TechnicianWorkspacePage() {
     () => tickets.filter((t) => isOpenTicket(t.status)),
     [tickets],
   );
+
+  // Keep calendar badge in sync with DB-backed en_route after reload.
+  useEffect(() => {
+    const fromDb = tickets.find((ticket) => ticket.en_route)?.id ?? null;
+    setEnRouteTicketId(fromDb);
+  }, [tickets]);
 
   /** Open work plus completed/closed items that still have a calendar slot. */
   const calendarTickets = useMemo(
@@ -389,7 +486,8 @@ export default function TechnicianWorkspacePage() {
   }, [assignedOpen]);
 
   const payPeriod = useMemo(() => getCurrentPayPeriod(), []);
-  const payPeriodHours = useMemo(
+  const payPeriodHours = useMemo(() => salariedHoursInPayPeriod(), [payPeriod]);
+  const billableHoursThisPeriod = useMemo(
     () => sumHoursInRange(workEntries, payPeriod.start, payPeriod.end),
     [workEntries, payPeriod],
   );
@@ -413,18 +511,14 @@ export default function TechnicianWorkspacePage() {
 
   const ptoRemaining = Math.max(0, annualPtoAllowance - ptoUsedOrPending);
 
-  const ptoDates = useMemo(() => {
-    const dates = new Set<string>();
-    for (const request of ptoRequests) {
-      if (request.status === "Denied" || request.status === "Cancelled") continue;
-      const start = parseISO(request.start_date);
-      const end = parseISO(request.end_date);
-      for (const day of eachDayOfInterval({ start, end })) {
-        dates.add(format(day, "yyyy-MM-dd"));
-      }
-    }
-    return dates;
-  }, [ptoRequests]);
+  const ptoDates = useMemo(
+    () => buildActivePtoDateSet(ptoRequests),
+    [ptoRequests],
+  );
+  const blockedPtoDates = useMemo(
+    () => buildApprovedPtoDateSet(ptoRequests),
+    [ptoRequests],
+  );
 
   const pendingHourExtensionTicketIds = useMemo(
     () =>
@@ -453,6 +547,39 @@ export default function TechnicianWorkspacePage() {
     setSegmentStartedAt(null);
     setPauseCount(0);
     setHoursLockedFromSession(false);
+  }
+
+  function applyHydratedLiveSession(ticket: ServiceTicket) {
+    const banked = Math.max(0, Math.floor(ticket.live_timer_banked_seconds ?? 0));
+    const segmentMs = toSegmentEpochMs(ticket.live_timer_segment_started_at);
+    const paused = Boolean(ticket.live_timer_paused);
+    const enRoute = Boolean(ticket.en_route) && !segmentMs && banked === 0 && !paused;
+
+    setLiveSessionTicketId(ticket.id);
+    setEnRouteTicketId(enRoute ? ticket.id : null);
+    setSessionEnRoute(enRoute);
+    setSessionPaused(paused && !enRoute);
+    setBankedWorkedSeconds(banked);
+    setSegmentStartedAt(enRoute ? null : segmentMs);
+    setPauseCount(0);
+    setHoursLockedFromSession(false);
+    setEndTime("");
+    setHoursWorked("");
+    setWorkDate(format(new Date(), "yyyy-MM-dd"));
+
+    if (enRoute) {
+      setStartTime("");
+      setServiceMethod("On-site");
+    } else {
+      const clockSource = ticket.live_timer_segment_started_at
+        ? new Date(ticket.live_timer_segment_started_at)
+        : new Date();
+      setStartTime(format(clockSource, "HH:mm"));
+      setServiceMethod(
+        isRemoteServiceMethod(ticket.service_method) ? "Remote" : "On-site",
+      );
+    }
+    setTicketStatus("In Progress");
   }
 
   function patchTicketLocal(
@@ -522,12 +649,21 @@ export default function TechnicianWorkspacePage() {
     setEditingEntryId(null);
     setSelectedTicketId(ticketId);
     setWorkPerformed("");
-    setServiceMethod("On-site");
-    setTicketStatus("In Progress");
     setError(null);
     setWorkModalPhase("timer");
+    resetPartsSelection();
 
-    // Resume an in-progress on-site or en-route session for this ticket.
+    const remote = isRemoteServiceMethod(ticket.service_method);
+    setServiceMethod(remote ? "Remote" : "On-site");
+    setTicketStatus(ticket.status === "Completed" ? "In Progress" : ticket.status ?? "In Progress");
+
+    // Resume from DB-backed (or same-visit) live session.
+    if (ticketHasLiveWorkSession(ticket)) {
+      applyHydratedLiveSession(ticket);
+      setWorkModalOpen(true);
+      return;
+    }
+
     if (
       liveSessionTicketId === ticketId &&
       ((startTime && !endTime) || sessionEnRoute)
@@ -539,7 +675,6 @@ export default function TechnicianWorkspacePage() {
     if (enRouteTicketId === ticketId && !startTime) {
       setSessionEnRoute(true);
       setLiveSessionTicketId(ticketId);
-      resetPartsSelection();
       setWorkModalOpen(true);
       return;
     }
@@ -550,7 +685,6 @@ export default function TechnicianWorkspacePage() {
     setStartTime("");
     setEndTime("");
     setHoursWorked("");
-    resetPartsSelection();
     setWorkModalOpen(true);
   }
 
@@ -579,14 +713,23 @@ export default function TechnicianWorkspacePage() {
 
   function handleEnRoute() {
     if (!selectedTicketId || startTime) return;
+    const ticket = assignedOpen.find((item) => item.id === selectedTicketId);
+    if (ticket && isRemoteServiceMethod(ticket.service_method)) return;
+
     setSessionEnRoute(true);
     setEnRouteTicketId(selectedTicketId);
     setLiveSessionTicketId(selectedTicketId);
     setTicketStatus("In Progress");
     setServiceMethod("On-site");
-    patchTicketLocal(selectedTicketId, { status: "In Progress" });
+    patchTicketLocal(selectedTicketId, {
+      status: "In Progress",
+      en_route: true,
+      live_timer_paused: false,
+      live_timer_segment_started_at: null,
+      live_timer_banked_seconds: 0,
+    });
     startTransition(async () => {
-      const result = await updateTicketStatus(selectedTicketId, "In Progress");
+      const result = await markTicketEnRoute(selectedTicketId);
       if (!result.success) {
         showToast(result.message, "error");
       } else {
@@ -597,46 +740,87 @@ export default function TechnicianWorkspacePage() {
   }
 
   function handleStartOnSite() {
+    if (!selectedTicketId) return;
+    const ticket = assignedOpen.find((item) => item.id === selectedTicketId);
+    const remote = ticket ? isRemoteServiceMethod(ticket.service_method) : false;
     const startedAt = nowTimeValue();
+    const segmentNow = Date.now();
     setWorkDate(format(new Date(), "yyyy-MM-dd"));
     setStartTime(startedAt);
     setEndTime("");
     setHoursWorked("");
-    setServiceMethod("On-site");
+    setServiceMethod(remote ? "Remote" : "On-site");
     setTicketStatus("In Progress");
-    setLiveSessionTicketId(selectedTicketId || null);
+    setLiveSessionTicketId(selectedTicketId);
     setSessionEnRoute(false);
     setSessionPaused(false);
     setBankedWorkedSeconds(0);
-    setSegmentStartedAt(Date.now());
+    setSegmentStartedAt(segmentNow);
     setPauseCount(0);
     setHoursLockedFromSession(false);
-    if (selectedTicketId) {
-      patchTicketLocal(selectedTicketId, { status: "In Progress" });
-      if (enRouteTicketId === selectedTicketId) {
-        setEnRouteTicketId(null);
+    setEnRouteTicketId(null);
+    patchTicketLocal(selectedTicketId, {
+      status: "In Progress",
+      en_route: false,
+      live_timer_paused: false,
+      live_timer_banked_seconds: 0,
+      live_timer_segment_started_at: new Date(segmentNow).toISOString(),
+    });
+    startTransition(async () => {
+      const result = await startLiveTimer(selectedTicketId);
+      if (!result.success) {
+        showToast(result.message, "error");
+      } else {
+        await loadData();
       }
-    }
+    });
   }
 
   function handlePauseJob() {
-    if (!startTime || endTime || sessionPaused || segmentStartedAt == null) return;
+    if (!selectedTicketId || !startTime || endTime || sessionPaused || segmentStartedAt == null) {
+      return;
+    }
     const segmentSeconds = Math.max(
       0,
       Math.floor((Date.now() - segmentStartedAt) / 1000),
     );
-    setBankedWorkedSeconds((prev) => prev + segmentSeconds);
+    const nextBanked = bankedWorkedSeconds + segmentSeconds;
+    setBankedWorkedSeconds(nextBanked);
     setSegmentStartedAt(null);
     setSessionPaused(true);
     setPauseCount((prev) => prev + 1);
     setTicketStatus("In Progress");
+    patchTicketLocal(selectedTicketId, {
+      live_timer_paused: true,
+      live_timer_banked_seconds: nextBanked,
+      live_timer_segment_started_at: null,
+      en_route: false,
+    });
+    startTransition(async () => {
+      const result = await pauseLiveTimer(selectedTicketId, nextBanked);
+      if (!result.success) {
+        showToast(result.message, "error");
+      }
+    });
   }
 
   function handleResumeJob() {
-    if (!startTime || endTime || !sessionPaused) return;
+    if (!selectedTicketId || !startTime || endTime || !sessionPaused) return;
+    const segmentNow = Date.now();
     setSessionPaused(false);
-    setSegmentStartedAt(Date.now());
+    setSegmentStartedAt(segmentNow);
     setTicketStatus("In Progress");
+    patchTicketLocal(selectedTicketId, {
+      live_timer_paused: false,
+      live_timer_segment_started_at: new Date(segmentNow).toISOString(),
+      en_route: false,
+    });
+    startTransition(async () => {
+      const result = await resumeLiveTimer(selectedTicketId);
+      if (!result.success) {
+        showToast(result.message, "error");
+      }
+    });
   }
 
   function handleEndJob() {
@@ -655,15 +839,24 @@ export default function TechnicianWorkspacePage() {
     setLiveSessionTicketId(null);
     setEnRouteTicketId(null);
     if (selectedTicketId) {
-      // Update top stats immediately; save persists via work entry.
       patchTicketLocal(selectedTicketId, {
         status: "Completed",
         completed_at: new Date().toISOString(),
+        en_route: false,
+        live_timer_paused: false,
+        live_timer_banked_seconds: 0,
+        live_timer_segment_started_at: null,
+      });
+      startTransition(async () => {
+        const result = await clearLiveTimer(selectedTicketId);
+        if (!result.success) {
+          showToast(result.message, "error");
+        }
       });
     }
     if (pauseCount > 0) {
       setWorkPerformed((prev) => {
-        const note = `On-site visit included ${pauseCount} pause${pauseCount === 1 ? "" : "s"} (time away excluded from hours).`;
+        const note = `Visit included ${pauseCount} pause${pauseCount === 1 ? "" : "s"} (time away excluded from hours).`;
         if (!prev.trim()) return note;
         if (prev.includes("pause")) return prev;
         return `${prev.trim()}\n${note}`;
@@ -689,9 +882,13 @@ export default function TechnicianWorkspacePage() {
         : await createWorkEntry(formData);
       if (result.success) {
         showToast(result.message);
+        if (selectedTicketId) {
+          await clearLiveTimer(selectedTicketId);
+        }
         setWorkModalOpen(false);
         setEditingEntryId(null);
         setLiveSessionTicketId(null);
+        setEnRouteTicketId(null);
         resetSessionTimer();
         setWorkModalPhase("timer");
         setStartTime("");
@@ -838,9 +1035,12 @@ export default function TechnicianWorkspacePage() {
   }
 
   if (!technician) {
-    if (isAdminViewer) {
+    if (isPortalViewer) {
       return (
         <div className="space-y-6 text-slate-100">
+          <div className="rounded-xl border border-cyan-500/30 bg-slate-950/80 p-1 shadow-sm [&_.select]:border-cyan-500/40 [&_.select]:bg-slate-900 [&_.select]:text-slate-100 [&_p]:text-slate-300 [&_span]:text-cyan-200/80">
+            <AdminTechnicianPortalSwitcher variant="panel" />
+          </div>
           <div className="rounded-xl border border-cyan-500/20 bg-slate-900/80 p-8 text-center text-slate-200">
             <h3 className="text-lg font-semibold text-white">
               {technicianOptions.length === 0
@@ -850,7 +1050,7 @@ export default function TechnicianWorkspacePage() {
             <p className="mt-2 text-sm text-slate-400">
               {technicianOptions.length === 0
                 ? "Add technicians on the Technicians page to preview their My Work dashboards."
-                : "Use the View as dropdown in the header to choose a technician."}
+                : "Choose a technician from the Viewing as technician menu above."}
             </p>
           </div>
         </div>
@@ -868,22 +1068,27 @@ export default function TechnicianWorkspacePage() {
     );
   }
 
-  const welcomeName = isAdminViewer
+  const welcomeName = isPortalViewer
     ? technician.technician_name
     : (profile?.full_name ?? technician.technician_name);
 
   return (
     <div className="space-y-6">
+      {isPortalViewer ? (
+        <div className="rounded-xl border border-slate-300 bg-[#dbe4f0] p-1 shadow-sm">
+          <AdminTechnicianPortalSwitcher variant="panel" />
+        </div>
+      ) : null}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="font-display text-xl font-semibold tracking-tight text-[#0B1220]">
-            {isAdminViewer
+            {isPortalViewer
               ? `${welcomeName}'s My Work`
               : `Welcome, ${welcomeName}`}
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            {isAdminViewer
-              ? `Viewing schedule, PTO, and work log for ${technician.technician_name}. Use View as in the header to switch technicians.`
+            {isPortalViewer
+              ? `Viewing schedule, PTO, and work log for ${technician.technician_name}. Use the technician menu to switch boards.`
               : "Schedule tickets, request PTO, log work, and track pay-period hours."}
           </p>
         </div>
@@ -905,12 +1110,12 @@ export default function TechnicianWorkspacePage() {
           title="Hours Completed this Week"
           value={hoursThisWeek.toFixed(1)}
           tone="info"
-          hint="Logged work Mon–Sun · refreshes automatically"
+          hint="Billable work-entry hours Mon-Sun"
         />
         <TechStat
           title="Remaining Hours Scheduled this Week"
           value={hoursScheduledThisWeek.toFixed(1)}
-          hint="Open tickets scheduled Mon–Fri this week"
+          hint="Open tickets scheduled Mon-Fri this week"
         />
       </div>
 
@@ -1091,6 +1296,8 @@ export default function TechnicianWorkspacePage() {
           pendingHourExtensionTicketIds={pendingHourExtensionTicketIds}
           onRequestHourExtension={handleRequestHourExtension}
           technicianId={technician?.id ?? null}
+          onRejectMove={(message) => showToast(message, "error")}
+          blockedPtoDates={blockedPtoDates}
         />
       </div>
 
@@ -1227,10 +1434,11 @@ export default function TechnicianWorkspacePage() {
           <h2 className="text-base font-semibold text-[#0B1220]">Current pay period</h2>
           <p className="mt-1 text-sm text-slate-600">
             Biweekly · {format(payPeriod.start, "MMM d")} –{" "}
-            {format(payPeriod.end, "MMM d, yyyy")}
+            {format(payPeriod.end, "MMM d, yyyy")}. Paid 8 hours per weekday.
+            Work entry hours bill to client accounts and contracts.
           </p>
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-slate-300 bg-white/80 p-4">
             <p className="text-sm text-slate-600">Pay rate</p>
             <p className="mt-1 text-3xl font-semibold text-[#0B1220]">
@@ -1238,13 +1446,20 @@ export default function TechnicianWorkspacePage() {
             </p>
           </div>
           <div className="rounded-xl border border-slate-300 bg-white/80 p-4">
-            <p className="text-sm text-slate-600">Hours worked this period</p>
+            <p className="text-sm text-slate-600">Paid hours this period</p>
             <p className="mt-1 text-3xl font-semibold text-[#0B1220]">
               {payPeriodHours.toFixed(1)}
             </p>
           </div>
           <div className="rounded-xl border border-slate-300 bg-white/80 p-4">
-            <p className="text-sm text-slate-600">Current Earnings this period</p>
+            <p className="text-sm text-slate-600">Billable hours (clients)</p>
+            <p className="mt-1 text-3xl font-semibold text-[#0B1220]">
+              {billableHoursThisPeriod.toFixed(1)}
+            </p>
+            <p className="mt-1 text-xs text-slate-600">From work entries</p>
+          </div>
+          <div className="rounded-xl border border-slate-300 bg-white/80 p-4">
+            <p className="text-sm text-slate-600">Current earnings this period</p>
             <p className="mt-1 text-3xl font-semibold text-[#0f766e]">
               {formatCurrency(payPeriodEarnings)}
             </p>

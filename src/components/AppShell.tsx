@@ -5,6 +5,7 @@ import {
   Bell,
   Brain,
   Building2,
+  CircleDollarSign,
   Clock,
   FileText,
   Home,
@@ -32,6 +33,7 @@ import { AdminTechnicianPortalSwitcher } from "@/components/admin/AdminTechnicia
 import { NexusLogo } from "@/components/brand/NexusLogo";
 import { DemoRoleSwitcher } from "@/components/DemoRoleSwitcher";
 import { TechnicianHeaderTools } from "@/components/technician/TechnicianHeaderTools";
+import { canViewTechnicianPortalAs } from "@/lib/admin-technician-view";
 import {
   getNavForRole,
   NAV_ITEMS,
@@ -72,6 +74,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Users,
   Clock,
   Receipt,
+  CircleDollarSign,
   BarChart3,
   Wrench,
   Home,
@@ -304,9 +307,8 @@ export function AppShell({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const navItems = useMemo(() => {
     const base = getNavForRole(activeRole);
-    // Real admins always keep My Work in the sidebar, even when Demo Role
-    // is Manager / Executive / etc.
-    if (realRole !== "administrator") return base;
+    // Managers and admins always keep My Work in the sidebar.
+    if (!canViewTechnicianPortalAs(realRole)) return base;
     if (base.some((item) => item.href === "/technician")) return base;
     const myWork = NAV_ITEMS.find((item) => item.href === "/technician");
     if (!myWork) return base;
@@ -322,7 +324,7 @@ export function AppShell({
     pathname === "/technician" || pathname.startsWith("/technician/");
   const showTechnicianTools =
     activeRole === "technician" ||
-    (realRole === "administrator" && onTechnicianPortal);
+    (canViewTechnicianPortalAs(realRole) && onTechnicianPortal);
   const headerNavIndex = activeNavIndex(navItems, pathname);
   const headerBarColor = shadeAtIndex(
     HEADER_BAR_SHADES,
@@ -386,7 +388,7 @@ export function AppShell({
             </h1>
           </div>
           <div className="flex flex-none items-center gap-1 text-white [&_.btn-ghost]:text-white">
-            {realRole === "administrator" && onTechnicianPortal ? (
+            {canViewTechnicianPortalAs(realRole) && onTechnicianPortal ? (
               <AdminTechnicianPortalSwitcher variant="header" />
             ) : null}
             {showTechnicianTools ? (
