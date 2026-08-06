@@ -253,7 +253,7 @@ export function AppShell({
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const navItems = getNavForRole(activeRole);
   const techTheme = activeRole === "technician";
 
@@ -265,13 +265,17 @@ export function AppShell({
   }
 
   return (
-    <div className={`drawer lg:drawer-open ${techTheme ? "tech-shell" : ""}`}>
+    <div
+      className={`drawer ${
+        techTheme ? "tech-shell" : "lg:drawer-open"
+      }`}
+    >
       <input
         id="app-shell-drawer"
         type="checkbox"
         className="drawer-toggle"
-        checked={mobileOpen}
-        onChange={(event) => setMobileOpen(event.target.checked)}
+        checked={sidebarOpen}
+        onChange={(event) => setSidebarOpen(event.target.checked)}
       />
 
       <div
@@ -288,15 +292,22 @@ export function AppShell({
               : "border-base-300 bg-base-100"
           }`}
         >
-          <div className="flex-none lg:hidden" suppressHydrationWarning>
-            <label
-              htmlFor="app-shell-drawer"
+          <div
+            className={`flex-none ${techTheme ? "" : "lg:hidden"}`}
+            suppressHydrationWarning
+          >
+            <button
+              type="button"
               className={`btn btn-square btn-ghost ${techTheme ? "text-white" : ""}`}
-              aria-label="Open navigation menu"
+              aria-label={
+                sidebarOpen ? "Close navigation menu" : "Open navigation menu"
+              }
+              aria-expanded={sidebarOpen}
               suppressHydrationWarning
+              onClick={() => setSidebarOpen((open) => !open)}
             >
               <Menu className="size-5" />
-            </label>
+            </button>
           </div>
           <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
             <Link
@@ -343,11 +354,12 @@ export function AppShell({
         </main>
       </div>
 
-      <div className="drawer-side z-30">
-        <label
-          htmlFor="app-shell-drawer"
+      <div className="drawer-side z-40">
+        <button
+          type="button"
           className="drawer-overlay"
           aria-label="Close navigation menu"
+          onClick={() => setSidebarOpen(false)}
         />
         <aside
           className={`min-h-full w-72 ${
@@ -355,6 +367,7 @@ export function AppShell({
               ? "border-r border-cyan-500/20 bg-slate-950 text-slate-100"
               : "bg-base-100"
           }`}
+          onClick={(event) => event.stopPropagation()}
         >
           <SidebarPanel
             pathname={pathname}
@@ -365,7 +378,7 @@ export function AppShell({
             activeRole={activeRole}
             onDemoRoleChange={onDemoRoleChange}
             onLogout={handleLogout}
-            onNavigate={() => setMobileOpen(false)}
+            onNavigate={() => setSidebarOpen(false)}
             techTheme={techTheme}
           />
         </aside>
