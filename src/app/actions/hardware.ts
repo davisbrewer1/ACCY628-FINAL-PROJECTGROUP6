@@ -27,6 +27,7 @@ function revalidateHardware() {
   revalidatePath("/hardware");
   revalidatePath("/portal");
   revalidatePath("/technician");
+  revalidatePath("/reports");
 }
 
 async function getUserAndRole() {

@@ -11,6 +11,7 @@ function revalidateApprovalPaths() {
   revalidatePath("/technician");
   revalidatePath("/operations");
   revalidatePath("/service-tickets");
+  revalidatePath("/reports");
 }
 
 export async function createApprovalRequest(input: {
