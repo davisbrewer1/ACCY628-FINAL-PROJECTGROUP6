@@ -8,6 +8,12 @@ import { useParams } from "next/navigation";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
+import {
+  EMPTY_CARD_DETAILS,
+  isCardPaymentMethod,
+  SimulatedCardPaymentFields,
+  type SimulatedCardDetails,
+} from "@/components/SimulatedCardPaymentFields";
 import { PortalPageHeader } from "@/components/end-user/PortalPageHeader";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -43,6 +49,8 @@ export default function EndUserInvoiceDetailPage() {
   const [payMethod, setPayMethod] = useState<string>(PAYMENT_METHODS[0]);
   const [payReference, setPayReference] = useState("");
   const [payNotes, setPayNotes] = useState("");
+  const [cardDetails, setCardDetails] =
+    useState<SimulatedCardDetails>(EMPTY_CARD_DETAILS);
   const [payError, setPayError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -161,11 +169,17 @@ export default function EndUserInvoiceDetailPage() {
         paymentMethod: payMethod,
         referenceNumber: payReference,
         notes: payNotes,
+        cardholderName: cardDetails.cardholderName,
+        cardNumber: cardDetails.cardNumber,
+        cardExp: cardDetails.cardExp,
+        cardCvv: cardDetails.cardCvv,
+        billingZip: cardDetails.billingZip,
       });
       if (result.success) {
         showToast(result.message);
         setPayReference("");
         setPayNotes("");
+        setCardDetails(EMPTY_CARD_DETAILS);
         if (profile?.customer_id) {
           await loadInvoice(profile.customer_id, invoice.id);
         }
@@ -385,14 +399,22 @@ export default function EndUserInvoiceDetailPage() {
                   ))}
                 </select>
               </FormField>
-              <FormField label="Reference # (optional)" htmlFor="invoice-pay-ref">
-                <input
-                  id="invoice-pay-ref"
-                  className="input input-bordered w-full"
-                  value={payReference}
-                  onChange={(event) => setPayReference(event.target.value)}
+              {isCardPaymentMethod(payMethod) ? (
+                <SimulatedCardPaymentFields
+                  idPrefix="invoice-pay"
+                  values={cardDetails}
+                  onChange={setCardDetails}
                 />
-              </FormField>
+              ) : (
+                <FormField label="Reference # (optional)" htmlFor="invoice-pay-ref">
+                  <input
+                    id="invoice-pay-ref"
+                    className="input input-bordered w-full"
+                    value={payReference}
+                    onChange={(event) => setPayReference(event.target.value)}
+                  />
+                </FormField>
+              )}
               <FormField label="Notes (optional)" htmlFor="invoice-pay-notes">
                 <input
                   id="invoice-pay-notes"

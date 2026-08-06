@@ -54,6 +54,7 @@ export default function BillingPage() {
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [selectedContractId, setSelectedContractId] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -185,6 +186,7 @@ export default function BillingPage() {
       const result = await recordPayment(formData);
       if (result.success) {
         showToast(result.message);
+        setPaymentMethod("");
         paymentDialogRef.current?.close();
         await loadData();
       } else {
@@ -559,7 +561,7 @@ export default function BillingPage() {
       </dialog>
 
       <dialog ref={paymentDialogRef} className="modal">
-        <div className="modal-box max-w-lg">
+        <div className="modal-box max-w-xl">
           <h3 className="text-lg font-bold">Record Simulated Payment</h3>
           <p className="mt-1 text-sm text-base-content/70">
             Payments reduce accounts receivable. No actual payment processing occurs.
@@ -615,21 +617,119 @@ export default function BillingPage() {
                 required
               />
             </FormField>
-            <FormField label="Payment method" htmlFor="payment_method">
-              <input
+            <FormField label="Payment method" htmlFor="payment_method" required>
+              <select
                 id="payment_method"
                 name="payment_method"
-                className="input input-bordered w-full"
-                placeholder="Check, ACH, Wire, etc."
-              />
+                className="select select-bordered w-full"
+                required
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select method
+                </option>
+                <option value="Check">Check</option>
+                <option value="ACH">ACH</option>
+                <option value="Wire">Wire</option>
+                <option value="Card">Card</option>
+                <option value="Cash">Cash</option>
+                <option value="Other">Other</option>
+              </select>
             </FormField>
-            <FormField label="Reference number" htmlFor="reference_number">
-              <input
-                id="reference_number"
-                name="reference_number"
-                className="input input-bordered w-full"
-              />
-            </FormField>
+
+            {paymentMethod === "Card" ? (
+              <div className="rounded-box border border-base-300 bg-base-200/40 p-3">
+                <p className="mb-3 text-sm font-medium">Card details</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormField
+                    label="Cardholder name"
+                    htmlFor="cardholder_name"
+                    required
+                    className="sm:col-span-2"
+                  >
+                    <input
+                      id="cardholder_name"
+                      name="cardholder_name"
+                      className="input input-bordered w-full"
+                      autoComplete="cc-name"
+                      placeholder="Name on card"
+                      required
+                    />
+                  </FormField>
+                  <FormField
+                    label="Card number"
+                    htmlFor="card_number"
+                    required
+                    className="sm:col-span-2"
+                  >
+                    <input
+                      id="card_number"
+                      name="card_number"
+                      className="input input-bordered w-full"
+                      inputMode="numeric"
+                      autoComplete="cc-number"
+                      placeholder="ACCT-000035"
+                      maxLength={19}
+                      required
+                    />
+                  </FormField>
+                  <FormField label="Expiration (MM/YY)" htmlFor="card_exp" required>
+                    <input
+                      id="card_exp"
+                      name="card_exp"
+                      className="input input-bordered w-full"
+                      autoComplete="cc-exp"
+                      placeholder="MM/YY"
+                      maxLength={5}
+                      pattern="^(0[1-9]|1[0-2])\/\d{2}$"
+                      title="Use MM/YY format"
+                      required
+                    />
+                  </FormField>
+                  <FormField label="CVV" htmlFor="card_cvv" required>
+                    <input
+                      id="card_cvv"
+                      name="card_cvv"
+                      className="input input-bordered w-full"
+                      inputMode="numeric"
+                      autoComplete="cc-csc"
+                      placeholder="123"
+                      maxLength={4}
+                      required
+                    />
+                  </FormField>
+                  <FormField
+                    label="Billing ZIP"
+                    htmlFor="card_billing_zip"
+                    required
+                    className="sm:col-span-2"
+                  >
+                    <input
+                      id="card_billing_zip"
+                      name="card_billing_zip"
+                      className="input input-bordered w-full"
+                      autoComplete="postal-code"
+                      placeholder="43215"
+                      required
+                    />
+                  </FormField>
+                </div>
+                <p className="mt-2 text-xs text-base-content/55">
+                  Simulated only — full card numbers are not stored. Only the last 4 digits are saved on the payment record.
+                </p>
+              </div>
+            ) : (
+              <FormField label="Reference number" htmlFor="reference_number">
+                <input
+                  id="reference_number"
+                  name="reference_number"
+                  className="input input-bordered w-full"
+                  placeholder="Check #, confirmation, etc."
+                />
+              </FormField>
+            )}
+
             <FormField label="Notes" htmlFor="notes">
               <textarea
                 id="notes"
@@ -642,7 +742,10 @@ export default function BillingPage() {
               <button
                 type="button"
                 className="btn"
-                onClick={() => paymentDialogRef.current?.close()}
+                onClick={() => {
+                  setPaymentMethod("");
+                  paymentDialogRef.current?.close();
+                }}
               >
                 Cancel
               </button>

@@ -591,6 +591,7 @@ export async function recordPayment(formData: FormData): Promise<ActionResult> {
 
   const invoiceId = String(formData.get("invoice_id") ?? "").trim();
   const paymentAmount = parseNumber(formData.get("payment_amount"));
+  const paymentMethod = String(formData.get("payment_method") ?? "").trim();
 
   if (!invoiceId || paymentAmount == null || paymentAmount <= 0) {
     return {
@@ -600,6 +601,52 @@ export async function recordPayment(formData: FormData): Promise<ActionResult> {
   }
 
   await syncLateFees();
+
+  if (!paymentMethod) {
+    return { success: false, message: "Payment method is required." };
+  }
+
+  let referenceNumber =
+    String(formData.get("reference_number") ?? "").trim() || null;
+  let notes = String(formData.get("notes") ?? "").trim() || null;
+
+  if (paymentMethod === "Card") {
+    const cardholder = String(formData.get("cardholder_name") ?? "").trim();
+    const cardNumber = String(formData.get("card_number") ?? "").replace(
+      /\s+/g,
+      "",
+    );
+    const cardExp = String(formData.get("card_exp") ?? "").trim();
+    const cardCvv = String(formData.get("card_cvv") ?? "").trim();
+    const billingZip = String(formData.get("card_billing_zip") ?? "").trim();
+
+    if (!cardholder) {
+      return { success: false, message: "Cardholder name is required." };
+    }
+    if (!/^\d{13,19}$/.test(cardNumber)) {
+      return {
+        success: false,
+        message: "Enter a valid card number (13–19 digits).",
+      };
+    }
+    if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(cardExp)) {
+      return {
+        success: false,
+        message: "Enter a valid expiration date as MM/YY.",
+      };
+    }
+    if (!/^\d{3,4}$/.test(cardCvv)) {
+      return { success: false, message: "Enter a valid CVV (3–4 digits)." };
+    }
+    if (!billingZip) {
+      return { success: false, message: "Billing ZIP is required for card payments." };
+    }
+
+    const last4 = cardNumber.slice(-4);
+    referenceNumber = `CARD-****${last4}`;
+    const cardNote = `Simulated card payment · ${cardholder} · exp ${cardExp} · ZIP ${billingZip}`;
+    notes = notes ? `${notes}\n${cardNote}` : cardNote;
+  }
 
   const { data: invoice, error: fetchError } = await supabase
     .from("invoices")
@@ -628,10 +675,9 @@ export async function recordPayment(formData: FormData): Promise<ActionResult> {
     customer_id: invoice.customer_id,
     payment_date: String(formData.get("payment_date") ?? "").trim() || null,
     payment_amount: paymentAmount,
-    payment_method: String(formData.get("payment_method") ?? "").trim() || null,
-    reference_number:
-      String(formData.get("reference_number") ?? "").trim() || null,
-    notes: String(formData.get("notes") ?? "").trim() || null,
+    payment_method: paymentMethod,
+    reference_number: referenceNumber,
+    notes,
     created_by: user?.id ?? null,
   });
 

@@ -4,12 +4,22 @@ import { revalidatePath } from "next/cache";
 import type { ActionResult } from "@/app/actions/customers";
 import { createClient } from "@/lib/supabase/server";
 
+function isCardPaymentMethod(method: string): boolean {
+  const value = method.trim().toLowerCase();
+  return value === "card" || value === "credit card";
+}
+
 export async function recordClientPortalPayment(input: {
   invoiceId: string;
   amount: number;
   paymentMethod?: string;
   referenceNumber?: string;
   notes?: string;
+  cardholderName?: string;
+  cardNumber?: string;
+  cardExp?: string;
+  cardCvv?: string;
+  billingZip?: string;
 }): Promise<ActionResult> {
   const supabase = await createClient();
   const {
@@ -22,19 +32,64 @@ export async function recordClientPortalPayment(input: {
 
   const invoiceId = String(input.invoiceId ?? "").trim();
   const amount = Number(input.amount);
-  const paymentMethod = String(input.paymentMethod ?? "").trim() || "Credit Card";
-  const referenceNumber =
-    String(input.referenceNumber ?? "").trim() ||
-    `PORTAL-${Date.now().toString().slice(-8)}`;
-  const notes =
-    String(input.notes ?? "").trim() ||
-    "Simulated payment submitted from the client billing portal.";
+  const paymentMethod =
+    String(input.paymentMethod ?? "").trim() || "Credit Card";
+  let referenceNumber = String(input.referenceNumber ?? "").trim();
+  let notes = String(input.notes ?? "").trim();
 
   if (!invoiceId) {
     return { success: false, message: "Invoice is required." };
   }
   if (!Number.isFinite(amount) || amount <= 0) {
-    return { success: false, message: "Enter a valid payment amount greater than zero." };
+    return {
+      success: false,
+      message: "Enter a valid payment amount greater than zero.",
+    };
+  }
+
+  if (isCardPaymentMethod(paymentMethod)) {
+    const cardholder = String(input.cardholderName ?? "").trim();
+    const cardNumber = String(input.cardNumber ?? "").replace(/\s+/g, "");
+    const cardExp = String(input.cardExp ?? "").trim();
+    const cardCvv = String(input.cardCvv ?? "").trim();
+    const billingZip = String(input.billingZip ?? "").trim();
+
+    if (!cardholder) {
+      return { success: false, message: "Cardholder name is required." };
+    }
+    if (!/^\d{13,19}$/.test(cardNumber)) {
+      return {
+        success: false,
+        message: "Enter a valid card number (13–19 digits).",
+      };
+    }
+    if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(cardExp)) {
+      return {
+        success: false,
+        message: "Enter a valid expiration date as MM/YY.",
+      };
+    }
+    if (!/^\d{3,4}$/.test(cardCvv)) {
+      return { success: false, message: "Enter a valid CVV (3–4 digits)." };
+    }
+    if (!billingZip) {
+      return {
+        success: false,
+        message: "Billing ZIP is required for card payments.",
+      };
+    }
+
+    const last4 = cardNumber.slice(-4);
+    referenceNumber = referenceNumber || `CARD-****${last4}`;
+    const cardNote = `Simulated card payment · ${cardholder} · exp ${cardExp} · ZIP ${billingZip}`;
+    notes = notes ? `${notes}\n${cardNote}` : cardNote;
+  }
+
+  if (!referenceNumber) {
+    referenceNumber = `PORTAL-${Date.now().toString().slice(-8)}`;
+  }
+  if (!notes) {
+    notes = "Simulated payment submitted from the client billing portal.";
   }
 
   const { data: profile } = await supabase
