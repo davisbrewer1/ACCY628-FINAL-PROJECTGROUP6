@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { AlertTriangle, ClipboardList, Plus, Search } from "lucide-react";
+import { AlertTriangle, ClipboardList, PackagePlus, Plus, Search } from "lucide-react";
 import {
+  assignHardwareAsset,
   createAssetOrderTicket,
   createHardwareAsset,
-  requestInventoryReorder,
+  requestPartsBudgetIncrease,
+  restockInventoryPart,
   reviewAssetOrderTicket,
   reviewInventoryReorderRequest,
+  reviewPartsBudgetIncreaseRequest,
+  updateTechnicianPartsBudget,
 } from "@/app/actions/hardware";
 import { AssetDetailDrawer } from "@/components/AssetDetailDrawer";
 import { EmptyState } from "@/components/EmptyState";
@@ -26,7 +30,11 @@ import {
   type Customer,
   type HardwareAsset,
   type InventoryPart,
+  type InventoryPartOrder,
   type InventoryReorderRequest,
+  type Technician,
+  type TechnicianBudgetIncreaseRequest,
+  type TechnicianPartsBudget,
 } from "@/lib/types";
 
 const CAN_ADD_ROLES = new Set([
@@ -35,6 +43,15 @@ const CAN_ADD_ROLES = new Set([
   "account_manager",
   "technician",
 ]);
+
+const MANAGER_ROLES = new Set([
+  "administrator",
+  "service_manager",
+  "account_manager",
+]);
+
+type ManagerSubTab = "devices" | "budgets";
+type DeviceFilterMode = "all" | "inventory" | "customer";
 
 interface AssetRow extends HardwareAsset {
   customerName: string;
@@ -57,6 +74,8 @@ export default function HardwarePage() {
   const { showToast } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const orderDialogRef = useRef<HTMLDialogElement>(null);
+  const assignDialogRef = useRef<HTMLDialogElement>(null);
+  const budgetRequestDialogRef = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
   const [assets, setAssets] = useState<HardwareAsset[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -65,14 +84,30 @@ export default function HardwarePage() {
   const [reorderRequests, setReorderRequests] = useState<InventoryReorderRequest[]>(
     [],
   );
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [partsBudgets, setPartsBudgets] = useState<TechnicianPartsBudget[]>([]);
+  const [partOrders, setPartOrders] = useState<InventoryPartOrder[]>([]);
+  const [budgetRequests, setBudgetRequests] = useState<
+    TechnicianBudgetIncreaseRequest[]
+  >([]);
+  const [myTechnicianId, setMyTechnicianId] = useState<string | null>(null);
   const [partSearch, setPartSearch] = useState("");
   const [assetSearch, setAssetSearch] = useState("");
   const [reorderQuantities, setReorderQuantities] = useState<Record<string, number>>(
     {},
   );
+  const [budgetDrafts, setBudgetDrafts] = useState<Record<string, string>>({});
   const [partsOpen, setPartsOpen] = useState(true);
   const [assetsOpen, setAssetsOpen] = useState(false);
+  const [managerTab, setManagerTab] = useState<ManagerSubTab>("devices");
+  const [deviceFilterMode, setDeviceFilterMode] =
+    useState<DeviceFilterMode>("all");
+  const [filterCustomerId, setFilterCustomerId] = useState("");
+  const [assignAssetId, setAssignAssetId] = useState("");
   const [orderAssetId, setOrderAssetId] = useState("");
+  const [orderRequestType, setOrderRequestType] = useState<
+    "purchase" | "replacement"
+  >("purchase");
   const [drawerAssetId, setDrawerAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
@@ -82,6 +117,7 @@ export default function HardwarePage() {
   const canAdd = CAN_ADD_ROLES.has(activeRole);
   const isTechnicianView = activeRole === "technician";
   const isAdministratorView = activeRole === "administrator";
+  const isManagerView = MANAGER_ROLES.has(activeRole);
   const canReviewReorders =
     activeRole === "administrator" || activeRole === "service_manager";
 
@@ -92,39 +128,81 @@ export default function HardwarePage() {
   async function loadData() {
     const supabase = createClient();
     try {
-      const [a, c, o, p, r] = await Promise.all([
-        supabase.from("hardware_assets").select("*").order("asset_number"),
-        supabase.from("customers").select("*").order("customer_name"),
-        supabase
-          .from("asset_order_tickets")
-          .select("*")
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("inventory_parts")
-          .select("*")
-          .eq("active", true)
-          .order("part_name"),
-        supabase
-          .from("inventory_reorder_requests")
-          .select("*")
-          .order("created_at", { ascending: false }),
-      ]);
-      setAssets(a.data ?? []);
+      const monthStart = new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        1,
+      ).toISOString();
+
+      const [a, c, o, p, r, tech, budgets, orders, reqs, auth] =
+        await Promise.all([
+          supabase.from("hardware_assets").select("*").order("asset_number"),
+          supabase.from("customers").select("*").order("customer_name"),
+          supabase
+            .from("asset_order_tickets")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("inventory_parts")
+            .select("*")
+            .eq("active", true)
+            .order("part_name"),
+          supabase
+            .from("inventory_reorder_requests")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("technicians")
+            .select("*")
+            .eq("active", true)
+            .order("technician_name"),
+          supabase.from("technician_parts_budgets").select("*"),
+          supabase
+            .from("inventory_part_orders")
+            .select("*")
+            .gte("created_at", monthStart),
+          supabase
+            .from("technician_budget_increase_requests")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase.auth.getUser(),
+        ]);
+      setAssets((a.data as HardwareAsset[]) ?? []);
       setCustomers(c.data ?? []);
       setOrderTickets(o.data ?? []);
       setParts(p.data ?? []);
       setReorderRequests(
         r.error ? [] : ((r.data as InventoryReorderRequest[] | null) ?? []),
       );
+      setTechnicians((tech.data as Technician[]) ?? []);
+      setPartsBudgets((budgets.data as TechnicianPartsBudget[]) ?? []);
+      setPartOrders((orders.data as InventoryPartOrder[]) ?? []);
+      setBudgetRequests(
+        (reqs.data as TechnicianBudgetIncreaseRequest[]) ?? [],
+      );
+
+      const userId = auth.data.user?.id;
+      if (userId) {
+        const linked = ((tech.data as Technician[]) ?? []).find(
+          (row) => row.profile_id === userId,
+        );
+        setMyTechnicianId(linked?.id ?? null);
+      } else {
+        setMyTechnicianId(null);
+      }
+
+      const drafts: Record<string, string> = {};
+      for (const b of (budgets.data as TechnicianPartsBudget[]) ?? []) {
+        drafts[b.technician_id] = String(b.monthly_limit);
+      }
+      setBudgetDrafts(drafts);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    // Initial client-side Supabase hydration follows the existing app data-loading pattern.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadData();
+    void loadData();
   }, []);
 
   const customerMap = useMemo(
@@ -136,7 +214,9 @@ export default function HardwarePage() {
     () =>
       assets.map((asset) => ({
         ...asset,
-        customerName: customerMap.get(asset.customer_id) ?? "Unknown",
+        customerName: asset.customer_id
+          ? (customerMap.get(asset.customer_id) ?? "Unknown")
+          : "Inventory",
         alertBadges: getAlertBadges(asset),
       })),
     [assets, customerMap],
@@ -144,8 +224,14 @@ export default function HardwarePage() {
 
   const normalizedAssetSearch = assetSearch.trim().toLowerCase();
   const filteredRows = useMemo(() => {
-    if (!normalizedAssetSearch) return rows;
-    return rows.filter((row) =>
+    let next = rows;
+    if (deviceFilterMode === "inventory") {
+      next = next.filter((row) => !row.customer_id);
+    } else if (deviceFilterMode === "customer" && filterCustomerId) {
+      next = next.filter((row) => row.customer_id === filterCustomerId);
+    }
+    if (!normalizedAssetSearch) return next;
+    return next.filter((row) =>
       [
         row.asset_number,
         row.customerName,
@@ -163,7 +249,47 @@ export default function HardwarePage() {
           .includes(normalizedAssetSearch),
       ),
     );
-  }, [normalizedAssetSearch, rows]);
+  }, [
+    normalizedAssetSearch,
+    rows,
+    deviceFilterMode,
+    filterCustomerId,
+  ]);
+
+  const inventoryCount = useMemo(
+    () => assets.filter((a) => !a.customer_id).length,
+    [assets],
+  );
+
+  const mtdSpendByTech = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const order of partOrders) {
+      map.set(
+        order.technician_id,
+        (map.get(order.technician_id) ?? 0) + Number(order.total_cost ?? 0),
+      );
+    }
+    return map;
+  }, [partOrders]);
+
+  const myBudget = useMemo(() => {
+    if (!myTechnicianId) return null;
+    const limit = Number(
+      partsBudgets.find((b) => b.technician_id === myTechnicianId)
+        ?.monthly_limit ?? 500,
+    );
+    const spent = mtdSpendByTech.get(myTechnicianId) ?? 0;
+    return {
+      limit,
+      spent,
+      remaining: Math.max(0, Math.round((limit - spent) * 100) / 100),
+    };
+  }, [myTechnicianId, partsBudgets, mtdSpendByTech]);
+
+  const pendingBudgetRequests = useMemo(
+    () => budgetRequests.filter((r) => r.status === "Pending"),
+    [budgetRequests],
+  );
 
   const typeSummary = useMemo(() => {
     const map = new Map<string, number>();
@@ -182,12 +308,24 @@ export default function HardwarePage() {
   }, [assets]);
 
   const alertCount = rows.filter((r) => r.alertBadges.length > 0).length;
+  const pendingPurchaseRequests = useMemo(
+    () =>
+      orderTickets.filter(
+        (t) => t.status === "Pending" || t.status === "Needs more information",
+      ),
+    [orderTickets],
+  );
   const replacementAssets = assets.filter((asset) => asset.needs_replacement);
   const selectedAsset = assets.find((asset) => asset.id === orderAssetId);
   const unavailableOrderAssetIds = new Set(
     orderTickets
-      .filter((ticket) => ticket.status !== "Rejected")
-      .map((ticket) => ticket.asset_id),
+      .filter(
+        (ticket) =>
+          Boolean(ticket.asset_id) &&
+          (ticket.status === "Pending" ||
+            ticket.status === "Needs more information"),
+      )
+      .map((ticket) => ticket.asset_id as string),
   );
   const normalizedPartSearch = partSearch.trim().toLowerCase();
   const filteredParts = parts.filter((part) => {
@@ -205,13 +343,6 @@ export default function HardwarePage() {
   const pendingReorderRequests = reorderRequests.filter(
     (request) => request.status === "Pending",
   );
-  const pendingReorderPartIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const request of pendingReorderRequests) {
-      ids.add(request.part_id);
-    }
-    return ids;
-  }, [pendingReorderRequests]);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -261,11 +392,11 @@ export default function HardwarePage() {
     });
   }
 
-  function handleReorderRequest(part: InventoryPart) {
+  function handleOrder(part: InventoryPart) {
     const amount =
       reorderQuantities[part.id] ?? Math.min(5, 50 - part.quantity);
     startTransition(async () => {
-      const result = await requestInventoryReorder(part.id, amount);
+      const result = await restockInventoryPart(part.id, amount);
       showToast(result.message, result.success ? "success" : "error");
       if (result.success) {
         await loadData();
@@ -290,6 +421,60 @@ export default function HardwarePage() {
     });
   }
 
+  function handleAssign(formData: FormData) {
+    setError(null);
+    startTransition(async () => {
+      const result = await assignHardwareAsset(formData);
+      if (result.success) {
+        showToast(result.message);
+        assignDialogRef.current?.close();
+        setAssignAssetId("");
+        await loadData();
+      } else {
+        setError(result.message);
+        showToast(result.message, "error");
+      }
+    });
+  }
+
+  function handleSaveBudget(technicianId: string) {
+    const raw = budgetDrafts[technicianId];
+    const limit = Number(raw);
+    startTransition(async () => {
+      const result = await updateTechnicianPartsBudget(technicianId, limit);
+      showToast(result.message, result.success ? "success" : "error");
+      if (result.success) await loadData();
+    });
+  }
+
+  function handleBudgetIncreaseRequest(formData: FormData) {
+    const requested = Number(formData.get("requested_limit"));
+    const reason = String(formData.get("reason") ?? "");
+    startTransition(async () => {
+      const result = await requestPartsBudgetIncrease(requested, reason);
+      showToast(result.message, result.success ? "success" : "error");
+      if (result.success) {
+        budgetRequestDialogRef.current?.close();
+        await loadData();
+      }
+    });
+  }
+
+  function handleBudgetRequestReview(
+    requestId: string,
+    decision: "Approved" | "Rejected",
+  ) {
+    startTransition(async () => {
+      const result = await reviewPartsBudgetIncreaseRequest(
+        requestId,
+        decision,
+        reviewNotes[requestId] ?? "",
+      );
+      showToast(result.message, result.success ? "success" : "error");
+      if (result.success) await loadData();
+    });
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -302,7 +487,11 @@ export default function HardwarePage() {
     <div className="hardware-page space-y-6">
       <PageHeader
         title="Hardware assets"
-        description="Track device inventory, lifecycle stages, and proactive replacement alerts."
+        description={
+          isManagerView
+            ? "Deployed devices, unassigned inventory, and technician parts restock budgets."
+            : "Track device inventory, lifecycle stages, and proactive replacement alerts."
+        }
         action={
           canAdd || isTechnicianView ? (
             <div className="flex flex-wrap justify-end gap-2">
@@ -310,10 +499,15 @@ export default function HardwarePage() {
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
-                  onClick={() => orderDialogRef.current?.showModal()}
+                  onClick={() => {
+                    setOrderError(null);
+                    setOrderRequestType("purchase");
+                    setOrderAssetId("");
+                    orderDialogRef.current?.showModal();
+                  }}
                 >
                   <ClipboardList className="size-4" />
-                  Asset Order Ticket
+                  Request asset purchase
                 </button>
               ) : null}
               {canAdd ? (
@@ -331,10 +525,218 @@ export default function HardwarePage() {
         }
       />
 
+      {isManagerView ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={`btn btn-sm ${managerTab === "devices" ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setManagerTab("devices")}
+          >
+            Devices
+            {pendingPurchaseRequests.length > 0 ? (
+              <span className="badge badge-warning badge-sm">
+                {pendingPurchaseRequests.length}
+              </span>
+            ) : null}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${managerTab === "budgets" ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setManagerTab("budgets")}
+          >
+            Parts budgets
+            {pendingBudgetRequests.length > 0 ? (
+              <span className="badge badge-warning badge-sm">
+                {pendingBudgetRequests.length}
+              </span>
+            ) : null}
+          </button>
+        </div>
+      ) : null}
+
+      {isManagerView && managerTab === "budgets" ? (
+        <div className="space-y-6">
+          {pendingBudgetRequests.length > 0 ? (
+            <div className="card border border-warning/40 bg-warning/5 shadow-sm">
+              <div className="card-body gap-3">
+                <h2 className="card-title text-base">
+                  Pending limit increase requests
+                </h2>
+                <p className="text-sm text-base-content/70">
+                  These are the only parts-budget items that need your approval.
+                  Day-to-day restocks within a tech’s monthly limit do not.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Technician</th>
+                        <th>Current</th>
+                        <th>Requested</th>
+                        <th>Reason</th>
+                        <th>Notes</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingBudgetRequests.map((req) => {
+                        const tech = technicians.find(
+                          (t) => t.id === req.technician_id,
+                        );
+                        return (
+                          <tr key={req.id}>
+                            <td>{tech?.technician_name ?? "Technician"}</td>
+                            <td>{formatCurrency(req.current_limit)}</td>
+                            <td className="font-medium">
+                              {formatCurrency(req.requested_limit)}
+                            </td>
+                            <td className="max-w-xs text-sm">
+                              {req.reason ?? "—"}
+                            </td>
+                            <td>
+                              <input
+                                className="input input-bordered input-xs w-40"
+                                placeholder="Optional note"
+                                value={reviewNotes[req.id] ?? ""}
+                                onChange={(e) =>
+                                  setReviewNotes((prev) => ({
+                                    ...prev,
+                                    [req.id]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  type="button"
+                                  className="btn btn-success btn-xs"
+                                  disabled={isPending}
+                                  onClick={() =>
+                                    handleBudgetRequestReview(req.id, "Approved")
+                                  }
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-error btn-xs"
+                                  disabled={isPending}
+                                  onClick={() =>
+                                    handleBudgetRequestReview(req.id, "Rejected")
+                                  }
+                                >
+                                  Deny
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="card border bg-base-100 shadow-sm">
+            <div className="card-body gap-3">
+              <h2 className="card-title text-base">
+                Technician parts restock budgets (this month)
+              </h2>
+              <p className="text-sm text-base-content/70">
+                Technicians restock parts on their own as long as the order stays
+                within their monthly limit (quantity × unit cost). No manager
+                approval is required for those orders. You only review requests
+                here when a tech needs a higher limit after hitting the cap.
+              </p>
+              {technicians.length === 0 ? (
+                <EmptyState
+                  title="No technicians"
+                  description="Active technicians will appear here with monthly parts budgets."
+                />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Technician</th>
+                        <th className="text-right">MTD spend</th>
+                        <th className="text-right">Monthly limit</th>
+                        <th className="text-right">Remaining</th>
+                        <th>Status</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {technicians.map((tech) => {
+                        const limit = Number(
+                          partsBudgets.find((b) => b.technician_id === tech.id)
+                            ?.monthly_limit ?? 500,
+                        );
+                        const spent = mtdSpendByTech.get(tech.id) ?? 0;
+                        const remaining = Math.max(0, limit - spent);
+                        const atLimit = spent >= limit;
+                        const nearLimit =
+                          !atLimit && limit > 0 && spent / limit >= 0.8;
+                        return (
+                          <tr key={tech.id}>
+                            <td className="font-medium">{tech.technician_name}</td>
+                            <td className="text-right">{formatCurrency(spent)}</td>
+                            <td className="text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="input input-bordered input-sm w-28 text-right"
+                                value={budgetDrafts[tech.id] ?? String(limit)}
+                                onChange={(e) =>
+                                  setBudgetDrafts((prev) => ({
+                                    ...prev,
+                                    [tech.id]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="text-right">
+                              {formatCurrency(remaining)}
+                            </td>
+                            <td>
+                              {atLimit ? (
+                                <StatusBadge status="At limit" />
+                              ) : nearLimit ? (
+                                <StatusBadge status="Near limit" />
+                              ) : (
+                                <StatusBadge status="OK" />
+                              )}
+                            </td>
+                            <td className="text-right">
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-xs"
+                                disabled={isPending}
+                                onClick={() => handleSaveBudget(tech.id)}
+                              >
+                                Save
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Total assets" value={assets.length} />
+        <StatCard title="Total devices" value={assets.length} />
+        <StatCard title="In inventory" value={inventoryCount} tone="info" />
         <StatCard title="With alerts" value={alertCount} tone={alertCount > 0 ? "warning" : "success"} />
-        <StatCard title="Categories" value={typeSummary.length} tone="info" />
         <StatCard title="Needs replacement" value={assets.filter((a) => a.needs_replacement).length} tone="danger" />
       </div>
 
@@ -369,27 +771,36 @@ export default function HardwarePage() {
         </div>
       </div>
 
-      {isAdministratorView ? (
+      {isManagerView ? (
         <section className="card border bg-base-100 shadow-sm">
           <div className="card-body">
             <div>
-              <h2 className="card-title text-base">Asset order reviews</h2>
+              <h2 className="card-title text-base">Asset purchase requests</h2>
               <p className="text-sm text-base-content/60">
-                Review replacement requests submitted from Technician view.
+                Technicians request purchases (or replacements). Approving adds
+                the asset to inventory or the selected customer — nothing is
+                created until you approve.
               </p>
             </div>
             {orderTickets.length === 0 ? (
-              <p className="text-sm text-base-content/60">No asset order tickets submitted.</p>
+              <p className="text-sm text-base-content/60">
+                No asset purchase requests submitted.
+              </p>
             ) : (
               <div className="mt-2 space-y-3">
                 {orderTickets.map((ticket) => {
-                  const asset = assets.find((item) => item.id === ticket.asset_id);
-                  const customer = customers.find(
-                    (item) => item.id === ticket.customer_id,
-                  );
-                  const total = ticket.estimated_unit_cost === null
-                    ? null
-                    : ticket.estimated_unit_cost * ticket.requested_quantity;
+                  const asset = ticket.asset_id
+                    ? assets.find((item) => item.id === ticket.asset_id)
+                    : null;
+                  const customer = ticket.customer_id
+                    ? customers.find((item) => item.id === ticket.customer_id)
+                    : null;
+                  const total =
+                    ticket.estimated_unit_cost === null
+                      ? null
+                      : ticket.estimated_unit_cost * ticket.requested_quantity;
+                  const isPurchase =
+                    ticket.request_type === "purchase" || !ticket.asset_id;
 
                   return (
                     <div key={ticket.id} className="rounded-box border p-4">
@@ -403,15 +814,24 @@ export default function HardwarePage() {
                             <span className="badge badge-outline badge-sm">
                               {ticket.priority}
                             </span>
+                            <span className="badge badge-ghost badge-sm">
+                              {isPurchase ? "New purchase" : "Replacement"}
+                            </span>
                           </div>
                           <p className="mt-1 font-medium">
-                            {asset?.asset_number ?? "Unknown asset"} →{" "}
-                            {ticket.replacement_manufacturer} {ticket.replacement_model}
+                            {isPurchase
+                              ? `${ticket.category ?? "Asset"} · ${ticket.replacement_manufacturer} ${ticket.replacement_model}`
+                              : `${asset?.asset_number ?? "Unknown asset"} → ${ticket.replacement_manufacturer} ${ticket.replacement_model}`}
                           </p>
                           <p className="text-sm text-base-content/60">
-                            {customer?.customer_name ?? "Unknown customer"} · Qty{" "}
-                            {ticket.requested_quantity}
-                            {total === null ? "" : ` · Estimated total ${formatCurrency(total)}`}
+                            {customer?.customer_name ?? "Unassigned inventory"} ·
+                            Qty {ticket.requested_quantity}
+                            {total === null
+                              ? ""
+                              : ` · Estimated total ${formatCurrency(total)}`}
+                            {ticket.created_asset_id
+                              ? " · Asset created"
+                              : ""}
                           </p>
                         </div>
                         <span className="text-xs text-base-content/50">
@@ -426,15 +846,16 @@ export default function HardwarePage() {
                       ) : null}
                       {ticket.admin_notes ? (
                         <div className="mt-3 rounded-box bg-base-200 p-3 text-sm">
-                          <span className="font-semibold">Administrator note:</span>{" "}
+                          <span className="font-semibold">Manager note:</span>{" "}
                           {ticket.admin_notes}
                         </div>
                       ) : null}
-                      {ticket.status !== "Approved" && ticket.status !== "Rejected" ? (
+                      {ticket.status !== "Approved" &&
+                      ticket.status !== "Rejected" ? (
                         <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-end">
                           <label className="form-control flex-1">
                             <span className="label-text mb-1 text-xs">
-                              Administrator note
+                              Manager note
                             </span>
                             <input
                               className="input input-bordered input-sm w-full"
@@ -453,16 +874,21 @@ export default function HardwarePage() {
                               type="button"
                               className="btn btn-success btn-sm"
                               disabled={isPending}
-                              onClick={() => handleReview(ticket.id, "Approved")}
+                              onClick={() =>
+                                handleReview(ticket.id, "Approved")
+                              }
                             >
-                              Approve
+                              Approve &amp; add asset
                             </button>
                             <button
                               type="button"
                               className="btn btn-sm"
                               disabled={isPending}
                               onClick={() =>
-                                handleReview(ticket.id, "Needs more information")
+                                handleReview(
+                                  ticket.id,
+                                  "Needs more information",
+                                )
                               }
                             >
                               Request info
@@ -471,7 +897,9 @@ export default function HardwarePage() {
                               type="button"
                               className="btn btn-error btn-outline btn-sm"
                               disabled={isPending}
-                              onClick={() => handleReview(ticket.id, "Rejected")}
+                              onClick={() =>
+                                handleReview(ticket.id, "Rejected")
+                              }
                             >
                               Reject
                             </button>
@@ -535,6 +963,31 @@ export default function HardwarePage() {
 
           {partsOpen ? (
           <div className="flex flex-col gap-5 border-t border-base-300/20 px-6 pb-6 pt-4">
+            {isTechnicianView && myBudget ? (
+              <div
+                className={`rounded-box border p-3 text-sm ${
+                  myBudget.remaining <= 0
+                    ? "border-error/40 bg-error/10"
+                    : "border-cyan-500/30 bg-slate-950/80"
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    Parts budget this month:{" "}
+                    <strong>{formatCurrency(myBudget.spent)}</strong> of{" "}
+                    <strong>{formatCurrency(myBudget.limit)}</strong>
+                    {" "}({formatCurrency(myBudget.remaining)} remaining)
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-xs"
+                    onClick={() => budgetRequestDialogRef.current?.showModal()}
+                  >
+                    Request limit increase
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <label
               className={`input input-bordered flex w-full items-center gap-2 lg:max-w-md ${
                 isTechnicianView
@@ -583,7 +1036,7 @@ export default function HardwarePage() {
                       <th>Unit cost</th>
                       <th>On hand</th>
                       <th>Inventory status</th>
-                      {isTechnicianView ? <th>Request reorder</th> : null}
+                      {isTechnicianView ? <th>Order more</th> : null}
                     </tr>
                   </thead>
                   <tbody
@@ -596,11 +1049,8 @@ export default function HardwarePage() {
                     {filteredParts.map((part) => {
                       const isLow = part.quantity <= part.low_stock_threshold;
                       const capacity = 50 - part.quantity;
-                      const requestAmount =
+                      const orderAmount =
                         reorderQuantities[part.id] ?? Math.min(5, capacity);
-                      const hasPendingRequest = pendingReorderPartIds.has(
-                        part.id,
-                      );
                       return (
                         <tr
                           key={part.id}
@@ -670,52 +1120,41 @@ export default function HardwarePage() {
                           </td>
                           {isTechnicianView ? (
                             <td>
-                              {hasPendingRequest ? (
-                                <div className="space-y-1">
-                                  <StatusBadge status="Pending" />
-                                  <p className="text-xs text-slate-400">
-                                    Waiting on management
-                                  </p>
-                                </div>
-                              ) : (
-                                <div className="flex min-w-48 items-center gap-2">
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    max={capacity}
-                                    className="input input-bordered input-sm w-20 border-slate-600 bg-slate-950 text-slate-100"
-                                    value={requestAmount}
-                                    disabled={capacity === 0 || isPending}
-                                    onChange={(event) =>
-                                      setReorderQuantities((current) => ({
-                                        ...current,
-                                        [part.id]: Number(event.target.value),
-                                      }))
-                                    }
-                                    aria-label={`Reorder quantity for ${part.part_name}`}
-                                  />
-                                  <button
-                                    type="button"
-                                    className="btn btn-primary btn-sm gap-1"
-                                    disabled={
-                                      capacity === 0 ||
-                                      isPending ||
-                                      !Number.isInteger(requestAmount) ||
-                                      requestAmount < 1 ||
-                                      requestAmount > capacity
-                                    }
-                                    onClick={() => handleReorderRequest(part)}
-                                  >
-                                    <ClipboardList className="size-4" />
-                                    {capacity === 0 ? "Full" : "Request"}
-                                  </button>
-                                </div>
-                              )}
-                              {!hasPendingRequest ? (
-                                <div className="mt-1 text-xs text-slate-400">
-                                  Sends a reorder request to management
-                                </div>
-                              ) : null}
+                              <div className="flex min-w-48 items-center gap-2">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={capacity}
+                                  className="input input-bordered input-sm w-20 border-slate-600 bg-slate-950 text-slate-100"
+                                  value={orderAmount}
+                                  disabled={capacity === 0 || isPending}
+                                  onChange={(event) =>
+                                    setReorderQuantities((current) => ({
+                                      ...current,
+                                      [part.id]: Number(event.target.value),
+                                    }))
+                                  }
+                                  aria-label={`Order quantity for ${part.part_name}`}
+                                />
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm gap-1"
+                                  disabled={
+                                    capacity === 0 ||
+                                    isPending ||
+                                    !Number.isInteger(orderAmount) ||
+                                    orderAmount < 1 ||
+                                    orderAmount > capacity
+                                  }
+                                  onClick={() => handleOrder(part)}
+                                >
+                                  <PackagePlus className="size-4" />
+                                  {capacity === 0 ? "Full" : "Order"}
+                                </button>
+                              </div>
+                              <div className="mt-1 text-xs text-slate-400">
+                                No approval required
+                              </div>
                             </td>
                           ) : null}
                         </tr>
@@ -736,13 +1175,22 @@ export default function HardwarePage() {
             <div>
               <h2 className="card-title text-base">Parts reorder requests</h2>
               <p className="text-sm text-base-content/60">
-                Technician requests to restock inventory parts. Approving adds
-                stock automatically.
+                Routine restocks do not appear here — technicians order parts
+                directly when they are within their monthly budget. Manager
+                approval is only needed for limit-increase requests on the Parts
+                budgets tab.
               </p>
             </div>
+            <div className="alert alert-info mt-2 text-sm">
+              <span>
+                This list is only for any leftover approval-queue requests. New
+                restocks within budget skip this queue entirely.
+              </span>
+            </div>
             {pendingReorderRequests.length === 0 ? (
-              <p className="text-sm text-base-content/60">
-                No pending parts reorder requests.
+              <p className="mt-2 text-sm text-base-content/60">
+                No pending approval-queue requests. Within-budget restocks are
+                already applied by technicians without review.
               </p>
             ) : (
               <div className="mt-2 space-y-3">
@@ -848,7 +1296,8 @@ export default function HardwarePage() {
               Device inventory, lifecycle stages, and replacement alerts.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <span className="badge badge-outline">{rows.length} assets</span>
+              <span className="badge badge-outline">{filteredRows.length} shown</span>
+              <span className="badge badge-outline">{inventoryCount} in inventory</span>
               <span
                 className={`badge ${alertCount > 0 ? "badge-warning" : "badge-success"}`}
               >
@@ -864,25 +1313,60 @@ export default function HardwarePage() {
           </span>
         </button>
 
-        {assetsOpen ? (
+        {assetsOpen || isManagerView ? (
         <div className="flex flex-col gap-5 border-t border-base-300/20 px-6 pb-6 pt-4">
-          <label
-            className={`input input-bordered flex w-full items-center gap-2 lg:max-w-md ${
-              isTechnicianView
-                ? "border-slate-600 bg-slate-950 text-slate-100"
-                : ""
-            }`}
-          >
-            <Search className="size-4 opacity-60" />
-            <input
-              type="search"
-              className="grow bg-transparent"
-              value={assetSearch}
-              onChange={(event) => setAssetSearch(event.target.value)}
-              placeholder="Search asset, customer, device, or alert"
-              aria-label="Search hardware assets"
-            />
-          </label>
+          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+            <label
+              className={`input input-bordered flex w-full items-center gap-2 lg:max-w-md ${
+                isTechnicianView
+                  ? "border-slate-600 bg-slate-950 text-slate-100"
+                  : ""
+              }`}
+            >
+              <Search className="size-4 opacity-60" />
+              <input
+                type="search"
+                className="grow bg-transparent"
+                value={assetSearch}
+                onChange={(event) => setAssetSearch(event.target.value)}
+                placeholder="Search asset, customer, device, or alert"
+                aria-label="Search hardware assets"
+              />
+            </label>
+            <label className="form-control w-full max-w-xs">
+              <span className="label-text mb-1 text-xs">Filter</span>
+              <select
+                className="select select-bordered select-sm"
+                value={deviceFilterMode}
+                onChange={(e) => {
+                  const mode = e.target.value as DeviceFilterMode;
+                  setDeviceFilterMode(mode);
+                  if (mode !== "customer") setFilterCustomerId("");
+                }}
+              >
+                <option value="all">All devices</option>
+                <option value="inventory">In inventory (unassigned)</option>
+                <option value="customer">By customer</option>
+              </select>
+            </label>
+            {deviceFilterMode === "customer" ? (
+              <label className="form-control w-full max-w-xs">
+                <span className="label-text mb-1 text-xs">Customer</span>
+                <select
+                  className="select select-bordered select-sm"
+                  value={filterCustomerId}
+                  onChange={(e) => setFilterCustomerId(e.target.value)}
+                >
+                  <option value="">Select customer</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.customer_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
 
           {rows.length === 0 ? (
             <EmptyState
@@ -919,12 +1403,12 @@ export default function HardwarePage() {
                   <tr
                     className={
                       isTechnicianView
-                        ? "border-b border-slate-700 bg-slate-950 text-slate-300 [&_th]:!bg-slate-950 [&_th]:!text-slate-300"
+                        ? "border-b border-slate-700 [&_th]:!bg-slate-950 [&_th]:!text-slate-300"
                         : undefined
                     }
                   >
                     <th>Asset #</th>
-                    <th>Customer</th>
+                    <th>Customer / inventory</th>
                     <th>Type</th>
                     <th>Qty</th>
                     <th>Device</th>
@@ -933,6 +1417,7 @@ export default function HardwarePage() {
                     <th>Status</th>
                     <th>Warranty</th>
                     <th>Alerts</th>
+                    {isManagerView ? <th /> : null}
                   </tr>
                 </thead>
                 <tbody
@@ -947,12 +1432,14 @@ export default function HardwarePage() {
                       key={row.id}
                       className={
                         isTechnicianView
-                          ? "cursor-pointer border-b border-slate-700/70 !bg-slate-900 !text-slate-100 hover:!bg-slate-800"
+                          ? "cursor-pointer border-b border-slate-700/70 !bg-slate-900 hover:!bg-slate-800"
                           : "cursor-pointer hover:bg-base-200/80"
                       }
                       onClick={() => onAssetClick(row.id)}
                     >
-                      <td className="font-mono text-sm">{row.asset_number}</td>
+                      <td>
+                        <div className="font-medium">{row.asset_number}</div>
+                      </td>
                       <td>{row.customerName}</td>
                       <td>{row.category}</td>
                       <td>{row.quantity}</td>
@@ -995,6 +1482,24 @@ export default function HardwarePage() {
                           )}
                         </div>
                       </td>
+                      {isManagerView ? (
+                        <td className="text-right">
+                          {!row.customer_id ? (
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAssignAssetId(row.id);
+                                setError(null);
+                                assignDialogRef.current?.showModal();
+                              }}
+                            >
+                              Assign
+                            </button>
+                          ) : null}
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -1004,15 +1509,17 @@ export default function HardwarePage() {
         </div>
         ) : null}
       </section>
+        </>
+      )}
 
       <dialog ref={dialogRef} className="modal">
         <div className="modal-box max-h-[90vh] max-w-3xl overflow-y-auto">
           <h3 className="text-lg font-bold">Add Hardware Asset</h3>
           {error ? <div className="alert alert-error mt-4 text-sm"><span>{error}</span></div> : null}
           <form action={handleSubmit} className="form-grid mt-4 grid gap-4 sm:grid-cols-2">
-            <FormField label="Customer" htmlFor="customer_id" required>
-              <select id="customer_id" name="customer_id" className="select select-bordered w-full" required defaultValue="">
-                <option value="" disabled>Select customer</option>
+            <FormField label="Customer" htmlFor="customer_id">
+              <select id="customer_id" name="customer_id" className="select select-bordered w-full" defaultValue="unassigned">
+                <option value="unassigned">Unassigned (inventory)</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>{c.customer_name}</option>
                 ))}
@@ -1114,10 +1621,10 @@ export default function HardwarePage() {
       {isTechnicianView ? (
       <dialog ref={orderDialogRef} className="modal">
         <div className="modal-box max-h-[90vh] max-w-4xl overflow-y-auto">
-          <h3 className="text-lg font-bold">Asset Order Ticket</h3>
+          <h3 className="text-lg font-bold">Request asset purchase</h3>
           <p className="mt-1 text-sm text-base-content/60">
-            Request a replacement asset for administrator review. Order quantity
-            always matches the quantity of the selected asset.
+            Submit a purchase request for manager approval. The asset is not
+            added to inventory until a manager approves.
           </p>
 
           {orderError ? (
@@ -1127,53 +1634,176 @@ export default function HardwarePage() {
           ) : null}
 
           <form action={handleOrderSubmit} className="form-grid mt-5 grid gap-4 sm:grid-cols-2">
-            <FormField label="Asset being replaced" htmlFor="asset_id" required className="sm:col-span-2">
+            <input type="hidden" name="request_type" value={orderRequestType} />
+            <FormField label="Request type" htmlFor="order_request_type" className="sm:col-span-2">
               <select
-                id="asset_id"
-                name="asset_id"
+                id="order_request_type"
                 className="select select-bordered w-full"
-                required
-                value={orderAssetId}
-                onChange={(event) => setOrderAssetId(event.target.value)}
+                value={orderRequestType}
+                onChange={(event) => {
+                  const next = event.target.value === "replacement"
+                    ? "replacement"
+                    : "purchase";
+                  setOrderRequestType(next);
+                  setOrderAssetId("");
+                }}
               >
-                <option value="" disabled>Select an asset marked Needs replacement</option>
-                {replacementAssets.map((asset) => {
-                  const unavailable = unavailableOrderAssetIds.has(asset.id);
-                  return (
-                    <option key={asset.id} value={asset.id} disabled={unavailable}>
-                      {asset.asset_number} — {asset.manufacturer} {asset.model}
-                      {unavailable ? " (ticket already placed)" : ""}
-                    </option>
-                  );
-                })}
+                <option value="purchase">New purchase</option>
+                <option value="replacement">Replace existing asset</option>
               </select>
             </FormField>
 
-            <FormField label="Order quantity" htmlFor="requested_quantity">
-              <input
-                id="requested_quantity"
-                className="input input-bordered w-full"
-                value={selectedAsset?.quantity ?? ""}
-                placeholder="Select an asset"
-                readOnly
-              />
+            {orderRequestType === "replacement" ? (
+              <FormField
+                label="Asset being replaced"
+                htmlFor="asset_id"
+                required
+                className="sm:col-span-2"
+              >
+                <select
+                  id="asset_id"
+                  name="asset_id"
+                  className="select select-bordered w-full"
+                  required
+                  value={orderAssetId}
+                  onChange={(event) => setOrderAssetId(event.target.value)}
+                >
+                  <option value="" disabled>
+                    Select an asset marked Needs replacement
+                  </option>
+                  {replacementAssets.map((asset) => {
+                    const unavailable = unavailableOrderAssetIds.has(asset.id);
+                    return (
+                      <option
+                        key={asset.id}
+                        value={asset.id}
+                        disabled={unavailable}
+                      >
+                        {asset.asset_number} — {asset.manufacturer}{" "}
+                        {asset.model}
+                        {unavailable ? " (ticket already placed)" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </FormField>
+            ) : (
+              <>
+                <FormField label="Category" htmlFor="order_category" required>
+                  <select
+                    id="order_category"
+                    name="category"
+                    className="select select-bordered w-full"
+                    required
+                    defaultValue=""
+                  >
+                    <option value="" disabled>
+                      Select type
+                    </option>
+                    {HARDWARE_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Assign to customer" htmlFor="order_customer_id">
+                  <select
+                    id="order_customer_id"
+                    name="customer_id"
+                    className="select select-bordered w-full"
+                    defaultValue="unassigned"
+                  >
+                    <option value="unassigned">
+                      Unassigned inventory (stock)
+                    </option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.customer_name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </>
+            )}
+
+            {orderRequestType === "replacement" && selectedAsset?.category ? (
+              <input type="hidden" name="category" value={selectedAsset.category} />
+            ) : null}
+            <FormField label="Quantity" htmlFor="requested_quantity" required>
+              {orderRequestType === "replacement" ? (
+                <input
+                  id="requested_quantity"
+                  className="input input-bordered w-full"
+                  value={selectedAsset?.quantity ?? ""}
+                  placeholder="Select an asset"
+                  readOnly
+                />
+              ) : (
+                <input
+                  id="requested_quantity"
+                  name="requested_quantity"
+                  type="number"
+                  min="1"
+                  step="1"
+                  defaultValue="1"
+                  className="input input-bordered w-full"
+                  required
+                />
+              )}
             </FormField>
             <FormField label="Priority" htmlFor="priority" required>
-              <select id="priority" name="priority" className="select select-bordered w-full" defaultValue="Medium" required>
+              <select
+                id="priority"
+                name="priority"
+                className="select select-bordered w-full"
+                defaultValue="Medium"
+                required
+              >
                 <option value="Low">Low</option>
                 <option value="Medium">Medium</option>
                 <option value="High">High</option>
                 <option value="Urgent">Urgent</option>
               </select>
             </FormField>
-            <FormField label="Replacement manufacturer" htmlFor="replacement_manufacturer" required>
-              <input id="replacement_manufacturer" name="replacement_manufacturer" className="input input-bordered w-full" required />
+            <FormField
+              label={
+                orderRequestType === "replacement"
+                  ? "Replacement manufacturer"
+                  : "Manufacturer"
+              }
+              htmlFor="replacement_manufacturer"
+              required
+            >
+              <input
+                id="replacement_manufacturer"
+                name="replacement_manufacturer"
+                className="input input-bordered w-full"
+                required
+              />
             </FormField>
-            <FormField label="Replacement model" htmlFor="replacement_model" required>
-              <input id="replacement_model" name="replacement_model" className="input input-bordered w-full" required />
+            <FormField
+              label={
+                orderRequestType === "replacement"
+                  ? "Replacement model"
+                  : "Model"
+              }
+              htmlFor="replacement_model"
+              required
+            >
+              <input
+                id="replacement_model"
+                name="replacement_model"
+                className="input input-bordered w-full"
+                required
+              />
             </FormField>
             <FormField label="Preferred vendor" htmlFor="preferred_vendor">
-              <input id="preferred_vendor" name="preferred_vendor" className="input input-bordered w-full" />
+              <input
+                id="preferred_vendor"
+                name="preferred_vendor"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <FormField label="Estimated unit cost" htmlFor="estimated_unit_cost">
               <input
@@ -1186,7 +1816,12 @@ export default function HardwarePage() {
               />
             </FormField>
             <FormField label="Needed by" htmlFor="needed_by">
-              <input id="needed_by" name="needed_by" type="date" className="input input-bordered w-full" />
+              <input
+                id="needed_by"
+                name="needed_by"
+                type="date"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <FormField
               label="Technical requirements"
@@ -1212,7 +1847,7 @@ export default function HardwarePage() {
                 name="business_justification"
                 className="textarea textarea-bordered w-full"
                 rows={3}
-                placeholder="Explain the failure, risk, service impact, and why replacement is needed"
+                placeholder="Why this purchase is needed"
                 required
               />
             </FormField>
@@ -1224,19 +1859,31 @@ export default function HardwarePage() {
               >
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary" disabled={isPending}>
-                {isPending ? <span className="loading loading-spinner loading-sm" /> : "Submit for Approval"}
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isPending}
+              >
+                {isPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Submit for manager approval"
+                )}
               </button>
             </div>
           </form>
 
-          <div className="divider my-6">Administrator approval status</div>
+          <div className="divider my-6">Your request status</div>
           {orderTickets.length === 0 ? (
-            <p className="text-sm text-base-content/60">No order tickets submitted yet.</p>
+            <p className="text-sm text-base-content/60">
+              No purchase requests submitted yet.
+            </p>
           ) : (
             <div className="space-y-3">
               {orderTickets.map((ticket) => {
-                const asset = assets.find((item) => item.id === ticket.asset_id);
+                const asset = ticket.asset_id
+                  ? assets.find((item) => item.id === ticket.asset_id)
+                  : null;
                 return (
                   <div key={ticket.id} className="rounded-box border p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1245,18 +1892,21 @@ export default function HardwarePage() {
                           {ticket.ticket_number}
                         </span>
                         <span className="ml-2 text-sm">
-                          {asset?.asset_number ?? "Unknown asset"} · Qty{" "}
-                          {ticket.requested_quantity}
+                          {ticket.request_type === "replacement" || ticket.asset_id
+                            ? `${asset?.asset_number ?? "Replacement"} · `
+                            : `${ticket.category ?? "Purchase"} · `}
+                          Qty {ticket.requested_quantity}
                         </span>
                       </div>
                       <StatusBadge status={ticket.status} />
                     </div>
                     <p className="mt-1 text-sm">
-                      {ticket.replacement_manufacturer} {ticket.replacement_model}
+                      {ticket.replacement_manufacturer}{" "}
+                      {ticket.replacement_model}
                     </p>
                     {ticket.admin_notes ? (
                       <p className="mt-2 text-xs text-base-content/70">
-                        Administrator note: {ticket.admin_notes}
+                        Manager note: {ticket.admin_notes}
                       </p>
                     ) : null}
                   </div>
@@ -1271,8 +1921,138 @@ export default function HardwarePage() {
       </dialog>
       ) : null}
 
+      <dialog ref={assignDialogRef} className="modal">
+        <div className="modal-box max-w-lg">
+          <h3 className="text-lg font-bold">Assign inventory asset</h3>
+          {error ? (
+            <div className="alert alert-error mt-4 text-sm">
+              <span>{error}</span>
+            </div>
+          ) : null}
+          <form action={handleAssign} className="mt-4 grid gap-4">
+            <input type="hidden" name="asset_id" value={assignAssetId} />
+            <FormField label="Customer" htmlFor="assign_customer_id" required>
+              <select
+                id="assign_customer_id"
+                name="customer_id"
+                className="select select-bordered w-full"
+                required
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  Select customer
+                </option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.customer_name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Location" htmlFor="assign_location">
+              <input
+                id="assign_location"
+                name="location"
+                className="input input-bordered w-full"
+              />
+            </FormField>
+            <FormField label="Device status" htmlFor="assign_device_status">
+              <select
+                id="assign_device_status"
+                name="device_status"
+                className="select select-bordered w-full"
+                defaultValue="Active"
+              >
+                <option value="Active">Active</option>
+                <option value="Offline">Offline</option>
+                <option value="In repair">In repair</option>
+              </select>
+            </FormField>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => assignDialogRef.current?.close()}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={isPending}>
+                {isPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Assign"
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit">close</button>
+        </form>
+      </dialog>
+
+      <dialog ref={budgetRequestDialogRef} className="modal">
+        <div className="modal-box max-w-lg">
+          <h3 className="text-lg font-bold">Request parts budget increase</h3>
+          <p className="mt-1 text-sm text-base-content/70">
+            Current monthly limit:{" "}
+            {myBudget ? formatCurrency(myBudget.limit) : "—"}. Managers review
+            requests on the Parts budgets tab.
+          </p>
+          <form action={handleBudgetIncreaseRequest} className="mt-4 grid gap-4">
+            <FormField label="Requested monthly limit" htmlFor="requested_limit" required>
+              <input
+                id="requested_limit"
+                name="requested_limit"
+                type="number"
+                min="0"
+                step="0.01"
+                className="input input-bordered w-full"
+                required
+                defaultValue={
+                  myBudget ? String(Math.ceil(myBudget.limit * 1.5)) : "750"
+                }
+              />
+            </FormField>
+            <FormField label="Reason" htmlFor="reason">
+              <textarea
+                id="reason"
+                name="reason"
+                className="textarea textarea-bordered w-full"
+                rows={3}
+                placeholder="Why do you need a higher restock limit?"
+              />
+            </FormField>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => budgetRequestDialogRef.current?.close()}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={isPending}>
+                {isPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Submit request"
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit">close</button>
+        </form>
+      </dialog>
+
       <AssetDetailDrawer
         assetId={drawerAssetId}
+        seedAsset={
+          drawerAssetId
+            ? (assets.find((asset) => asset.id === drawerAssetId) ?? null)
+            : null
+        }
         customerName={
           drawerAssetId
             ? rows.find((r) => r.id === drawerAssetId)?.customerName

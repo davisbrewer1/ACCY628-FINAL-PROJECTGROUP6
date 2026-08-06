@@ -11,7 +11,7 @@ import {
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
-import { PageHeader } from "@/components/PageHeader";
+import { PortalPageHeader } from "@/components/end-user/PortalPageHeader";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { useToast } from "@/components/Toast";
 import { createClient } from "@/lib/supabase/client";
@@ -28,6 +28,27 @@ type MfaFactor = {
   factor_type: string;
   status: string;
 };
+
+function toQrImageSrc(qrCode: string): string {
+  if (!qrCode) return "";
+  if (qrCode.startsWith("data:")) return qrCode;
+  if (qrCode.includes("<svg")) {
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(qrCode)}`;
+  }
+  return qrCode;
+}
+
+async function cleanupUnverifiedFactors(
+  supabase: ReturnType<typeof createClient>,
+) {
+  const listed = await supabase.auth.mfa.listFactors();
+  const all = (listed.data?.all ?? []) as MfaFactor[];
+  for (const factor of all) {
+    if (factor.status !== "verified") {
+      await supabase.auth.mfa.unenroll({ factorId: factor.id });
+    }
+  }
+}
 
 const DEFAULT_NOTIFICATIONS: NotificationPreferences = {
   ticket_updates: true,
@@ -54,6 +75,7 @@ export default function EndUserSettingsPage() {
   const [factors, setFactors] = useState<MfaFactor[]>([]);
   const [mfaQr, setMfaQr] = useState<string | null>(null);
   const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [mfaUri, setMfaUri] = useState<string | null>(null);
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [passwordForm, setPasswordForm] = useState({
@@ -101,12 +123,18 @@ export default function EndUserSettingsPage() {
 
     setProfile(profileData);
     setContacts(contactData ?? []);
-    const verified = factorsResult.data?.totp ?? [];
-    const all = [
-      ...(factorsResult.data?.totp ?? []),
-      ...(factorsResult.data?.phone ?? []),
-    ] as MfaFactor[];
-    setFactors(all.length > 0 ? all : (verified as MfaFactor[]));
+    if (factorsResult.error) {
+      console.warn("MFA listFactors:", factorsResult.error.message);
+    }
+    const listed = [
+      ...((factorsResult.data?.totp ?? []) as MfaFactor[]),
+      ...((factorsResult.data?.phone ?? []) as MfaFactor[]),
+      ...(((factorsResult.data?.all ?? []) as MfaFactor[]).filter(
+        (factor) => factor.status === "verified",
+      )),
+    ];
+    const unique = new Map(listed.map((factor) => [factor.id, factor]));
+    setFactors([...unique.values()]);
     setLoading(false);
   }
 
@@ -159,17 +187,29 @@ export default function EndUserSettingsPage() {
     setError(null);
     startTransition(async () => {
       const supabase = createClient();
+
+      // Remove abandoned unverified enrollments so a fresh QR can be created.
+      await cleanupUnverifiedFactors(supabase);
+
+      const friendlyName = `Authenticator ${new Date().toLocaleString()}`;
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
         factorType: "totp",
-        friendlyName: "Authenticator app",
+        friendlyName,
       });
       if (enrollError) {
         setError(enrollError.message);
         return;
       }
+      if (!data?.totp) {
+        setError("Could not start MFA enrollment. Try again.");
+        return;
+      }
+
       setMfaFactorId(data.id);
-      setMfaQr(data.totp.qr_code);
+      setMfaQr(toQrImageSrc(data.totp.qr_code));
       setMfaSecret(data.totp.secret);
+      setMfaUri(data.totp.uri ?? null);
+      setMfaCode("");
       showToast("Scan the QR code, then enter the 6-digit code to finish MFA setup.");
     });
   }
@@ -177,6 +217,11 @@ export default function EndUserSettingsPage() {
   async function verifyMfaEnrollment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!mfaFactorId) return;
+    const code = mfaCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setError("Enter the 6-digit code from your authenticator app.");
+      return;
+    }
     setError(null);
     startTransition(async () => {
       const supabase = createClient();
@@ -188,7 +233,7 @@ export default function EndUserSettingsPage() {
       const verified = await supabase.auth.mfa.verify({
         factorId: mfaFactorId,
         challengeId: challenge.data.id,
-        code: mfaCode.trim(),
+        code,
       });
       if (verified.error) {
         setError(verified.error.message);
@@ -196,10 +241,27 @@ export default function EndUserSettingsPage() {
       }
       setMfaQr(null);
       setMfaSecret(null);
+      setMfaUri(null);
       setMfaFactorId(null);
       setMfaCode("");
-      showToast("MFA enabled successfully.");
+      showToast("MFA enabled successfully. You’ll be asked for a code when entering the portal.");
       await loadData();
+    });
+  }
+
+  async function cancelMfaEnrollment() {
+    setError(null);
+    startTransition(async () => {
+      const supabase = createClient();
+      if (mfaFactorId) {
+        await supabase.auth.mfa.unenroll({ factorId: mfaFactorId });
+      }
+      await cleanupUnverifiedFactors(supabase);
+      setMfaQr(null);
+      setMfaSecret(null);
+      setMfaUri(null);
+      setMfaFactorId(null);
+      setMfaCode("");
     });
   }
 
@@ -248,7 +310,7 @@ export default function EndUserSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <PortalPageHeader
         title="Profile & settings"
         description="Update your contact details, security settings, notifications, and communication preferences."
       />
@@ -343,29 +405,31 @@ export default function EndUserSettingsPage() {
         </div>
       </div>
 
-      <div className="card border bg-base-100 shadow-sm">
+      <div className="card border border-primary/20 bg-base-100 shadow-sm">
         <div className="card-body gap-4">
           <h2 className="card-title text-base">Multi-factor authentication (MFA)</h2>
-          <p className="text-sm text-base-content/70">
-            Protect your account with an authenticator app. Enrollment requires a valid 6-digit code.
+          <p className="text-sm leading-relaxed text-base-content/70">
+            Add an authenticator app (Google Authenticator, Microsoft Authenticator, Authy, etc.).
+            After setup, the portal will ask for a 6-digit code whenever your session needs a second
+            factor.
           </p>
 
           {factors.length > 0 ? (
-            <div className="space-y-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               {factors.map((factor) => (
                 <div
                   key={factor.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-box border border-base-300 p-3"
+                  className="rounded-box border border-success/30 bg-success/5 p-4"
                 >
-                  <div>
-                    <p className="font-medium">
-                      {factor.friendly_name || factor.factor_type.toUpperCase()}
-                    </p>
-                    <p className="text-xs text-base-content/60">Status: {factor.status}</p>
-                  </div>
+                  <p className="font-medium">
+                    {factor.friendly_name || factor.factor_type.toUpperCase()}
+                  </p>
+                  <p className="mt-1 text-xs uppercase tracking-wide text-success">
+                    {factor.status}
+                  </p>
                   <button
                     type="button"
-                    className="btn btn-outline btn-sm"
+                    className="btn btn-outline btn-sm mt-3"
                     disabled={isPending}
                     onClick={() => removeMfaFactor(factor.id)}
                   >
@@ -375,58 +439,78 @@ export default function EndUserSettingsPage() {
               ))}
             </div>
           ) : (
-            <EmptyState
-              title="MFA not enabled"
-              description="Add an authenticator app to require a second step at sign-in."
-            />
+            <div className="rounded-box border border-dashed border-base-300 bg-base-200/40 p-4 text-sm text-base-content/70">
+              MFA is not enabled yet. Enable it below to protect your account.
+            </div>
           )}
 
           {!mfaQr ? (
             <button
               type="button"
-              className="btn btn-primary btn-sm w-fit"
+              className="btn btn-primary w-fit"
               disabled={isPending}
               onClick={() => void startMfaEnrollment()}
             >
-              Enable MFA
+              {factors.length > 0 ? "Add another authenticator" : "Enable MFA"}
             </button>
           ) : (
-            <div className="space-y-3 rounded-box border border-base-300 p-4">
-              <p className="text-sm">Scan this QR code in your authenticator app:</p>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={mfaQr} alt="MFA QR code" className="max-w-xs rounded-box border bg-white p-2" />
-              {mfaSecret ? (
-                <p className="font-mono text-xs break-all text-base-content/70">
-                  Secret: {mfaSecret}
+            <div className="space-y-4 rounded-box border border-primary/30 bg-primary/5 p-4">
+              <div>
+                <p className="font-medium">1. Scan this QR code</p>
+                <p className="text-sm text-base-content/70">
+                  Open your authenticator app and scan the code, or enter the secret manually.
                 </p>
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={mfaQr}
+                alt="MFA QR code"
+                className="mx-auto max-w-[220px] rounded-box border bg-white p-3"
+              />
+              {mfaSecret ? (
+                <div className="rounded-box border border-base-300 bg-base-100 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-base-content/60">
+                    Manual setup secret
+                  </p>
+                  <p className="mt-1 break-all font-mono text-sm">{mfaSecret}</p>
+                  {mfaUri ? (
+                    <p className="mt-2 break-all font-mono text-[11px] text-base-content/55">
+                      {mfaUri}
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
-              <form className="flex flex-wrap items-end gap-3" onSubmit={verifyMfaEnrollment}>
+              <form className="space-y-3" onSubmit={verifyMfaEnrollment}>
+                <p className="font-medium">2. Enter the 6-digit code</p>
                 <FormField label="Verification code" htmlFor="mfa_code" required>
                   <input
                     id="mfa_code"
-                    className="input input-bordered w-40"
+                    className="input input-bordered w-full max-w-xs tracking-[0.35em]"
                     value={mfaCode}
-                    onChange={(event) => setMfaCode(event.target.value)}
+                    onChange={(event) =>
+                      setMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
                     inputMode="numeric"
+                    autoComplete="one-time-code"
                     pattern="[0-9]{6}"
+                    maxLength={6}
+                    placeholder="000000"
                     required
                   />
                 </FormField>
-                <button type="submit" className="btn btn-primary" disabled={isPending}>
-                  Verify & enable
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setMfaQr(null);
-                    setMfaSecret(null);
-                    setMfaFactorId(null);
-                    setMfaCode("");
-                  }}
-                >
-                  Cancel
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="submit" className="btn btn-primary" disabled={isPending}>
+                    Verify & enable
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={isPending}
+                    onClick={() => void cancelMfaEnrollment()}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </form>
             </div>
           )}
@@ -535,47 +619,42 @@ export default function EndUserSettingsPage() {
           </p>
 
           {contacts.length === 0 ? (
-            <EmptyState
-              title="No additional contacts"
-              description="Add someone who can be reached about your support requests."
-            />
+            <div className="rounded-box border border-dashed border-base-300 bg-base-200/40 p-4 text-sm text-base-content/70">
+              No additional contacts yet. Add a backup person below.
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="table table-zebra">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Relationship</th>
-                    <th>Preferred</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {contacts.map((contact) => (
-                    <tr key={contact.id}>
-                      <td className="font-medium">{contact.full_name}</td>
-                      <td>{contact.email ?? "—"}</td>
-                      <td>{contact.phone ?? "—"}</td>
-                      <td>{contact.relationship ?? "—"}</td>
-                      <td>{contact.preferred_contact ? "Yes" : "No"}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-xs text-error"
-                          disabled={isPending}
-                          onClick={() =>
-                            runAction(() => deleteClientContact(contact.id))
-                          }
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {contacts.map((contact) => (
+                <div
+                  key={contact.id}
+                  className="rounded-box border border-base-300 bg-base-200/20 p-4"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{contact.full_name}</p>
+                      <p className="text-sm text-base-content/65">
+                        {contact.relationship ?? "Contact"}
+                        {contact.preferred_contact ? " · Preferred" : ""}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs text-error"
+                      disabled={isPending}
+                      onClick={() => runAction(() => deleteClientContact(contact.id))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-1 text-sm text-base-content/80">
+                    <p>{contact.email ?? "No email"}</p>
+                    <p>{contact.phone ?? "No phone"}</p>
+                    {contact.notes ? (
+                      <p className="text-base-content/60">{contact.notes}</p>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 

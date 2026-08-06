@@ -103,6 +103,35 @@ export interface ClientContact {
   created_at: string;
 }
 
+export interface TicketRating {
+  id: string;
+  ticket_id: string;
+  customer_id: string;
+  technician_id: string | null;
+  rated_by: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContractPlanChangeRequest {
+  id: string;
+  contract_id: string;
+  customer_id: string;
+  current_plan_id: string | null;
+  requested_plan_id: string | null;
+  request_type: "plan_change" | "termination" | string;
+  requested_by: string;
+  status: "Pending" | "Approved" | "Denied" | "Cancelled" | string;
+  client_note: string | null;
+  manager_note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Customer {
   id: string;
   customer_name: string;
@@ -121,9 +150,35 @@ export interface Customer {
   created_at: string;
 }
 
+export type PlanPricingModel = "Monthly" | "Yearly" | "Up-front";
+
+export interface ServicePlan {
+  id: string;
+  name: string;
+  description: string | null;
+  pricing_model: PlanPricingModel | string;
+  base_price: number;
+  included_support_hours: number;
+  included_asset_budget: number;
+  additional_hourly_rate: number;
+  additional_asset_rate: number;
+  billing_frequency: string;
+  payment_terms: string | null;
+  invoice_due_days: number | null;
+  setup_fee: number;
+  /** @deprecated Prefer late_fee_percent + late_fee_period_days */
+  late_fee_policy: string | null;
+  late_fee_percent: number;
+  late_fee_period_days: number;
+  revenue_recognition_method: string | null;
+  active: boolean;
+  created_at: string;
+}
+
 export interface Contract {
   id: string;
   customer_id: string;
+  plan_id?: string | null;
   contract_name: string;
   contract_status: string | null;
   start_date: string | null;
@@ -133,7 +188,9 @@ export interface Contract {
   service_plan_name: string | null;
   monthly_recurring_fee: number | null;
   included_support_hours: number | null;
+  included_asset_budget?: number | null;
   additional_hourly_rate: number | null;
+  additional_asset_rate?: number | null;
   emergency_support_rate: number | null;
   onsite_support_rate: number | null;
   remote_support_included: boolean | null;
@@ -148,7 +205,10 @@ export interface Contract {
   payment_terms: string | null;
   invoice_due_days: number | null;
   setup_fee: number | null;
+  /** @deprecated Prefer late_fee_percent + late_fee_period_days */
   late_fee_policy: string | null;
+  late_fee_percent?: number | null;
+  late_fee_period_days?: number | null;
   pass_through_charges_allowed: boolean | null;
   revenue_recognition_method: string | null;
   contract_owner_id: string | null;
@@ -217,6 +277,30 @@ export interface ServiceTicket {
   invoice_status: string | null;
   scheduled_start: string | null;
   scheduled_window: string | null;
+  /** Manager-set max hours the tech may place on the schedule (1–9). */
+  max_hours?: number | null;
+  /** Customer selected ASAP-Emergency (Critical + next-available assign). */
+  is_asap?: boolean | null;
+  /** Locked service day from the customer (null when ASAP). */
+  locked_service_date?: string | null;
+  /** Original customer-requested day (kept across reschedules). */
+  original_requested_date?: string | null;
+  /** Tech placed the visit on the day after the locked service date. */
+  scheduled_off_requested_day?: boolean | null;
+  /** Customer rescheduled; ticket returned to Needs scheduling. */
+  customer_rescheduled?: boolean | null;
+}
+
+export interface TicketHourExtensionRequest {
+  id: string;
+  ticket_id: string;
+  technician_id: string;
+  current_max_hours: number;
+  requested_hours: number;
+  reason: string | null;
+  status: "Pending" | "Approved" | "Denied" | "Cancelled" | string;
+  created_at: string;
+  reviewed_at: string | null;
 }
 
 export interface WorkEntry {
@@ -292,7 +376,11 @@ export type NotificationType =
   | "customer_reply"
   | "work_approval"
   | "manager_message"
-  | "upcoming_task";
+  | "upcoming_task"
+  | "work_past_due"
+  | "schedule_priority_override"
+  | "ticket_unassigned"
+  | "customer_reschedule";
 
 export interface AppNotification {
   id: string;
@@ -304,12 +392,12 @@ export interface AppNotification {
 }
 
 export type KnowledgeBaseCategory =
-  | "Hardware"
-  | "Software"
-  | "Networking"
-  | "Security"
-  | "SOPs"
-  | "Repairs";
+  | "Service Procedures"
+  | "Troubleshooting Guides"
+  | "Tools & Software"
+  | "Standards & Policies"
+  | "Templates & Forms"
+  | "Quick Access";
 
 export interface KnowledgeBaseArticle {
   id: string;
@@ -380,15 +468,24 @@ export type ExpenseType =
   | "Parking"
   | "Miscellaneous";
 
+export type ExpenseTag =
+  | "Billable to Customer"
+  | "Internal Company Expense";
+
+export type ApprovalStatus = "Pending" | "Approved" | "Denied";
+
 export interface TicketExpense {
   id: string;
   ticket_id: string;
   technician_id: string | null;
   type: ExpenseType | string;
+  expense_tag: ExpenseTag | string;
   amount: number;
   description: string | null;
   date: string;
   receipt_url: string | null;
+  approval_status: ApprovalStatus | string | null;
+  invoice_id: string | null;
   created_at: string;
 }
 
@@ -400,7 +497,12 @@ export const EXPENSE_TYPES: ExpenseType[] = [
   "Miscellaneous",
 ];
 
-export type ApprovalStatus = "Pending" | "Approved" | "Denied";
+export const EXPENSE_TAGS: ExpenseTag[] = [
+  "Internal Company Expense",
+  "Billable to Customer",
+];
+
+export const DEFAULT_EXPENSE_TAG: ExpenseTag = "Internal Company Expense";
 
 export interface Approval {
   id: string;
@@ -409,6 +511,7 @@ export interface Approval {
   manager_id: string | null;
   cost_entry_id: string | null;
   work_entry_id: string | null;
+  ticket_expense_id: string | null;
   status: ApprovalStatus | string;
   reason: string | null;
   manager_notes: string | null;
@@ -427,6 +530,13 @@ export interface ApprovalAttachment {
   created_at: string;
 }
 
+export type InvoiceSource =
+  | "manual"
+  | "plan_recurring"
+  | "work_entries"
+  | "asset_overage"
+  | "ticket_expenses";
+
 export interface Invoice {
   id: string;
   invoice_number: string;
@@ -439,10 +549,13 @@ export interface Invoice {
   software_charges: number | null;
   equipment_charges: number | null;
   other_charges: number | null;
+  late_fee_amount?: number | null;
   total_amount: number | null;
   amount_paid: number | null;
   remaining_balance: number | null;
   status: InvoiceStatus | string | null;
+  invoice_source?: InvoiceSource | string | null;
+  billing_period?: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -493,7 +606,7 @@ export interface ServiceCatalogItem {
 export interface HardwareAsset {
   id: string;
   asset_number: string;
-  customer_id: string;
+  customer_id: string | null;
   quantity: number;
   location: string | null;
   category: HardwareCategory | string;
@@ -608,11 +721,13 @@ export type AssetOrderTicketStatus =
   | "Rejected"
   | "Needs more information";
 
+export type AssetOrderRequestType = "purchase" | "replacement";
+
 export interface AssetOrderTicket {
   id: string;
   ticket_number: string;
-  asset_id: string;
-  customer_id: string;
+  asset_id: string | null;
+  customer_id: string | null;
   requested_by: string;
   replacement_manufacturer: string;
   replacement_model: string;
@@ -623,6 +738,9 @@ export interface AssetOrderTicket {
   preferred_vendor: string | null;
   estimated_unit_cost: number | null;
   needed_by: string | null;
+  category: string | null;
+  request_type: AssetOrderRequestType;
+  created_asset_id: string | null;
   status: AssetOrderTicketStatus;
   admin_notes: string | null;
   reviewed_by: string | null;
@@ -648,6 +766,47 @@ export interface InventoryReorderRequest {
   admin_notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface TechnicianPartsBudget {
+  technician_id: string;
+  monthly_limit: number;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+/** Monthly Internal Company Expense Tracker limit per technician. */
+export interface TechnicianExpenseBudget {
+  technician_id: string;
+  monthly_limit: number;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface InventoryPartOrder {
+  id: string;
+  technician_id: string;
+  part_id: string;
+  quantity: number;
+  unit_cost: number;
+  total_cost: number;
+  ordered_by: string | null;
+  created_at: string;
+}
+
+export type BudgetIncreaseRequestStatus = "Pending" | "Approved" | "Rejected";
+
+export interface TechnicianBudgetIncreaseRequest {
+  id: string;
+  technician_id: string;
+  requested_limit: number;
+  current_limit: number;
+  reason: string | null;
+  status: BudgetIncreaseRequestStatus | string;
+  reviewed_by: string | null;
+  review_notes: string | null;
+  created_at: string;
+  reviewed_at: string | null;
 }
 
 export interface SecurityScore {

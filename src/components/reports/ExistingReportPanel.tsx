@@ -5,6 +5,7 @@ import { MonthPicker } from "@/components/MonthPicker";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
+import { PLAN_CASH_BILLING_GUIDANCE } from "@/lib/plan-pricing";
 import type { Customer, ServiceTicket, Technician } from "@/lib/types";
 
 export type LegacyReportView =
@@ -102,6 +103,11 @@ export function ExistingReportPanel({
 }: ExistingReportPanelProps) {
   return (
     <div className="space-y-4">
+      {view === "cash" || view === "margin" || view === "leakage" ? (
+        <div className="alert alert-info text-sm">
+          <span>{PLAN_CASH_BILLING_GUIDANCE}</span>
+        </div>
+      ) : null}
       <div className="alert alert-info text-sm">
         <span>
           <strong>Next action:</strong> {nextActions[view]}

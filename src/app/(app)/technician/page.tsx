@@ -2,6 +2,9 @@
 
 import { createPtoRequest, cancelPtoRequest } from "@/app/actions/pto";
 import {
+  requestTicketHourExtension,
+} from "@/app/actions/hour-extensions";
+import {
   createWorkEntry,
   resubmitWorkEntry,
   updateWorkEntry,
@@ -23,6 +26,11 @@ import {
   type WorkEntryModalPhase,
 } from "@/components/technician/WorkEntryModal";
 import { useToast } from "@/components/Toast";
+import {
+  ADMIN_VIEW_TECH_EVENT,
+  readAdminViewTechnicianId,
+  writeAdminViewTechnicianId,
+} from "@/lib/admin-technician-view";
 import { formatDate, formatHours } from "@/lib/format";
 import {
   DEFAULT_ANNUAL_PTO_HOURS,
@@ -43,6 +51,7 @@ import type {
   ServiceTicket,
   Technician,
   TechnicianPtoRequest,
+  TicketHourExtensionRequest,
   WorkEntry,
 } from "@/lib/types";
 import {
@@ -93,14 +102,20 @@ function nowTimeValue(): string {
 }
 
 export default function TechnicianWorkspacePage() {
-  const { activeRole } = useDemoRole();
+  const { activeRole, realRole } = useDemoRole();
   const { showToast } = useToast();
+  const isAdminViewer = realRole === "administrator";
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [technician, setTechnician] = useState<Technician | null>(null);
+  const [technicianOptions, setTechnicianOptions] = useState<Technician[]>([]);
+  const [viewAsTechnicianId, setViewAsTechnicianId] = useState<string>("");
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [ptoRequests, setPtoRequests] = useState<TechnicianPtoRequest[]>([]);
+  const [hourExtensionRequests, setHourExtensionRequests] = useState<
+    TicketHourExtensionRequest[]
+  >([]);
   const [selectedTicketId, setSelectedTicketId] = useState("");
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [resubmitId, setResubmitId] = useState<string | null>(null);
@@ -135,6 +150,78 @@ export default function TechnicianWorkspacePage() {
   const [ptoError, setPtoError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  useEffect(() => {
+    if (!isAdminViewer) {
+      setTechnicianOptions([]);
+      setViewAsTechnicianId("");
+      return;
+    }
+
+    let cancelled = false;
+    async function loadTechnicianOptions() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("technicians")
+        .select("*")
+        .eq("active", true)
+        .order("technician_name");
+      if (cancelled) return;
+
+      const options = (data ?? []) as Technician[];
+      setTechnicianOptions(options);
+
+      const stored = readAdminViewTechnicianId();
+      const preferred =
+        (stored && options.some((tech) => tech.id === stored) ? stored : null) ||
+        options[0]?.id ||
+        "";
+      setViewAsTechnicianId(preferred);
+      if (preferred && preferred !== stored) {
+        writeAdminViewTechnicianId(preferred);
+      }
+      if (!preferred) {
+        setLoading(false);
+      }
+    }
+
+    void loadTechnicianOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdminViewer]);
+
+  const applyAdminTechnicianId = useCallback((nextId: string) => {
+    setViewAsTechnicianId(nextId);
+    setSelectedTicketId("");
+    setEditingEntryId(null);
+    setResubmitId(null);
+    setWorkModalOpen(false);
+    setLiveSessionTicketId(null);
+    setSessionPaused(false);
+    setSessionEnRoute(false);
+    setEnRouteTicketId(null);
+    setBankedWorkedSeconds(0);
+    setSegmentStartedAt(null);
+    setPauseCount(0);
+    setHoursLockedFromSession(false);
+    setError(null);
+    setPtoError(null);
+    setLoading(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isAdminViewer) return;
+
+    function onExternal(event: Event) {
+      const detail = (event as CustomEvent<{ technicianId: string }>).detail;
+      if (!detail?.technicianId) return;
+      applyAdminTechnicianId(detail.technicianId);
+    }
+
+    window.addEventListener(ADMIN_VIEW_TECH_EVENT, onExternal);
+    return () => window.removeEventListener(ADMIN_VIEW_TECH_EVENT, onExternal);
+  }, [applyAdminTechnicianId, isAdminViewer]);
+
   const loadData = useCallback(async () => {
     try {
       const supabase = createClient();
@@ -148,6 +235,7 @@ export default function TechnicianWorkspacePage() {
         setWorkEntries([]);
         setPtoRequests([]);
         setInventoryParts([]);
+        setHourExtensionRequests([]);
         return;
       }
 
@@ -159,16 +247,31 @@ export default function TechnicianWorkspacePage() {
 
       setProfile(profileData);
 
-      const { data: techData } = await supabase
-        .from("technicians")
-        .select("*")
-        .eq("profile_id", user.id)
-        .maybeSingle();
+      let techData: Technician | null = null;
+      if (isAdminViewer) {
+        // Wait until the admin picker has a selection before loading a board.
+        if (!viewAsTechnicianId) {
+          return;
+        }
+        const { data } = await supabase
+          .from("technicians")
+          .select("*")
+          .eq("id", viewAsTechnicianId)
+          .maybeSingle();
+        techData = data;
+      } else {
+        const { data } = await supabase
+          .from("technicians")
+          .select("*")
+          .eq("profile_id", user.id)
+          .maybeSingle();
+        techData = data;
+      }
 
       setTechnician(techData);
 
       if (techData) {
-        const [t, w, p, parts] = await Promise.all([
+        const [t, w, p, parts, hourExt] = await Promise.all([
           supabase
             .from("service_tickets")
             .select("*")
@@ -189,24 +292,36 @@ export default function TechnicianWorkspacePage() {
             .select("*")
             .eq("active", true)
             .order("part_name"),
+          supabase
+            .from("ticket_hour_extension_requests")
+            .select("*")
+            .eq("technician_id", techData.id)
+            .order("created_at", { ascending: false }),
         ]);
         setTickets(t.data ?? []);
         setWorkEntries(w.data ?? []);
         setPtoRequests(p.data ?? []);
         setInventoryParts((parts.data ?? []) as InventoryPart[]);
+        setHourExtensionRequests(
+          (hourExt.data ?? []) as TicketHourExtensionRequest[],
+        );
       } else {
         setTickets([]);
         setWorkEntries([]);
         setPtoRequests([]);
         setInventoryParts([]);
+        setHourExtensionRequests([]);
       }
     } catch (loadError) {
       console.error("technician loadData failed:", loadError);
       setError("Could not load technician workspace. Refresh and try again.");
     } finally {
-      setLoading(false);
+      // Keep spinner up for admins until a technician is selected.
+      if (!isAdminViewer || viewAsTechnicianId) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [isAdminViewer, viewAsTechnicianId]);
 
   useEffect(() => {
     void loadData();
@@ -319,6 +434,16 @@ export default function TechnicianWorkspacePage() {
     }
     return dates;
   }, [ptoRequests]);
+
+  const pendingHourExtensionTicketIds = useMemo(
+    () =>
+      new Set(
+        hourExtensionRequests
+          .filter((request) => request.status === "Pending")
+          .map((request) => request.ticket_id),
+      ),
+    [hourExtensionRequests],
+  );
 
   useEffect(() => {
     if (hoursLockedFromSession) return;
@@ -597,6 +722,10 @@ export default function TechnicianWorkspacePage() {
     swapTicketId?: string | null;
     swapScheduledStart?: string | null;
     swapScheduledWindow?: string | null;
+    acknowledgedBackwardMoveWarning?: boolean;
+    warningFromLabel?: string;
+    warningToLabel?: string;
+    warningPriority?: string;
   }) {
     startTransition(async () => {
       try {
@@ -607,6 +736,11 @@ export default function TechnicianWorkspacePage() {
           swapTicketId: input.swapTicketId ?? null,
           swapScheduledStart: input.swapScheduledStart ?? null,
           swapScheduledWindow: input.swapScheduledWindow ?? null,
+          acknowledgedBackwardMoveWarning:
+            input.acknowledgedBackwardMoveWarning ?? false,
+          warningFromLabel: input.warningFromLabel,
+          warningToLabel: input.warningToLabel,
+          warningPriority: input.warningPriority,
         });
         if (result.success) {
           showToast(result.message);
@@ -620,6 +754,28 @@ export default function TechnicianWorkspacePage() {
             ? error.message
             : "Could not update the schedule. Please refresh and try again.";
         showToast(message, "error");
+      }
+    });
+  }
+
+  function handleRequestHourExtension(input: {
+    ticketId: string;
+    requestedHours: number;
+    reason?: string;
+  }) {
+    if (!technician) return;
+    startTransition(async () => {
+      const result = await requestTicketHourExtension({
+        ticketId: input.ticketId,
+        technicianId: technician.id,
+        requestedHours: input.requestedHours,
+        reason: input.reason,
+      });
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+      } else {
+        showToast(result.message, "error");
       }
     });
   }
@@ -665,7 +821,12 @@ export default function TechnicianWorkspacePage() {
     });
   }
 
-  if (activeRole !== "technician" && activeRole !== "administrator") {
+  // Real admins can always open My Work (even if Demo Role is Manager, etc.).
+  if (
+    activeRole !== "technician" &&
+    activeRole !== "administrator" &&
+    realRole !== "administrator"
+  ) {
     return (
       <AlertBanner
         tone="info"
@@ -677,13 +838,34 @@ export default function TechnicianWorkspacePage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <span className="loading loading-spinner loading-lg text-blue-400" />
+      <div className="space-y-6 text-slate-100">
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <span className="loading loading-spinner loading-lg text-blue-400" />
+        </div>
       </div>
     );
   }
 
   if (!technician) {
+    if (isAdminViewer) {
+      return (
+        <div className="space-y-6 text-slate-100">
+          <div className="rounded-xl border border-cyan-500/20 bg-slate-900/80 p-8 text-center text-slate-200">
+            <h3 className="text-lg font-semibold text-white">
+              {technicianOptions.length === 0
+                ? "No active technicians"
+                : "Select a technician"}
+            </h3>
+            <p className="mt-2 text-sm text-slate-400">
+              {technicianOptions.length === 0
+                ? "Add technicians on the Technicians page to preview their My Work dashboards."
+                : "Use the View as dropdown in the header to choose a technician."}
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="rounded-xl border border-blue-500/25 bg-slate-900/80 p-8 text-center text-slate-200">
         <h3 className="text-lg font-semibold text-white">No technician profile linked</h3>
@@ -695,11 +877,23 @@ export default function TechnicianWorkspacePage() {
     );
   }
 
+  const welcomeName = isAdminViewer
+    ? technician.technician_name
+    : (profile?.full_name ?? technician.technician_name);
+
   return (
     <div className="space-y-6 text-slate-100">
       <PageHeader
-        title={`Welcome, ${profile?.full_name ?? technician.technician_name}`}
-        description="Schedule tickets, request PTO, log work, and track pay-period hours."
+        title={
+          isAdminViewer
+            ? `${welcomeName}'s My Work`
+            : `Welcome, ${welcomeName}`
+        }
+        description={
+          isAdminViewer
+            ? `Viewing schedule, PTO, and work log for ${technician.technician_name}. Use View as in the header to switch technicians.`
+            : "Schedule tickets, request PTO, log work, and track pay-period hours."
+        }
         action={
           <button
             type="button"
@@ -901,6 +1095,9 @@ export default function TechnicianWorkspacePage() {
           ptoDates={ptoDates}
           busy={isPending}
           enRouteTicketId={enRouteTicketId}
+          pendingHourExtensionTicketIds={pendingHourExtensionTicketIds}
+          onRequestHourExtension={handleRequestHourExtension}
+          technicianId={technician?.id ?? null}
         />
       </div>
 

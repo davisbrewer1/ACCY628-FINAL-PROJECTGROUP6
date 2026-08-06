@@ -1,14 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { KB_SEED_ARTICLES, KNOWLEDGE_BASE_CATEGORIES } from "@/lib/kb-content";
 import type { KnowledgeBaseArticle, KnowledgeBaseCategory } from "@/lib/types";
 
-export const KNOWLEDGE_BASE_CATEGORIES = [
-  "Hardware",
-  "Software",
-  "Networking",
-  "Security",
-  "SOPs",
-  "Repairs",
-] as const satisfies readonly KnowledgeBaseCategory[];
+export { KNOWLEDGE_BASE_CATEGORIES, KB_SEED_ARTICLES };
 
 const BOOKMARK_KEY = "nexus-kb-bookmarks";
 
@@ -18,7 +12,6 @@ export function isKnowledgeBaseUnavailable() {
   return knowledgeBaseUnavailable;
 }
 
-/** Clear the sticky "table missing" flag after migrations are applied. */
 export function resetKnowledgeBaseAvailability() {
   knowledgeBaseUnavailable = false;
 }
@@ -35,12 +28,26 @@ function isMissingTableError(error: { message?: string; code?: string } | null) 
   );
 }
 
+function seedAsArticles(): KnowledgeBaseArticle[] {
+  const now = new Date().toISOString();
+  return KB_SEED_ARTICLES.map((article, index) => ({
+    id: `seed-${index}-${article.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    title: article.title,
+    content: article.content,
+    category: article.category,
+    tags: article.tags,
+    updated_at: now,
+    created_by: null,
+    created_at: now,
+  }));
+}
+
 /** Fetch all knowledge base articles, newest updates first. */
 export async function fetchKnowledgeBaseArticles(
   supabase: SupabaseClient,
 ): Promise<KnowledgeBaseArticle[]> {
   if (knowledgeBaseUnavailable) {
-    return [];
+    return seedAsArticles();
   }
 
   const { data, error } = await supabase
@@ -52,13 +59,21 @@ export async function fetchKnowledgeBaseArticles(
     if (isMissingTableError(error)) {
       knowledgeBaseUnavailable = true;
     }
-    throw error;
+    console.warn("fetchKnowledgeBaseArticles:", error.message);
+    return seedAsArticles();
   }
 
-  return ((data ?? []) as KnowledgeBaseArticle[]).map((article) => ({
+  const rows = ((data ?? []) as KnowledgeBaseArticle[]).map((article) => ({
     ...article,
     tags: article.tags ?? [],
   }));
+
+  // Prefer the rewritten technician KB categories when present.
+  const modern = rows.filter((article) =>
+    (KNOWLEDGE_BASE_CATEGORIES as readonly string[]).includes(article.category),
+  );
+
+  return modern.length > 0 ? modern : seedAsArticles();
 }
 
 export function filterKnowledgeBaseArticles(
@@ -78,7 +93,11 @@ export function filterKnowledgeBaseArticles(
       return false;
     }
 
-    if (options.bookmarksOnly && options.bookmarkedIds && !options.bookmarkedIds.has(article.id)) {
+    if (
+      options.bookmarksOnly &&
+      options.bookmarkedIds &&
+      !options.bookmarkedIds.has(article.id)
+    ) {
       return false;
     }
 
@@ -99,7 +118,7 @@ export function filterKnowledgeBaseArticles(
   });
 }
 
-export function getArticleDescription(content: string, maxLength = 140): string {
+export function getArticleDescription(content: string, maxLength = 110): string {
   const plain = content
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/`[^`]*`/g, " ")
@@ -136,6 +155,23 @@ export function readBookmarkedArticleIds(): Set<string> {
 export function writeBookmarkedArticleIds(ids: Set<string>) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(BOOKMARK_KEY, JSON.stringify([...ids]));
+}
+
+export function groupArticlesByCategory(
+  articles: KnowledgeBaseArticle[],
+): { category: KnowledgeBaseCategory | string; articles: KnowledgeBaseArticle[] }[] {
+  const map = new Map<string, KnowledgeBaseArticle[]>();
+  for (const category of KNOWLEDGE_BASE_CATEGORIES) {
+    map.set(category, []);
+  }
+  for (const article of articles) {
+    const list = map.get(article.category) ?? [];
+    list.push(article);
+    map.set(article.category, list);
+  }
+  return [...map.entries()]
+    .filter(([, rows]) => rows.length > 0)
+    .map(([category, rows]) => ({ category, articles: rows }));
 }
 
 export async function updateKnowledgeBaseArticle(

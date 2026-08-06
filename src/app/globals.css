@@ -229,6 +229,13 @@ body {
   box-shadow: inset 3px 0 0 #2dd4bf;
 }
 
+/* Dimmed area outside the technician sidebar — click closes the drawer */
+.tech-shell .drawer-side > .drawer-overlay {
+  cursor: pointer;
+  pointer-events: auto;
+  background-color: rgb(2 6 23 / 0.55);
+}
+
 .tech-shell h2 {
   color: #f8fafc;
 }
@@ -236,6 +243,33 @@ body {
 .tech-shell .card {
   background: rgba(30, 41, 59, 0.9);
   border-color: rgba(37, 99, 235, 0.28);
+  color: #e2e8f0;
+}
+
+/* Corporate theme base-content is dark; force readable muted text on the slate shell */
+.tech-shell .label-text,
+.tech-shell .label-text-alt {
+  color: #94a3b8;
+}
+
+.tech-shell .text-base-content {
+  color: #e2e8f0;
+}
+
+.tech-shell .text-base-content\/70,
+.tech-shell .text-base-content\/60,
+.tech-shell .text-base-content\/55,
+.tech-shell .text-base-content\/50 {
+  color: #94a3b8;
+}
+
+.tech-shell .text-base-content\/40 {
+  color: #64748b;
+}
+
+.tech-shell p,
+.tech-shell .card-body,
+.tech-shell .form-control {
   color: #e2e8f0;
 }
 
@@ -249,11 +283,25 @@ body {
   background: transparent;
 }
 
+.tech-shell .table-zebra tbody tr:nth-child(even) :where(td, th) {
+  background: rgba(30, 41, 59, 0.55);
+}
+
 .tech-shell .input,
 .tech-shell .select,
 .tech-shell .textarea {
   background: #0b1220;
   border-color: #475569;
+  color: #f1f5f9;
+}
+
+.tech-shell .input::placeholder,
+.tech-shell .textarea::placeholder {
+  color: #64748b;
+}
+
+.tech-shell .select option {
+  background: #020617;
   color: #f1f5f9;
 }
 
@@ -288,6 +336,149 @@ body {
     #a5c8ed
   ) !important;
   color: #0b1220 !important;
+}
+
+.tech-shell .btn-ghost {
+  color: #cbd5e1;
+}
+
+.tech-shell .btn-outline {
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+.tech-shell .badge-ghost {
+  background: rgba(51, 65, 85, 0.7);
+  color: #e2e8f0;
+  border-color: transparent;
+}
+
+.tech-shell .expense-receipt-panel {
+  background: rgba(2, 6, 23, 0.65);
+  border-color: rgba(71, 85, 105, 0.85);
+  color: #e2e8f0;
+}
+
+.tech-shell .expense-receipt-dropzone,
+.tech-shell .expense-receipt-tile {
+  background: #020617;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.tech-shell .expense-receipt-dropzone:hover {
+  border-color: rgba(6, 182, 212, 0.55);
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.tech-shell .expense-receipt-dropzone .text-primary,
+.tech-shell .expense-receipt-panel .text-primary {
+  color: #22d3ee;
+}
+
+.tech-shell .expense-receipt-tile button {
+  background: rgba(15, 23, 42, 0.9);
+  color: #e2e8f0;
+}
+
+/* Keep long Billing / Ticket option labels inside the select control */
+.expense-billing-select,
+.expense-ticket-select {
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.expense-billing-select option,
+.expense-ticket-select option {
+  white-space: normal;
+}
+
+/* Modals inherit the technician shell's near-white base-content on top of a
+   light base-100 surface, hiding headings, field labels, and divider text.
+   Darken the surface to match the shell and pin the ink it derives. */
+.tech-shell .hardware-page dialog .modal-box {
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid rgba(6, 182, 212, 0.2);
+}
+
+.tech-shell .hardware-page dialog .modal-box :is(h3, h4, .divider, .label-text) {
+  color: #f1f5f9;
+}
+
+.tech-shell .hardware-page dialog .modal-box
+  :is(.text-base-content\/70, .text-base-content\/60, .text-base-content\/50) {
+  color: #cbd5e1;
+}
+
+.tech-shell .hardware-page dialog .modal-box .rounded-box {
+  border-color: #475569;
+}
+
+.tech-shell .hardware-page dialog .modal-box .text-error {
+  color: #fca5a5;
+}
+
+/* Dropdown lists paint on the OS popup surface, so the theme's near-white
+   option ink disappears. Disabled entries need the color set explicitly. */
+.tech-shell .hardware-page dialog .modal-box option,
+.tech-shell .hardware-page dialog .modal-box option:disabled {
+  background: #020617;
+  color: #f1f5f9;
+}
+
+/* Asset detail drawer uses the same light base-100 surface as modals, so it
+   inherits near-white shell text and labels disappear. Match the dark shell. */
+.tech-shell .asset-detail-drawer {
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+}
+
+.tech-shell .asset-detail-drawer
+  :is(.text-base-content\/70, .text-base-content\/60, .text-base-content\/55, .text-base-content\/50) {
+  color: #cbd5e1 !important;
+}
+
+.tech-shell .asset-detail-drawer :is(.border-base-300, .border-t, .border-b, .border-l) {
+  border-color: #334155;
+}
+
+.tech-shell .asset-detail-drawer .btn-ghost {
+  color: #cbd5e1;
+}
+
+.tech-shell .asset-detail-drawer .btn:not(.btn-primary):not(.btn-error):not(.btn-warning):not(.btn-success):not(.btn-info) {
+  background: #1e293b;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.tech-shell .asset-detail-drawer .input,
+.tech-shell .asset-detail-drawer .select,
+.tech-shell .asset-detail-drawer .textarea {
+  background: #020617;
+  border-color: #475569;
+  color: #f1f5f9;
+}
+
+.tech-shell .asset-detail-drawer .bg-base-200,
+.tech-shell .asset-detail-drawer .bg-base-300 {
+  background: #1e293b;
+}
+
+.tech-shell .asset-detail-drawer .asset-detail-actions {
+  background: rgba(15, 23, 42, 0.97) !important;
+  color: #e2e8f0;
+  border-color: #334155 !important;
+}
+
+.tech-shell .asset-detail-drawer .badge-ghost {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #475569;
 }
 
 /* Hardware assets page — muted base-content text is unreadable on the dark

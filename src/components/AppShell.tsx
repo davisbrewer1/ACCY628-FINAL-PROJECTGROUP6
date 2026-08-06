@@ -8,6 +8,7 @@ import {
   Clock,
   FileText,
   Home,
+  Layers,
   LayoutDashboard,
   Lightbulb,
   LogOut,
@@ -26,12 +27,14 @@ import {
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { AdminTechnicianPortalSwitcher } from "@/components/admin/AdminTechnicianPortalSwitcher";
 import { NexusLogo } from "@/components/brand/NexusLogo";
 import { DemoRoleSwitcher } from "@/components/DemoRoleSwitcher";
 import { TechnicianHeaderTools } from "@/components/technician/TechnicianHeaderTools";
 import {
   getNavForRole,
+  NAV_ITEMS,
   ROLE_LABELS,
   type NavItem,
 } from "@/lib/auth/roles";
@@ -62,6 +65,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Activity,
   Building2,
   FileText,
+  Layers,
   Package,
   Monitor,
   Ticket,
@@ -297,9 +301,28 @@ export function AppShell({
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const navItems = getNavForRole(activeRole);
-  const techTheme = activeRole === "technician";
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const navItems = useMemo(() => {
+    const base = getNavForRole(activeRole);
+    // Real admins always keep My Work in the sidebar, even when Demo Role
+    // is Manager / Executive / etc.
+    if (realRole !== "administrator") return base;
+    if (base.some((item) => item.href === "/technician")) return base;
+    const myWork = NAV_ITEMS.find((item) => item.href === "/technician");
+    if (!myWork) return base;
+    const techIdx = base.findIndex((item) => item.href === "/technicians");
+    if (techIdx >= 0) {
+      const next = [...base];
+      next.splice(techIdx + 1, 0, myWork);
+      return next;
+    }
+    return [...base, myWork];
+  }, [activeRole, realRole]);
+  const onTechnicianPortal =
+    pathname === "/technician" || pathname.startsWith("/technician/");
+  const techTheme =
+    activeRole === "technician" ||
+    (realRole === "administrator" && onTechnicianPortal);
   const headerNavIndex = activeNavIndex(navItems, pathname);
   const headerBarColor = shadeAtIndex(
     HEADER_BAR_SHADES,
@@ -315,13 +338,17 @@ export function AppShell({
   }
 
   return (
-    <div className={`drawer lg:drawer-open ${techTheme ? "tech-shell" : ""}`}>
+    <div
+      className={`drawer ${
+        techTheme ? "tech-shell" : "lg:drawer-open"
+      }`}
+    >
       <input
         id="app-shell-drawer"
         type="checkbox"
         className="drawer-toggle"
-        checked={mobileOpen}
-        onChange={(event) => setMobileOpen(event.target.checked)}
+        checked={sidebarOpen}
+        onChange={(event) => setSidebarOpen(event.target.checked)}
       />
 
       <div
@@ -335,15 +362,22 @@ export function AppShell({
           className="navbar sticky top-0 z-20 border-b border-white/10 px-4 text-white backdrop-blur transition-[background-color] duration-300 lg:px-6"
           style={{ backgroundColor: headerBarColor }}
         >
-          <div className="flex-none lg:hidden" suppressHydrationWarning>
-            <label
-              htmlFor="app-shell-drawer"
-              className="btn btn-square btn-ghost text-white"
-              aria-label="Open navigation menu"
+          <div
+            className={`flex-none ${techTheme ? "" : "lg:hidden"}`}
+            suppressHydrationWarning
+          >
+            <button
+              type="button"
+              className={`btn btn-square btn-ghost ${techTheme ? "text-white" : ""}`}
+              aria-label={
+                sidebarOpen ? "Close navigation menu" : "Open navigation menu"
+              }
+              aria-expanded={sidebarOpen}
               suppressHydrationWarning
+              onClick={() => setSidebarOpen((open) => !open)}
             >
               <Menu className="size-5" />
-            </label>
+            </button>
           </div>
           <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
             <Link
@@ -365,6 +399,9 @@ export function AppShell({
             </h1>
           </div>
           <div className="flex flex-none items-center gap-1 text-white [&_.btn-ghost]:text-white">
+            {realRole === "administrator" && onTechnicianPortal ? (
+              <AdminTechnicianPortalSwitcher variant="header" />
+            ) : null}
             {techTheme ? (
               <TechnicianHeaderTools technicianId={technicianId} />
             ) : null}
@@ -380,13 +417,17 @@ export function AppShell({
         </main>
       </div>
 
-      <div className="drawer-side z-30">
-        <label
-          htmlFor="app-shell-drawer"
+      <div className="drawer-side z-40">
+        <button
+          type="button"
           className="drawer-overlay"
           aria-label="Close navigation menu"
+          onClick={() => setSidebarOpen(false)}
         />
-        <aside className="min-h-full w-72 border-r border-blue-500/25 bg-[#0B1220] text-slate-100">
+        <aside
+          className="min-h-full w-72 border-r border-blue-500/25 bg-[#0B1220] text-slate-100"
+          onClick={(event) => event.stopPropagation()}
+        >
           <SidebarPanel
             pathname={pathname}
             navItems={navItems}
@@ -396,7 +437,7 @@ export function AppShell({
             activeRole={activeRole}
             onDemoRoleChange={onDemoRoleChange}
             onLogout={handleLogout}
-            onNavigate={() => setMobileOpen(false)}
+            onNavigate={() => setSidebarOpen(false)}
           />
         </aside>
       </div>

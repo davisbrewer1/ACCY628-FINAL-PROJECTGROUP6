@@ -9,8 +9,10 @@ import type {
   Customer,
   Invoice,
   ServiceTicket,
+  TicketExpense,
   WorkEntry,
 } from "@/lib/types";
+import { isAcceptedTicketExpense } from "@/lib/ticket-expense-budgets";
 import { format, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
 
 const OPEN_STATUSES = new Set([
@@ -44,6 +46,7 @@ export function computeDashboardStats(
   tickets: ServiceTicket[],
   workEntries: WorkEntry[],
   invoices: Invoice[],
+  ticketExpenses: TicketExpense[] = [],
 ) {
   const activeCustomers = customers.filter((c) => c.status === "Active").length;
   const activeContracts = contracts.filter((c) => c.contract_status === "Active").length;
@@ -62,12 +65,41 @@ export function computeDashboardStats(
   }).length;
 
   const monthEntries = workEntries.filter((e) => isThisMonth(e.work_date));
-  const includedHours = monthEntries
-    .filter((e) => e.included_in_contract)
-    .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
-  const billableHours = monthEntries
-    .filter((e) => !e.included_in_contract)
-    .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
+  const ticketById = new Map(tickets.map((t) => [t.id, t]));
+
+  // Pool-aware: hours within each contract's included_support_hours are covered;
+  // only overage hours are "billable" for revenue estimates.
+  let includedHours = 0;
+  let billableHours = 0;
+  const activeForHours = contracts.filter((c) => c.contract_status === "Active");
+  const seenContractIds = new Set<string>();
+
+  for (const contract of activeForHours) {
+    seenContractIds.add(contract.id);
+    const entries = monthEntries
+      .filter((e) => e.contract_id === contract.id)
+      .sort((a, b) => {
+        const da = a.work_date ?? "";
+        const db = b.work_date ?? "";
+        if (da !== db) return da.localeCompare(db);
+        return a.id.localeCompare(b.id);
+      });
+    const pool = Number(contract.included_support_hours ?? 0);
+    let used = 0;
+    for (const entry of entries) {
+      const hours = Number(entry.hours_worked ?? 0);
+      if (hours <= 0) continue;
+      const covered = Math.min(hours, Math.max(0, pool - used));
+      includedHours += covered;
+      billableHours += Math.max(0, hours - covered);
+      used += hours;
+    }
+  }
+
+  for (const entry of monthEntries) {
+    if (entry.contract_id && seenContractIds.has(entry.contract_id)) continue;
+    billableHours += Number(entry.hours_worked ?? 0);
+  }
 
   const unpaidBalance = invoices
     .filter((i) => i.status !== "Paid" && i.status !== "Canceled")
@@ -81,11 +113,35 @@ export function computeDashboardStats(
     .filter((c) => c.contract_status === "Active")
     .map((c) => {
       const contractEntries = workEntries.filter((e) => e.contract_id === c.id);
-      const costs = contractEntries.reduce(
+      const workCosts = contractEntries.reduce(
         (sum, e) => sum + (e.total_direct_cost ?? 0),
         0,
       );
-      const revenue = (c.monthly_recurring_fee ?? 0) + billableHours * (c.additional_hourly_rate ?? 0);
+      const expenseCosts = ticketExpenses
+        .filter((expense) => {
+          if (!isAcceptedTicketExpense(expense)) return false;
+          return ticketById.get(expense.ticket_id)?.contract_id === c.id;
+        })
+        .reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
+      const costs = workCosts + expenseCosts;
+      const monthContractEntries = monthEntries.filter(
+        (e) => e.contract_id === c.id,
+      );
+      const pool = Number(c.included_support_hours ?? 0);
+      let used = 0;
+      let overage = 0;
+      const sorted = [...monthContractEntries].sort((a, b) =>
+        (a.work_date ?? "").localeCompare(b.work_date ?? ""),
+      );
+      for (const entry of sorted) {
+        const hours = Number(entry.hours_worked ?? 0);
+        const covered = Math.min(hours, Math.max(0, pool - used));
+        overage += Math.max(0, hours - covered);
+        used += hours;
+      }
+      const revenue =
+        (c.monthly_recurring_fee ?? 0) +
+        overage * (c.additional_hourly_rate ?? 0);
       return calcProfitMargin(revenue, costs);
     })
     .filter((m): m is number => m != null);
@@ -130,6 +186,8 @@ export function groupTicketsByPriority(tickets: ServiceTicket[]) {
 export function revenueVsCostsByMonth(
   invoices: Invoice[],
   workEntries: WorkEntry[],
+  ticketExpenses: TicketExpense[] = [],
+  _tickets: ServiceTicket[] = [],
 ) {
   const months: Record<string, { revenue: number; costs: number }> = {};
 
@@ -145,6 +203,13 @@ export function revenueVsCostsByMonth(
     const key = format(new Date(entry.work_date), "MMM yyyy");
     months[key] ??= { revenue: 0, costs: 0 };
     months[key].costs += entry.total_direct_cost ?? 0;
+  });
+
+  ticketExpenses.forEach((expense) => {
+    if (!isAcceptedTicketExpense(expense) || !expense.date) return;
+    const key = format(new Date(expense.date), "MMM yyyy");
+    months[key] ??= { revenue: 0, costs: 0 };
+    months[key].costs += Number(expense.amount ?? 0);
   });
 
   return Object.entries(months).map(([month, data]) => ({
@@ -173,16 +238,27 @@ export function profitabilityByCustomer(
   customers: Customer[],
   contracts: Contract[],
   workEntries: WorkEntry[],
+  ticketExpenses: TicketExpense[] = [],
+  tickets: ServiceTicket[] = [],
 ) {
+  const ticketById = new Map(tickets.map((t) => [t.id, t]));
+
   return customers.map((customer) => {
     const customerContracts = contracts.filter((c) => c.customer_id === customer.id);
     const revenue = customerContracts.reduce(
       (sum, c) => sum + (c.monthly_recurring_fee ?? 0),
       0,
     );
-    const costs = workEntries
+    const workCosts = workEntries
       .filter((e) => e.customer_id === customer.id)
       .reduce((sum, e) => sum + (e.total_direct_cost ?? 0), 0);
+    const expenseCosts = ticketExpenses
+      .filter((expense) => {
+        if (!isAcceptedTicketExpense(expense)) return false;
+        return ticketById.get(expense.ticket_id)?.customer_id === customer.id;
+      })
+      .reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
+    const costs = workCosts + expenseCosts;
     const profit = calcContractProfit(revenue, costs);
     return {
       name: customer.customer_name,
@@ -191,6 +267,21 @@ export function profitabilityByCustomer(
       profit,
     };
   });
+}
+
+/** Sum accepted ticket expenses attributed to a contract via ticket.contract_id. */
+export function acceptedExpenseCostForContract(
+  contractId: string,
+  ticketExpenses: TicketExpense[],
+  tickets: ServiceTicket[],
+): number {
+  const ticketById = new Map(tickets.map((t) => [t.id, t]));
+  return ticketExpenses
+    .filter((expense) => {
+      if (!isAcceptedTicketExpense(expense)) return false;
+      return ticketById.get(expense.ticket_id)?.contract_id === contractId;
+    })
+    .reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
 }
 
 export function sortAlerts(alerts: Alert[]): Alert[] {

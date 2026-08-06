@@ -23,14 +23,17 @@ import {
   getReadyToInvoiceEntries,
   getRenewalsInDays,
 } from "@/lib/manager-ops";
+import { allocateOverageHours } from "@/lib/plan-pricing";
 import { createClient } from "@/lib/supabase/client";
 import type {
   AiPlatform,
   AiRisk,
   AiUserCompliance,
+  AssetRepair,
   Contract,
   Customer,
   HardwareAsset,
+  InventoryPart,
   Invoice,
   Payment,
   Recommendation,
@@ -39,6 +42,7 @@ import type {
   ServiceCatalogItem,
   ServiceTicket,
   Technician,
+  TicketExpense,
   WorkEntry,
 } from "@/lib/types";
 
@@ -48,9 +52,12 @@ function emptyDataset(): ReportDataset {
     contracts: [],
     tickets: [],
     workEntries: [],
+    ticketExpenses: [],
     invoices: [],
     payments: [],
     hardware: [],
+    inventoryParts: [],
+    assetRepairs: [],
     securityScores: [],
     securityAlerts: [],
     aiPlatforms: [],
@@ -71,7 +78,9 @@ export default function ReportsPage() {
   const [resolutionMonth, setResolutionMonth] = useState<Date | null>(null);
 
   useEffect(() => {
-    async function load() {
+    let cancelled = false;
+
+    async function loadData() {
       const supabase = createClient();
       const results = await Promise.all([
         supabase.from("contracts").select("*"),
@@ -93,7 +102,12 @@ export default function ReportsPage() {
         supabase.from("ai_user_compliance").select("*"),
         supabase.from("recommendations").select("*"),
         supabase.from("service_catalog_items").select("*"),
+        supabase.from("inventory_parts").select("*"),
+        supabase.from("asset_repairs").select("*"),
+        supabase.from("ticket_expenses").select("*"),
       ]);
+
+      if (cancelled) return;
 
       setDataset({
         contracts: (results[0].data ?? []) as Contract[],
@@ -111,10 +125,31 @@ export default function ReportsPage() {
         aiCompliance: (results[12].data ?? []) as AiUserCompliance[],
         recommendations: (results[13].data ?? []) as Recommendation[],
         catalogItems: (results[14].data ?? []) as ServiceCatalogItem[],
+        inventoryParts: (results[15].data ?? []) as InventoryPart[],
+        assetRepairs: (results[16].data ?? []) as AssetRepair[],
+        ticketExpenses: (results[17].data ?? []) as TicketExpense[],
       });
       setLoading(false);
     }
-    load();
+
+    void loadData();
+
+    function onVisible() {
+      if (document.visibilityState === "visible") {
+        void loadData();
+      }
+    }
+    function onFocus() {
+      void loadData();
+    }
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   const {
@@ -132,10 +167,45 @@ export default function ReportsPage() {
       .filter((c) => c.contract_status === "Active")
       .reduce((sum, c) => sum + (c.monthly_recurring_fee ?? 0), 0);
 
-    const unbilledRevenue = getReadyToInvoiceEntries(workEntries).reduce(
-      (sum, e) => sum + (e.total_direct_cost ?? 0),
-      0,
-    );
+    // Unbilled = pool overage hours × rate + pass-through expenses on ready entries
+    const ready = getReadyToInvoiceEntries(workEntries);
+    let unbilledRevenue = 0;
+    for (const contract of contracts) {
+      const contractReady = ready.filter((e) => e.contract_id === contract.id);
+      if (contractReady.length === 0) continue;
+      const byMonth = new Map<string, typeof contractReady>();
+      for (const entry of contractReady) {
+        const month = entry.work_date?.slice(0, 7) ?? "unknown";
+        const list = byMonth.get(month) ?? [];
+        list.push(entry);
+        byMonth.set(month, list);
+      }
+      for (const monthEntries of byMonth.values()) {
+        const allocated = allocateOverageHours({
+          selected: monthEntries,
+          includedHoursPerMonth: Number(contract.included_support_hours ?? 0),
+        });
+        for (const entry of monthEntries) {
+          const overage = allocated.get(entry.id) ?? 0;
+          unbilledRevenue +=
+            overage * (contract.additional_hourly_rate ?? 0) +
+            (entry.parts_cost ?? 0) +
+            (entry.software_cost ?? 0) +
+            (entry.equipment_cost ?? 0) +
+            (entry.travel_cost ?? 0) +
+            (entry.other_cost ?? 0);
+        }
+      }
+    }
+    for (const entry of ready) {
+      if (entry.contract_id) continue;
+      unbilledRevenue +=
+        (entry.parts_cost ?? 0) +
+        (entry.software_cost ?? 0) +
+        (entry.equipment_cost ?? 0) +
+        (entry.travel_cost ?? 0) +
+        (entry.other_cost ?? 0);
+    }
 
     const accountsReceivable = invoices.reduce(
       (sum, i) => sum + (i.remaining_balance ?? 0),

@@ -24,7 +24,6 @@ import {
 import {
   addAssetIncident,
   addAssetRepairNote,
-  fetchAssetDetail,
   flagAssetForReplacement,
   markAssetRepaired,
   updateAssetAssignment,
@@ -35,6 +34,17 @@ import {
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { createClient } from "@/lib/supabase/client";
+import type {
+  AssetAssignment,
+  AssetIncident,
+  AssetMonitoring,
+  AssetPhoto,
+  AssetRepair,
+  AssetSoftware,
+  HardwareAsset,
+  ServiceTicket,
+} from "@/lib/types";
 
 const EMPTY_DETAIL: AssetDetailBundle = {
   asset: null,
@@ -138,6 +148,9 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
 
 interface AssetDetailDrawerProps {
   assetId: string | null;
+  /** Asset already loaded on the Hardware page — used so the drawer opens
+   *  even when a follow-up detail query comes back empty. */
+  seedAsset?: HardwareAsset | null;
   customerName?: string;
   onClose: () => void;
   onUpdated: () => void | Promise<void>;
@@ -145,6 +158,7 @@ interface AssetDetailDrawerProps {
 
 export function AssetDetailDrawer({
   assetId,
+  seedAsset = null,
   customerName,
   onClose,
   onUpdated,
@@ -168,21 +182,116 @@ export function AssetDetailDrawer({
   const loadDetail = useCallback(async (id: string) => {
     setLoading(true);
     setLoadError(null);
+    // Show the asset the list already has immediately so the drawer is never
+    // blank while related records load (or if the detail query fails).
+    if (seedAsset && seedAsset.id === id) {
+      setDetail((current) => ({
+        ...current,
+        asset: seedAsset,
+      }));
+      setStatusValue(seedAsset.device_status || "Active");
+      setAssignUser(seedAsset.assigned_employee ?? "");
+      setAssignLocation(seedAsset.location ?? "");
+    }
     try {
-      const data = await fetchAssetDetail(id);
-      setDetail(data);
-      if (data.asset) {
-        setStatusValue(data.asset.device_status || "Active");
-        setAssignUser(data.asset.assigned_employee ?? "");
-        setAssignLocation(data.asset.location ?? "");
+      const supabase = createClient();
+      const { data: asset, error } = await supabase
+        .from("hardware_assets")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(error.message);
       }
+
+      const resolvedAsset = (asset as HardwareAsset | null) ??
+        (seedAsset && seedAsset.id === id ? seedAsset : null);
+
+      if (!resolvedAsset) {
+        setDetail(EMPTY_DETAIL);
+        return;
+      }
+
+      const [
+        incidents,
+        repairs,
+        software,
+        monitoring,
+        assignments,
+        photos,
+        tickets,
+      ] = await Promise.all([
+        supabase
+          .from("asset_incidents")
+          .select("*")
+          .eq("asset_id", id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("asset_repairs")
+          .select("*")
+          .eq("asset_id", id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("asset_software")
+          .select("*")
+          .eq("asset_id", id)
+          .order("app_name"),
+        supabase
+          .from("asset_monitoring")
+          .select("*")
+          .eq("asset_id", id)
+          .order("checked_at", { ascending: false })
+          .limit(10),
+        supabase
+          .from("asset_assignments")
+          .select("*")
+          .eq("asset_id", id)
+          .order("assigned_at", { ascending: false }),
+        supabase
+          .from("asset_photos")
+          .select("*")
+          .eq("asset_id", id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("service_tickets")
+          .select("*")
+          .eq("customer_id", resolvedAsset.customer_id)
+          .ilike("description", `%${resolvedAsset.asset_number}%`)
+          .order("opened_at", { ascending: false })
+          .limit(10),
+      ]);
+
+      const data: AssetDetailBundle = {
+        asset: resolvedAsset,
+        incidents: (incidents.data ?? []) as AssetIncident[],
+        repairs: (repairs.data ?? []) as AssetRepair[],
+        software: (software.data ?? []) as AssetSoftware[],
+        monitoring: (monitoring.data ?? []) as AssetMonitoring[],
+        assignments: (assignments.data ?? []) as AssetAssignment[],
+        photos: (photos.data ?? []) as AssetPhoto[],
+        tickets: (tickets.data ?? []) as ServiceTicket[],
+      };
+      setDetail(data);
+      setStatusValue(resolvedAsset.device_status || "Active");
+      setAssignUser(resolvedAsset.assigned_employee ?? "");
+      setAssignLocation(resolvedAsset.location ?? "");
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load asset.");
-      setDetail(EMPTY_DETAIL);
+      // Keep the seeded asset visible even if related queries fail.
+      if (!(seedAsset && seedAsset.id === id)) {
+        setLoadError(
+          err instanceof Error ? err.message : "Failed to load asset.",
+        );
+        setDetail(EMPTY_DETAIL);
+      } else {
+        setLoadError(
+          err instanceof Error ? err.message : "Failed to load asset details.",
+        );
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [seedAsset]);
 
   useEffect(() => {
     if (!assetId) {
@@ -273,7 +382,7 @@ export function AssetDetailDrawer({
         onClick={onClose}
       />
 
-      <aside className="relative flex h-full w-full max-w-[520px] flex-col border-l border-base-300 bg-base-100 shadow-2xl">
+      <aside className="asset-detail-drawer relative flex h-full w-full max-w-[520px] flex-col border-l border-slate-700 bg-slate-900 text-slate-100 shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-base-300 px-4 py-4">
           <div className="min-w-0">
             <p className="truncate text-lg font-semibold">
@@ -809,8 +918,8 @@ export function AssetDetailDrawer({
         </div>
 
         {asset ? (
-          <div className="absolute inset-x-0 bottom-0 border-t border-base-300 bg-base-100/95 p-3 backdrop-blur">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-base-content/50">
+          <div className="asset-detail-actions absolute inset-x-0 bottom-0 border-t border-slate-700 p-3 backdrop-blur">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Technician Actions
             </p>
             <div className="grid grid-cols-2 gap-2">

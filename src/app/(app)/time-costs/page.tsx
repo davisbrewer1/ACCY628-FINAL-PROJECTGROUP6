@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { createInvoicesFromWorkEntries } from "@/app/actions/billing";
+import { createInvoicesFromApprovedExpenses, sendWorkAndExpensesToBilling } from "@/app/actions/billing";
+import { updateTechnicianExpenseBudget } from "@/app/actions/ticket-expenses";
 import { updateWorkEntryApproval } from "@/app/actions/work-entries";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
+import { ApprovalManagerPanel } from "@/components/ApprovalManagerPanel";
 import { ExpenseTracker } from "@/components/ExpenseTracker";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
@@ -18,10 +20,21 @@ import {
   getDisputedWorkEntries,
   getPendingApprovalEntries,
   getReadyToInvoiceEntries,
+  isReadyToInvoiceExpense,
 } from "@/lib/manager-ops";
+import { allocateOverageHours } from "@/lib/plan-pricing";
 import { isOpenTicket, isThisMonth } from "@/lib/dashboard-stats";
+import { DEFAULT_EXPENSE_MONTHLY_LIMIT, sumAcceptedInternalMtd } from "@/lib/ticket-expense-budgets";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, ServiceTicket, Technician, WorkEntry } from "@/lib/types";
+import type {
+  Contract,
+  Customer,
+  ServiceTicket,
+  Technician,
+  TechnicianExpenseBudget,
+  TicketExpense,
+  WorkEntry,
+} from "@/lib/types";
 
 interface WorkEntryRow extends WorkEntry {
   technicianName: string;
@@ -33,7 +46,7 @@ interface WorkEntryRow extends WorkEntry {
   costBreakdown: Array<{ label: string; amount: number }>;
 }
 
-type ViewMode = "queue" | "returned" | "ready" | "history";
+type ViewMode = "expenses" | "queue" | "returned" | "ready" | "history";
 
 const MANAGER_ROLES = new Set([
   "administrator",
@@ -59,9 +72,12 @@ export default function WorkBillingPage() {
       ? "ready"
       : initialFilter === "returned"
         ? "returned"
-        : "queue",
+        : initialFilter === "expenses"
+          ? "expenses"
+          : "expenses",
   );
   const [entries, setEntries] = useState<WorkEntry[]>([]);
+  const [ticketExpenses, setTicketExpenses] = useState<TicketExpense[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -71,6 +87,12 @@ export default function WorkBillingPage() {
   const [disputeNotes, setDisputeNotes] = useState<Record<string, string>>({});
   const [expenseTicketId, setExpenseTicketId] = useState("");
   const [expenseTechnicianId, setExpenseTechnicianId] = useState("");
+  const [expenseBudgets, setExpenseBudgets] = useState<TechnicianExpenseBudget[]>(
+    [],
+  );
+  const [expenseBudgetDrafts, setExpenseBudgetDrafts] = useState<
+    Record<string, string>
+  >({});
   const [isPending, startTransition] = useTransition();
 
   const canManage = MANAGER_ROLES.has(activeRole);
@@ -81,7 +103,7 @@ export default function WorkBillingPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    const [w, tech, c, co, t] = await Promise.all([
+    const [w, tech, c, co, t, ex, budgets] = await Promise.all([
       supabase.from("work_entries").select("*").order("work_date", { ascending: false }),
       supabase.from("technicians").select("*").order("technician_name"),
       supabase.from("customers").select("*"),
@@ -89,15 +111,33 @@ export default function WorkBillingPage() {
       supabase
         .from("service_tickets")
         .select("*")
-        .order("opened_at", { ascending: false }),
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("ticket_expenses")
+        .select("*")
+        .order("date", { ascending: false }),
+      supabase.from("technician_expense_budgets").select("*"),
     ]);
     const techRows = tech.data ?? [];
     const ticketRows = t.data ?? [];
     setEntries(w.data ?? []);
+    setTicketExpenses((ex.data as TicketExpense[]) ?? []);
     setTechnicians(techRows);
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
     setTickets(ticketRows);
+    const budgetRows = (budgets.data as TechnicianExpenseBudget[]) ?? [];
+    setExpenseBudgets(budgetRows);
+    const drafts: Record<string, string> = {};
+    for (const b of budgetRows) {
+      drafts[b.technician_id] = String(b.monthly_limit);
+    }
+    for (const techRow of techRows) {
+      if (!(techRow.id in drafts)) {
+        drafts[techRow.id] = String(DEFAULT_EXPENSE_MONTHLY_LIMIT);
+      }
+    }
+    setExpenseBudgetDrafts(drafts);
     setSelectedIds([]);
 
     if (user) {
@@ -108,7 +148,7 @@ export default function WorkBillingPage() {
     }
 
     const open = ticketRows.filter((row) => isOpenTicket(row.status));
-    const first = open[0] ?? ticketRows[0];
+    const first = ticketRows[0] ?? open[0];
     setExpenseTicketId(first?.id ?? "");
     setLoading(false);
   }
@@ -121,6 +161,7 @@ export default function WorkBillingPage() {
     if (initialFilter === "ready") setView("ready");
     if (initialFilter === "returned") setView("returned");
     if (initialFilter === "queue") setView("queue");
+    if (initialFilter === "expenses") setView("expenses");
   }, [initialFilter]);
 
   const rows: WorkEntryRow[] = useMemo(() => {
@@ -129,12 +170,34 @@ export default function WorkBillingPage() {
     const contractMap = new Map(contracts.map((c) => [c.id, c]));
     const ticketMap = new Map(tickets.map((t) => [t.id, t]));
 
+    const overageByEntryId = new Map<string, number>();
+    for (const contract of contracts) {
+      const contractEntries = entries.filter((e) => e.contract_id === contract.id);
+      if (contractEntries.length === 0) continue;
+      const byMonth = new Map<string, typeof contractEntries>();
+      for (const entry of contractEntries) {
+        const month = entry.work_date?.slice(0, 7) ?? "unknown";
+        const list = byMonth.get(month) ?? [];
+        list.push(entry);
+        byMonth.set(month, list);
+      }
+      for (const monthEntries of byMonth.values()) {
+        const allocated = allocateOverageHours({
+          selected: monthEntries,
+          includedHoursPerMonth: Number(contract.included_support_hours ?? 0),
+        });
+        for (const [id, hours] of allocated) {
+          overageByEntryId.set(id, hours);
+        }
+      }
+    }
+
     return entries.map((entry) => {
       const contract = entry.contract_id ? contractMap.get(entry.contract_id) : null;
       const ticket = ticketMap.get(entry.ticket_id);
-      const billableHours = entry.included_in_contract ? 0 : (entry.hours_worked ?? 0);
+      const overageHours = overageByEntryId.get(entry.id) ?? (entry.hours_worked ?? 0);
       const additionalBillable =
-        billableHours * (contract?.additional_hourly_rate ?? 0) +
+        overageHours * (contract?.additional_hourly_rate ?? 0) +
         (entry.parts_cost ?? 0) +
         (entry.software_cost ?? 0) +
         (entry.equipment_cost ?? 0) +
@@ -166,15 +229,87 @@ export default function WorkBillingPage() {
   const pending = useMemo(() => getPendingApprovalEntries(entries), [entries]);
   const returned = useMemo(() => getDisputedWorkEntries(entries), [entries]);
   const ready = useMemo(() => getReadyToInvoiceEntries(entries), [entries]);
+  const readyExpenses = useMemo(
+    () => ticketExpenses.filter(isReadyToInvoiceExpense),
+    [ticketExpenses],
+  );
+  const pendingBillableExpenseCount = useMemo(
+    () =>
+      ticketExpenses.filter(
+        (e) =>
+          e.expense_tag === "Billable to Customer" &&
+          e.approval_status === "Pending",
+      ).length,
+    [ticketExpenses],
+  );
+  const pendingOverLimitExpenseCount = useMemo(
+    () =>
+      ticketExpenses.filter(
+        (e) =>
+          e.expense_tag === "Internal Company Expense" &&
+          e.approval_status === "Pending",
+      ).length,
+    [ticketExpenses],
+  );
+  const readyExpenseTotal = useMemo(
+    () =>
+      readyExpenses.reduce((sum, e) => sum + Number(e.amount ?? 0), 0),
+    [readyExpenses],
+  );
+
+  const activeTechnicians = useMemo(
+    () => technicians.filter((t) => t.active !== false),
+    [technicians],
+  );
+
+  const expenseMtdByTech = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const tech of activeTechnicians) {
+      map.set(tech.id, sumAcceptedInternalMtd(ticketExpenses, tech.id));
+    }
+    return map;
+  }, [activeTechnicians, ticketExpenses]);
+
+  function handleSaveExpenseBudget(technicianId: string) {
+    const raw = expenseBudgetDrafts[technicianId];
+    const limit = Number(raw);
+    if (!Number.isFinite(limit) || limit < 0) {
+      showToast("Enter a valid monthly limit.", "error");
+      return;
+    }
+    startTransition(async () => {
+      const result = await updateTechnicianExpenseBudget(technicianId, limit);
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+      } else {
+        showToast(result.message, "error");
+      }
+    });
+  }
 
   const monthRollup = useMemo(() => {
     const monthEntries = entries.filter((e) => isThisMonth(e.work_date));
-    const included = monthEntries
-      .filter((e) => e.included_in_contract)
-      .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
-    const billable = monthEntries
-      .filter((e) => !e.included_in_contract)
-      .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
+    let included = 0;
+    let billable = 0;
+    for (const contract of contracts) {
+      const list = monthEntries.filter((e) => e.contract_id === contract.id);
+      if (list.length === 0) continue;
+      const allocated = allocateOverageHours({
+        selected: list,
+        includedHoursPerMonth: Number(contract.included_support_hours ?? 0),
+      });
+      for (const entry of list) {
+        const hours = Number(entry.hours_worked ?? 0);
+        const overage = allocated.get(entry.id) ?? 0;
+        billable += overage;
+        included += Math.max(0, hours - overage);
+      }
+    }
+    for (const entry of monthEntries) {
+      if (entry.contract_id) continue;
+      billable += Number(entry.hours_worked ?? 0);
+    }
     const readyAmount = rows
       .filter((r) => ready.some((e) => e.id === r.id))
       .reduce((sum, r) => sum + r.additionalBillable, 0);
@@ -185,7 +320,7 @@ export default function WorkBillingPage() {
       pendingCount: pending.length,
       returnedCount: returned.length,
     };
-  }, [entries, rows, ready, pending, returned]);
+  }, [entries, rows, ready, pending, returned, contracts]);
 
   const visibleRows = useMemo(() => {
     if (view === "queue") {
@@ -225,7 +360,7 @@ export default function WorkBillingPage() {
 
   function handlePushToInvoice() {
     startTransition(async () => {
-      const result = await createInvoicesFromWorkEntries(selectedIds);
+      const result = await sendWorkAndExpensesToBilling(selectedIds);
       if (result.success) {
         showToast(result.message);
         setSelectedIds([]);
@@ -237,10 +372,34 @@ export default function WorkBillingPage() {
     });
   }
 
+  function handleInvoiceApprovedExpenses() {
+    startTransition(async () => {
+      const result = await createInvoicesFromApprovedExpenses();
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+        if ((result.created ?? 0) > 0) {
+          router.push("/billing");
+        }
+      } else {
+        showToast(result.message, "error");
+      }
+    });
+  }
+
   const expenseTicketOptions = useMemo(() => {
-    const open = tickets.filter((ticket) => isOpenTicket(ticket.status));
-    const closed = tickets.filter((ticket) => !isOpenTicket(ticket.status));
-    return [...open, ...closed];
+    const receivedAt = (ticket: ServiceTicket) => {
+      const created = ticket.created_at
+        ? new Date(ticket.created_at).getTime()
+        : 0;
+      const opened = ticket.opened_at
+        ? new Date(ticket.opened_at).getTime()
+        : 0;
+      // Prefer created_at as received time; fall back to opened_at.
+      return created || opened || 0;
+    };
+
+    return [...tickets].sort((a, b) => receivedAt(b) - receivedAt(a));
   }, [tickets]);
 
   const selectedExpenseTicket = tickets.find(
@@ -265,26 +424,33 @@ export default function WorkBillingPage() {
 
         <div className="card border bg-base-100 shadow-sm">
           <div className="card-body grid gap-3 py-4 sm:grid-cols-2">
-            <label className="form-control">
+            <label className="form-control min-w-0">
               <span className="label-text mb-1 text-xs">Ticket / project</span>
               <select
-                className="select select-bordered select-sm"
+                className="expense-ticket-select select select-bordered select-sm w-full min-w-0"
                 value={expenseTicketId}
                 onChange={(e) => setExpenseTicketId(e.target.value)}
               >
                 <option value="">Select ticket</option>
-                {expenseTicketOptions.map((ticket) => (
-                  <option key={ticket.id} value={ticket.id}>
-                    {ticket.ticket_number} — {ticket.title}
-                  </option>
-                ))}
+                {expenseTicketOptions.map((ticket) => {
+                  const fullLabel = `${ticket.ticket_number} — ${ticket.title}`;
+                  const label =
+                    fullLabel.length > 56
+                      ? `${fullLabel.slice(0, 53).trimEnd()}…`
+                      : fullLabel;
+                  return (
+                    <option key={ticket.id} value={ticket.id} title={fullLabel}>
+                      {label}
+                    </option>
+                  );
+                })}
               </select>
             </label>
 
-            <label className="form-control">
+            <label className="form-control min-w-0">
               <span className="label-text mb-1 text-xs">Technician</span>
               <select
-                className="select select-bordered select-sm"
+                className="select select-bordered select-sm w-full min-w-0"
                 value={expenseTechnicianId}
                 onChange={(e) => setExpenseTechnicianId(e.target.value)}
               >
@@ -326,10 +492,127 @@ export default function WorkBillingPage() {
     <div className="space-y-6">
       <PageHeader
         title="Work & Billing"
-        description="Approve or return technician time, then push billable overages into the invoice queue. Same handoff path Operations uses for ready-to-invoice."
+        description="Approve technician time and billable Expense Tracker items, then send to Billing. Travel/meals invoice only after Billable + manager approval. Parts and equipment follow work-entry and contract budget rules."
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ApprovalManagerPanel tickets={tickets} technicians={technicians} />
+
+      <div className="card border bg-base-100 shadow-sm">
+        <div className="card-body gap-3">
+          <h2 className="card-title text-base">
+            Technician internal expense budgets (this month)
+          </h2>
+          <p className="text-sm text-base-content/70">
+            Internal Company Expense Tracker spend under the monthly limit saves
+            automatically. Over-limit items appear in Expense approvals above
+            {pendingOverLimitExpenseCount > 0
+              ? ` (${pendingOverLimitExpenseCount} pending)`
+              : ""}
+            . Approving an over-limit expense is a one-time exception and does not
+            raise the limit.
+          </p>
+          {activeTechnicians.length === 0 ? (
+            <EmptyState
+              title="No technicians"
+              description="Active technicians will appear here with monthly internal expense budgets."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Technician</th>
+                    <th className="text-right">MTD spend</th>
+                    <th className="text-right">Monthly limit</th>
+                    <th className="text-right">Remaining</th>
+                    <th>Status</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeTechnicians.map((tech) => {
+                    const limit = Number(
+                      expenseBudgets.find((b) => b.technician_id === tech.id)
+                        ?.monthly_limit ?? DEFAULT_EXPENSE_MONTHLY_LIMIT,
+                    );
+                    const spent = expenseMtdByTech.get(tech.id) ?? 0;
+                    const remaining = Math.max(0, limit - spent);
+                    const atLimit = spent >= limit;
+                    const nearLimit =
+                      !atLimit && limit > 0 && spent / limit >= 0.8;
+                    return (
+                      <tr key={tech.id}>
+                        <td className="font-medium">{tech.technician_name}</td>
+                        <td className="text-right">{formatCurrency(spent)}</td>
+                        <td className="text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="input input-bordered input-sm w-28 text-right"
+                            value={
+                              expenseBudgetDrafts[tech.id] ?? String(limit)
+                            }
+                            onChange={(e) =>
+                              setExpenseBudgetDrafts((prev) => ({
+                                ...prev,
+                                [tech.id]: e.target.value,
+                              }))
+                            }
+                          />
+                        </td>
+                        <td className="text-right">
+                          {formatCurrency(remaining)}
+                        </td>
+                        <td>
+                          {atLimit ? (
+                            <StatusBadge status="At limit" />
+                          ) : nearLimit ? (
+                            <StatusBadge status="Near limit" />
+                          ) : (
+                            <StatusBadge status="OK" />
+                          )}
+                        </td>
+                        <td className="text-right">
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-xs"
+                            disabled={isPending}
+                            onClick={() => handleSaveExpenseBudget(tech.id)}
+                          >
+                            Save
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <button
+          type="button"
+          onClick={() => setView("expenses")}
+          className={`rounded-box border p-4 text-left transition ${
+            view === "expenses"
+              ? "border-warning bg-warning/10"
+              : "border-base-300 bg-base-100 hover:border-base-content/20"
+          }`}
+        >
+          <p className="text-xs uppercase tracking-wide text-base-content/60">
+            Billable expenses
+          </p>
+          <p className="mt-1 text-2xl font-semibold">
+            {pendingBillableExpenseCount}
+          </p>
+          <p className="text-xs text-base-content/55">
+            Pending approval · {readyExpenses.length} ready to invoice
+          </p>
+        </button>
         <button
           type="button"
           onClick={() => setView("queue")}
@@ -375,7 +658,7 @@ export default function WorkBillingPage() {
           <p className="mt-1 text-2xl font-semibold">
             {formatCurrency(monthRollup.readyAmount)}
           </p>
-          <p className="text-xs text-base-content/55">{ready.length} billable entries</p>
+          <p className="text-xs text-base-content/55">{ready.length} approved entries</p>
         </button>
         <div className="rounded-box border border-base-300 bg-base-100 p-4">
           <p className="text-xs uppercase tracking-wide text-base-content/60">
@@ -385,7 +668,7 @@ export default function WorkBillingPage() {
             {formatHours(monthRollup.included + monthRollup.billable)}
           </p>
           <p className="text-xs text-base-content/55">
-            {formatHours(monthRollup.included)} included · {formatHours(monthRollup.billable)} billable
+            {formatHours(monthRollup.included)} in plan pool · {formatHours(monthRollup.billable)} overage
           </p>
         </div>
       </div>
@@ -409,9 +692,13 @@ export default function WorkBillingPage() {
       <div className="flex flex-wrap gap-2">
         {(
           [
+            ["expenses", `Billable expenses (${pendingBillableExpenseCount})`],
             ["queue", `Approve queue (${pending.length})`],
             ["returned", `Returned (${returned.length})`],
-            ["ready", `Ready to invoice (${ready.length})`],
+            [
+              "ready",
+              `Ready to invoice (${ready.length + readyExpenses.length})`,
+            ],
             ["history", "History"],
           ] as const
         ).map(([value, label]) => (
@@ -429,22 +716,113 @@ export default function WorkBillingPage() {
         </Link>
       </div>
 
-      {view === "ready" ? (
-        <div className="rounded-box border border-base-300 bg-base-200/40 px-4 py-3 text-sm text-base-content/70">
-          Select billable entries, then{" "}
-          <span className="font-medium text-base-content">Send to Billing</span>.
-          That creates <span className="font-medium text-base-content">Draft</span>{" "}
-          invoices (one per customer + contract) and moves the work out of this queue.
+      {view === "expenses" ? (
+        <div className="space-y-4">
+          <div className="rounded-box border border-base-300 bg-base-200/40 px-4 py-3 text-sm text-base-content/70">
+            Technicians mark Expense Tracker items as{" "}
+            <span className="font-medium text-base-content">Billable to Customer</span>
+            . Approve them in the panel above. Approved items appear under Ready to
+            invoice and can be sent to Billing as draft invoices. Internal expenses
+            never invoice.
+          </div>
+          {readyExpenses.length > 0 ? (
+            <div className="card border border-primary/30 bg-primary/5 shadow-sm">
+              <div className="card-body gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-medium">
+                      Approved expenses ready to invoice
+                    </h3>
+                    <p className="text-sm text-base-content/60">
+                      {readyExpenses.length} item
+                      {readyExpenses.length === 1 ? "" : "s"} ·{" "}
+                      {formatCurrency(readyExpenseTotal)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={isPending}
+                    onClick={handleInvoiceApprovedExpenses}
+                  >
+                    {isPending ? (
+                      <span className="loading loading-spinner loading-sm" />
+                    ) : (
+                      "Invoice approved expenses"
+                    )}
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Ticket</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th className="text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {readyExpenses.map((expense) => {
+                        const ticket = tickets.find(
+                          (t) => t.id === expense.ticket_id,
+                        );
+                        return (
+                          <tr key={expense.id}>
+                            <td>{formatDate(expense.date)}</td>
+                            <td className="font-mono text-xs">
+                              {ticket?.ticket_number ?? "—"}
+                            </td>
+                            <td>{expense.type}</td>
+                            <td className="max-w-xs truncate text-sm">
+                              {expense.description ?? "—"}
+                            </td>
+                            <td className="text-right">
+                              {formatCurrency(expense.amount)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-base-content/60">
+              No approved billable expenses waiting to invoice. Pending items are
+              in the approval panel above.
+            </p>
+          )}
         </div>
       ) : null}
 
-      {view === "ready" && selectedIds.length > 0 ? (
+      {view === "ready" ? (
+        <div className="rounded-box border border-base-300 bg-base-200/40 px-4 py-3 text-sm text-base-content/70">
+          Select approved work entries, then{" "}
+          <span className="font-medium text-base-content">Send to Billing</span>.
+          Plan hour pools apply automatically. Send also invoices any approved
+          Expense Tracker billable items ({readyExpenses.length} ready ·{" "}
+          {formatCurrency(readyExpenseTotal)}). Parts and equipment on work entries
+          keep existing contract-budget rules. Creates{" "}
+          <span className="font-medium text-base-content">Draft</span> invoices.
+        </div>
+      ) : null}
+
+      {view === "ready" &&
+      (selectedIds.length > 0 || readyExpenses.length > 0) ? (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-3 rounded-box border border-primary/40 bg-primary/10 p-3 shadow-sm">
-          <span className="text-sm font-medium">{selectedIds.length} selected</span>
+          <span className="text-sm font-medium">
+            {selectedIds.length} work selected
+            {readyExpenses.length > 0
+              ? ` · ${readyExpenses.length} expenses ready`
+              : ""}
+          </span>
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            disabled={isPending}
+            disabled={isPending || (selectedIds.length === 0 && readyExpenses.length === 0)}
             onClick={handlePushToInvoice}
           >
             {isPending ? (
@@ -453,16 +831,22 @@ export default function WorkBillingPage() {
               "Send to Billing"
             )}
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedIds([])}>
-            Clear
-          </button>
+          {selectedIds.length > 0 ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setSelectedIds([])}
+            >
+              Clear
+            </button>
+          ) : null}
           <span className="text-xs text-base-content/60">
             Creates draft invoices and opens Billing
           </span>
         </div>
       ) : null}
 
-      {visibleRows.length === 0 ? (
+      {view !== "expenses" && visibleRows.length === 0 ? (
         <EmptyState
           title={
             view === "queue"
@@ -470,19 +854,20 @@ export default function WorkBillingPage() {
               : view === "returned"
                 ? "Nothing returned to technicians"
                 : view === "ready"
-                  ? "No billable work ready"
+                  ? "No approved work ready to invoice"
                   : "No work entries yet"
           }
           description="Entries appear after technicians log work on tickets in My Work."
         />
-      ) : (
+      ) : null}
+
+      {view !== "expenses" && visibleRows.length > 0 ? (
         <div className="space-y-3">
           {visibleRows.map((row) => {
             const expanded = expandedId === row.id;
             const selectable =
               view === "ready" ||
               (view === "history" &&
-                !row.included_in_contract &&
                 row.approval_status === "Approved" &&
                 row.billing_status !== "Billed");
 
@@ -685,7 +1070,7 @@ export default function WorkBillingPage() {
             );
           })}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

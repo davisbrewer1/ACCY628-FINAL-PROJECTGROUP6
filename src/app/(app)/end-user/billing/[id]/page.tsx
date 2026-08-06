@@ -1,27 +1,43 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { syncBillingCadence } from "@/app/actions/billing";
+import { recordClientPortalPayment } from "@/app/actions/portal-payments";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
-import { PageHeader } from "@/components/PageHeader";
+import { FormField } from "@/components/FormField";
+import {
+  EMPTY_CARD_DETAILS,
+  isCardPaymentMethod,
+  SimulatedCardPaymentFields,
+  type SimulatedCardDetails,
+} from "@/components/SimulatedCardPaymentFields";
+import { PortalPageHeader } from "@/components/end-user/PortalPageHeader";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
-import {
-  buildInvoiceLineItems,
-  toClientInvoiceStatus,
-} from "@/lib/client-billing";
+import { useToast } from "@/components/Toast";
+import { toClientInvoiceStatus } from "@/lib/client-billing";
 import { getInvoiceCategory } from "@/lib/device-utils";
 import { formatCurrency, formatDate, formatHours } from "@/lib/format";
+import { buildPortalInvoiceLineItems } from "@/lib/portal-billing";
 import { createClient } from "@/lib/supabase/client";
 import type { Contract, Invoice, Payment, Profile, WorkEntry } from "@/lib/types";
+
+const PAYMENT_METHODS = [
+  "Credit Card",
+  "ACH / Bank Transfer",
+  "Check",
+  "Wire Transfer",
+] as const;
 
 export default function EndUserInvoiceDetailPage() {
   const params = useParams<{ id: string }>();
   const invoiceId = params.id;
   const { activeRole } = useDemoRole();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -29,6 +45,58 @@ export default function EndUserInvoiceDetailPage() {
   const [contract, setContract] = useState<Contract | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
+  const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState<string>(PAYMENT_METHODS[0]);
+  const [payReference, setPayReference] = useState("");
+  const [payNotes, setPayNotes] = useState("");
+  const [cardDetails, setCardDetails] =
+    useState<SimulatedCardDetails>(EMPTY_CARD_DETAILS);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  async function loadInvoice(customerId: string, id: string) {
+    const supabase = createClient();
+    const { data: invoiceData } = await supabase
+      .from("invoices")
+      .select("*")
+      .eq("id", id)
+      .eq("customer_id", customerId)
+      .maybeSingle();
+
+    if (!invoiceData) {
+      setNotFound(true);
+      setInvoice(null);
+      return;
+    }
+
+    setInvoice(invoiceData);
+    setNotFound(false);
+    setPayAmount(String(invoiceData.remaining_balance ?? ""));
+
+    const [contractResult, paymentResult, workResult] = await Promise.all([
+      invoiceData.contract_id
+        ? supabase
+            .from("contracts")
+            .select("*")
+            .eq("id", invoiceData.contract_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase
+        .from("payments")
+        .select("*")
+        .eq("invoice_id", id)
+        .order("payment_date", { ascending: false }),
+      supabase
+        .from("work_entries")
+        .select("*")
+        .eq("invoice_id", id)
+        .order("work_date", { ascending: false }),
+    ]);
+
+    setContract(contractResult.data);
+    setPayments(paymentResult.data ?? []);
+    setWorkEntries(workResult.data ?? []);
+  }
 
   useEffect(() => {
     async function init() {
@@ -56,44 +124,8 @@ export default function EndUserInvoiceDetailPage() {
         return;
       }
 
-      const { data: invoiceData } = await supabase
-        .from("invoices")
-        .select("*")
-        .eq("id", invoiceId)
-        .eq("customer_id", profileData.customer_id)
-        .maybeSingle();
-
-      if (!invoiceData) {
-        setNotFound(true);
-        setLoading(false);
-        return;
-      }
-
-      setInvoice(invoiceData);
-
-      const [contractResult, paymentResult, workResult] = await Promise.all([
-        invoiceData.contract_id
-          ? supabase
-              .from("contracts")
-              .select("*")
-              .eq("id", invoiceData.contract_id)
-              .maybeSingle()
-          : Promise.resolve({ data: null }),
-        supabase
-          .from("payments")
-          .select("*")
-          .eq("invoice_id", invoiceId)
-          .order("payment_date", { ascending: false }),
-        supabase
-          .from("work_entries")
-          .select("*")
-          .eq("invoice_id", invoiceId)
-          .order("work_date", { ascending: false }),
-      ]);
-
-      setContract(contractResult.data);
-      setPayments(paymentResult.data ?? []);
-      setWorkEntries(workResult.data ?? []);
+      await syncBillingCadence();
+      await loadInvoice(profileData.customer_id, invoiceId);
       setLoading(false);
     }
 
@@ -101,8 +133,8 @@ export default function EndUserInvoiceDetailPage() {
   }, [invoiceId]);
 
   const lineItems = useMemo(
-    () => (invoice ? buildInvoiceLineItems(invoice) : []),
-    [invoice],
+    () => (invoice ? buildPortalInvoiceLineItems(invoice, contract) : []),
+    [invoice, contract],
   );
 
   const clientStatus = toClientInvoiceStatus(
@@ -115,6 +147,47 @@ export default function EndUserInvoiceDetailPage() {
     (sum, entry) => sum + (entry.hours_worked ?? 0),
     0,
   );
+  const coveredHours = workEntries
+    .filter((entry) => entry.included_in_contract)
+    .reduce((sum, entry) => sum + (entry.hours_worked ?? 0), 0);
+  const overageHours = workEntries
+    .filter((entry) => entry.included_in_contract === false)
+    .reduce((sum, entry) => sum + (entry.hours_worked ?? 0), 0);
+  const canPay =
+    Boolean(invoice) &&
+    clientStatus !== "Paid" &&
+    clientStatus !== "Canceled" &&
+    (invoice?.remaining_balance ?? 0) > 0;
+
+  function handleSubmitPayment() {
+    if (!invoice) return;
+    setPayError(null);
+    startTransition(async () => {
+      const result = await recordClientPortalPayment({
+        invoiceId: invoice.id,
+        amount: Number(payAmount),
+        paymentMethod: payMethod,
+        referenceNumber: payReference,
+        notes: payNotes,
+        cardholderName: cardDetails.cardholderName,
+        cardNumber: cardDetails.cardNumber,
+        cardExp: cardDetails.cardExp,
+        cardCvv: cardDetails.cardCvv,
+        billingZip: cardDetails.billingZip,
+      });
+      if (result.success) {
+        showToast(result.message);
+        setPayReference("");
+        setPayNotes("");
+        setCardDetails(EMPTY_CARD_DETAILS);
+        if (profile?.customer_id) {
+          await loadInvoice(profile.customer_id, invoice.id);
+        }
+      } else {
+        setPayError(result.message);
+      }
+    });
+  }
 
   if (activeRole !== "client_user" && activeRole !== "administrator") {
     return (
@@ -152,16 +225,16 @@ export default function EndUserInvoiceDetailPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <PortalPageHeader
         title={`Invoice ${invoice.invoice_number}`}
-        description="Line-item detail, charge explanations, and simulated payment history for this invoice."
+        description="Plan-aligned charges, included vs overage hours, fleet hardware lines, and the client payment portal for this invoice."
         action={
           <div className="flex flex-wrap gap-2">
             <Link href="/end-user/billing" className="btn btn-outline btn-sm">
               Back to Billing
             </Link>
-            <Link href="/end-user" className="btn btn-ghost btn-sm">
-              End User Portal
+            <Link href="/end-user/billing#payment-portal" className="btn btn-ghost btn-sm">
+              Payment portal
             </Link>
           </div>
         }
@@ -184,9 +257,13 @@ export default function EndUserInvoiceDetailPage() {
           tone={(invoice.remaining_balance ?? 0) > 0 ? "warning" : "success"}
         />
         <StatCard
-          title="Support agreement"
+          title="Support plan"
           value={contract?.service_plan_name ?? contract?.contract_name ?? "—"}
-          hint={profile?.email ? `Account ${profile.email}` : undefined}
+          hint={
+            contract?.included_support_hours != null
+              ? `${formatHours(contract.included_support_hours)} included / month`
+              : undefined
+          }
         />
       </div>
 
@@ -194,8 +271,8 @@ export default function EndUserInvoiceDetailPage() {
         <div className="card-body gap-3">
           <h3 className="card-title text-base">Charge line items</h3>
           <p className="text-sm text-base-content/70">
-            Each line below explains what generated the charge. Clients can review details but cannot
-            edit invoices, contract terms, or cost entries.
+            Recurring plan fees cover included hours. Additional support is only for hours beyond
+            that allotment. Hardware lines represent organizational/fleet purchases.
           </p>
 
           {lineItems.length === 0 ? (
@@ -243,9 +320,14 @@ export default function EndUserInvoiceDetailPage() {
       {workEntries.length > 0 ? (
         <div className="card border bg-base-100 shadow-sm">
           <div className="card-body gap-3">
-            <h3 className="card-title text-base">Related billable work</h3>
+            <h3 className="card-title text-base">Support hours on this invoice</h3>
             <p className="text-sm text-base-content/70">
-              Support activity linked to this invoice ({formatHours(linkedHours)} total).
+              {formatHours(linkedHours)} total · {formatHours(coveredHours)} covered by included
+              plan hours
+              {overageHours > 0
+                ? ` · ${formatHours(overageHours)} billed as overage at ${formatCurrency(contract?.additional_hourly_rate)}/hr`
+                : ""}
+              .
             </p>
             <div className="overflow-x-auto">
               <table className="table table-sm">
@@ -254,7 +336,7 @@ export default function EndUserInvoiceDetailPage() {
                     <th>Date</th>
                     <th>Hours</th>
                     <th>Work performed</th>
-                    <th>Billing note</th>
+                    <th>Billing treatment</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -267,8 +349,12 @@ export default function EndUserInvoiceDetailPage() {
                       </td>
                       <td className="text-sm text-base-content/70">
                         {entry.included_in_contract
-                          ? "Covered by included support hours"
-                          : "Additional support hours beyond included limit"}
+                          ? "Covered by included plan hours (no extra hourly charge)"
+                          : `Additional billable hours beyond included allotment${
+                              contract?.additional_hourly_rate
+                                ? ` @ ${formatCurrency(contract.additional_hourly_rate)}/hr`
+                                : ""
+                            }`}
                       </td>
                     </tr>
                   ))}
@@ -279,18 +365,90 @@ export default function EndUserInvoiceDetailPage() {
         </div>
       ) : null}
 
+      {canPay ? (
+        <div className="card border border-primary/30 bg-base-100 shadow-sm">
+          <div className="card-body gap-3">
+            <h3 className="card-title text-base">Pay this invoice</h3>
+            <p className="text-sm text-base-content/70">
+              Simulated client payment portal. Remaining balance:{" "}
+              {formatCurrency(invoice.remaining_balance)}.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <FormField label="Amount" htmlFor="invoice-pay-amount">
+                <input
+                  id="invoice-pay-amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  className="input input-bordered w-full"
+                  value={payAmount}
+                  onChange={(event) => setPayAmount(event.target.value)}
+                />
+              </FormField>
+              <FormField label="Payment method" htmlFor="invoice-pay-method">
+                <select
+                  id="invoice-pay-method"
+                  className="select select-bordered w-full"
+                  value={payMethod}
+                  onChange={(event) => setPayMethod(event.target.value)}
+                >
+                  {PAYMENT_METHODS.map((method) => (
+                    <option key={method} value={method}>
+                      {method}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              {isCardPaymentMethod(payMethod) ? (
+                <SimulatedCardPaymentFields
+                  idPrefix="invoice-pay"
+                  values={cardDetails}
+                  onChange={setCardDetails}
+                />
+              ) : (
+                <FormField label="Reference # (optional)" htmlFor="invoice-pay-ref">
+                  <input
+                    id="invoice-pay-ref"
+                    className="input input-bordered w-full"
+                    value={payReference}
+                    onChange={(event) => setPayReference(event.target.value)}
+                  />
+                </FormField>
+              )}
+              <FormField label="Notes (optional)" htmlFor="invoice-pay-notes">
+                <input
+                  id="invoice-pay-notes"
+                  className="input input-bordered w-full"
+                  value={payNotes}
+                  onChange={(event) => setPayNotes(event.target.value)}
+                />
+              </FormField>
+            </div>
+            {payError ? <p className="text-sm text-error">{payError}</p> : null}
+            <button
+              type="button"
+              className="btn btn-primary btn-sm w-fit"
+              disabled={isPending}
+              onClick={handleSubmitPayment}
+            >
+              {isPending ? "Processing..." : "Submit payment"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="card border bg-base-100 shadow-sm">
         <div className="card-body gap-3">
           <h3 className="card-title text-base">Payment history</h3>
           <p className="text-sm text-base-content/70">
-            Simulated payments only — this portal does not process real payments or allow clients to
-            modify balances.
+            Includes payments submitted from this portal (simulated) and any other recorded
+            payments on the invoice.
           </p>
 
           {payments.length === 0 ? (
             <EmptyState
               title="No payments recorded"
-              description="When a simulated payment is applied to this invoice, it will appear here."
+              description="Use the payment portal above when a balance remains."
             />
           ) : (
             <div className="overflow-x-auto">

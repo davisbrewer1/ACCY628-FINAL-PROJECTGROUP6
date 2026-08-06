@@ -15,6 +15,7 @@ import {
   getRenewalsInDays,
 } from "@/lib/manager-ops";
 import { isOpenTicket, isThisMonth } from "@/lib/dashboard-stats";
+import { contractsUnlockPortal } from "@/lib/customer-access";
 import { createClient } from "@/lib/supabase/client";
 import type { Contract, Customer, Invoice, Profile, ServiceTicket, WorkEntry } from "@/lib/types";
 import { differenceInCalendarDays, parseISO } from "date-fns";
@@ -27,6 +28,7 @@ interface CustomerRow extends Customer {
   nextRenewal: string | null;
   accountManagerName: string;
   portalEmail: string | null;
+  hasActiveContract: boolean;
   riskFlags: string[];
 }
 
@@ -139,7 +141,13 @@ export default function CustomersPage() {
           .filter((d): d is string => Boolean(d))
           .sort()[0] ?? null;
 
+      const customerContracts = contracts.filter(
+        (c) => c.customer_id === customer.id,
+      );
+      const hasActiveContract = contractsUnlockPortal(customerContracts);
+
       const riskFlags: string[] = [];
+      if (!hasActiveContract) riskFlags.push("No active contract");
       if (pastDueCustomers.has(customer.id)) riskFlags.push("Past due");
       if (renewingSoon.has(customer.id)) riskFlags.push("Renewing soon");
       if (included > 0 && used > included) riskFlags.push("Over hours");
@@ -164,6 +172,7 @@ export default function CustomersPage() {
           : "Unassigned",
         portalEmail:
           portalByCustomer.get(customer.id) ?? customer.contact_email ?? null,
+        hasActiveContract,
         riskFlags,
       };
     });
@@ -303,6 +312,11 @@ export default function CustomersPage() {
                         {row.primary_contact_name ?? "No contact"}
                         {row.industry ? ` · ${row.industry}` : ""}
                       </div>
+                      {!row.hasActiveContract ? (
+                        <div className="mt-1">
+                          <StatusBadge status="No active contract" />
+                        </div>
+                      ) : null}
                     </td>
                     <td className="font-mono text-xs">
                       {row.portalEmail ?? "—"}
@@ -378,7 +392,8 @@ export default function CustomersPage() {
           <h3 className="text-lg font-bold">Approve &amp; add customer</h3>
           <p className="mt-1 text-sm text-base-content/70">
             Creates the customer record and a Client Admin portal login (password{" "}
-            <span className="font-mono">DemoPass123!</span>).
+            <span className="font-mono">DemoPass123!</span>). The portal stays
+            locked until you add an Active service contract on the Contracts page.
           </p>
           {error ? (
             <div className="alert alert-error mt-4 text-sm">

@@ -27,6 +27,7 @@ function revalidateHardware() {
   revalidatePath("/hardware");
   revalidatePath("/portal");
   revalidatePath("/technician");
+  revalidatePath("/reports");
 }
 
 async function getUserAndRole() {
@@ -57,16 +58,18 @@ export async function createHardwareAsset(
 ): Promise<ActionResult> {
   const supabase = await createClient();
 
-  const customerId = String(formData.get("customer_id") ?? "").trim();
+  const customerRaw = String(formData.get("customer_id") ?? "").trim();
+  const customerId =
+    !customerRaw || customerRaw === "unassigned" ? null : customerRaw;
   const category = String(formData.get("category") ?? "").trim();
 
-  if (!customerId || !category) {
-    return { success: false, message: "Customer and category are required." };
+  if (!category) {
+    return { success: false, message: "Category is required." };
   }
 
   const assetNumber =
     String(formData.get("asset_number") ?? "").trim() ||
-    `HW-${Date.now().toString().slice(-8)}`;
+    `${customerId ? "HW" : "STOCK"}-${Date.now().toString().slice(-8)}`;
 
   const purchaseCostRaw = String(formData.get("purchase_cost") ?? "").trim();
   const quantityRaw = Number(formData.get("quantity") ?? 1);
@@ -92,7 +95,8 @@ export async function createHardwareAsset(
       String(formData.get("operating_system") ?? "").trim() || null,
     device_status: String(formData.get("device_status") ?? "Active").trim(),
     lifecycle_stage:
-      String(formData.get("lifecycle_stage") ?? "In Use").trim() || "In Use",
+      String(formData.get("lifecycle_stage") ?? "").trim() ||
+      (customerId ? "In Use" : "Inventory"),
     estimated_replacement_date:
       String(formData.get("estimated_replacement_date") ?? "").trim() || null,
     purchase_cost: purchaseCostRaw ? Number(purchaseCostRaw) : null,
@@ -142,7 +146,11 @@ export async function fetchAssetDetail(
     .eq("id", assetId)
     .maybeSingle();
 
-  if (error || !asset) {
+  if (error) {
+    console.error("fetchAssetDetail:", error.message);
+    return empty;
+  }
+  if (!asset) {
     return empty;
   }
 
@@ -424,6 +432,18 @@ export async function uploadAssetPhoto(input: {
   return { success: true, message: "Photo uploaded." };
 }
 
+function isManagerRole(role: string | null | undefined): boolean {
+  return (
+    role === "administrator" ||
+    role === "service_manager" ||
+    role === "account_manager"
+  );
+}
+
+/**
+ * Technician submits a purchase or replacement request.
+ * Does not create a hardware_assets row — that happens only on manager Approve.
+ */
 export async function createAssetOrderTicket(
   formData: FormData,
 ): Promise<ActionResult> {
@@ -436,42 +456,29 @@ export async function createAssetOrderTicket(
     return { success: false, message: "Only technicians can submit asset order tickets." };
   }
 
-  const assetId = String(formData.get("asset_id") ?? "").trim();
-  const replacementManufacturer = String(
-    formData.get("replacement_manufacturer") ?? "",
+  const requestTypeRaw = String(formData.get("request_type") ?? "purchase").trim();
+  const requestType =
+    requestTypeRaw === "replacement" ? "replacement" : "purchase";
+  const manufacturer = String(
+    formData.get("replacement_manufacturer") ?? formData.get("manufacturer") ?? "",
   ).trim();
-  const replacementModel = String(
-    formData.get("replacement_model") ?? "",
+  const model = String(
+    formData.get("replacement_model") ?? formData.get("model") ?? "",
   ).trim();
   const justification = String(
     formData.get("business_justification") ?? "",
   ).trim();
   const priority = String(formData.get("priority") ?? "Medium").trim();
+  const category = String(formData.get("category") ?? "").trim();
 
-  if (!assetId || !replacementManufacturer || !replacementModel || !justification) {
+  if (!manufacturer || !model || !justification) {
     return {
       success: false,
-      message: "Asset, replacement manufacturer, model, and justification are required.",
+      message: "Manufacturer, model, and business justification are required.",
     };
   }
   if (!ORDER_PRIORITIES.has(priority)) {
     return { success: false, message: "Invalid order priority." };
-  }
-
-  const { data: asset, error: assetError } = await supabase
-    .from("hardware_assets")
-    .select("id, customer_id, quantity, needs_replacement")
-    .eq("id", assetId)
-    .maybeSingle();
-
-  if (assetError || !asset) {
-    return { success: false, message: "The selected asset could not be found." };
-  }
-  if (!asset.needs_replacement) {
-    return {
-      success: false,
-      message: "Order tickets can only be submitted for assets marked Needs replacement.",
-    };
   }
 
   const estimatedUnitCostRaw = String(
@@ -487,15 +494,68 @@ export async function createAssetOrderTicket(
     return { success: false, message: "Estimated unit cost must be zero or greater." };
   }
 
+  let assetId: string | null = null;
+  let customerId: string | null = null;
+  let requestedQuantity = 1;
+  let resolvedCategory = category || null;
+
+  if (requestType === "replacement") {
+    const selectedAssetId = String(formData.get("asset_id") ?? "").trim();
+    if (!selectedAssetId) {
+      return {
+        success: false,
+        message: "Select the asset being replaced.",
+      };
+    }
+
+    const { data: asset, error: assetError } = await supabase
+      .from("hardware_assets")
+      .select("id, customer_id, quantity, needs_replacement, category")
+      .eq("id", selectedAssetId)
+      .maybeSingle();
+
+    if (assetError || !asset) {
+      return { success: false, message: "The selected asset could not be found." };
+    }
+    if (!asset.needs_replacement) {
+      return {
+        success: false,
+        message: "Replacement tickets require an asset marked Needs replacement.",
+      };
+    }
+    if (!asset.customer_id) {
+      return {
+        success: false,
+        message: "Assign this inventory asset to a customer before requesting a replacement.",
+      };
+    }
+
+    assetId = asset.id;
+    customerId = asset.customer_id;
+    requestedQuantity = asset.quantity ?? 1;
+    resolvedCategory = category || asset.category || null;
+  } else {
+    if (!category) {
+      return { success: false, message: "Category is required for a new purchase." };
+    }
+    const customerRaw = String(formData.get("customer_id") ?? "").trim();
+    customerId =
+      !customerRaw || customerRaw === "unassigned" ? null : customerRaw;
+
+    const qtyRaw = Number(formData.get("requested_quantity") ?? 1);
+    requestedQuantity =
+      Number.isInteger(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
+  }
+
   const ticketNumber = `AOT-${Date.now().toString().slice(-8)}`;
   const { error } = await supabase.from("asset_order_tickets").insert({
     ticket_number: ticketNumber,
-    asset_id: asset.id,
-    customer_id: asset.customer_id,
+    asset_id: assetId,
+    customer_id: customerId,
     requested_by: user.id,
-    replacement_manufacturer: replacementManufacturer,
-    replacement_model: replacementModel,
-    requested_quantity: asset.quantity,
+    replacement_manufacturer: manufacturer,
+    replacement_model: model,
+    requested_quantity: requestedQuantity,
     priority,
     business_justification: justification,
     technical_requirements:
@@ -504,6 +564,8 @@ export async function createAssetOrderTicket(
       String(formData.get("preferred_vendor") ?? "").trim() || null,
     estimated_unit_cost: estimatedUnitCost,
     needed_by: String(formData.get("needed_by") ?? "").trim() || null,
+    category: resolvedCategory,
+    request_type: requestType,
     status: "Pending",
   });
 
@@ -515,7 +577,10 @@ export async function createAssetOrderTicket(
   }
 
   revalidateHardware();
-  return { success: true, message: `Order ticket ${ticketNumber} submitted for approval.` };
+  return {
+    success: true,
+    message: `Purchase request ${ticketNumber} submitted for manager approval. The asset will be added only after approval.`,
+  };
 }
 
 export async function reviewAssetOrderTicket(
@@ -525,8 +590,8 @@ export async function reviewAssetOrderTicket(
 ): Promise<ActionResult> {
   const { supabase, user, role } = await getUserAndRole();
 
-  if (!user || role !== "administrator") {
-    return { success: false, message: "Only administrators can review order tickets." };
+  if (!user || !isManagerRole(role)) {
+    return { success: false, message: "Only managers can review asset purchase requests." };
   }
   if (!REVIEW_STATUSES.has(status)) {
     return { success: false, message: "Invalid approval status." };
@@ -534,7 +599,80 @@ export async function reviewAssetOrderTicket(
 
   const notes = adminNotes.trim();
   if ((status === "Rejected" || status === "Needs more information") && !notes) {
-    return { success: false, message: "Add an administrator note for this decision." };
+    return { success: false, message: "Add a note for this decision." };
+  }
+
+  const { data: ticket, error: readError } = await supabase
+    .from("asset_order_tickets")
+    .select("*")
+    .eq("id", ticketId)
+    .maybeSingle();
+
+  if (readError || !ticket) {
+    return { success: false, message: "Order ticket not found." };
+  }
+
+  if (ticket.status === "Approved" || ticket.status === "Rejected") {
+    return {
+      success: false,
+      message: `This request is already ${ticket.status.toLowerCase()}.`,
+    };
+  }
+
+  let createdAssetId: string | null = ticket.created_asset_id ?? null;
+
+  if (status === "Approved" && !createdAssetId) {
+    const category =
+      String(ticket.category ?? "").trim() ||
+      (ticket.asset_id ? "Hardware" : "");
+    if (!category) {
+      return {
+        success: false,
+        message: "This request is missing a category; ask the technician to resubmit.",
+      };
+    }
+
+    const quantity = Number(ticket.requested_quantity ?? 1);
+    const customerId = ticket.customer_id ?? null;
+    const assetNumber = `${customerId ? "HW" : "STOCK"}-${Date.now().toString().slice(-8)}`;
+    const unitCost =
+      ticket.estimated_unit_cost != null
+        ? Number(ticket.estimated_unit_cost)
+        : null;
+    const purchaseCost =
+      unitCost != null && Number.isFinite(unitCost)
+        ? Math.round(unitCost * quantity * 100) / 100
+        : null;
+
+    const { data: created, error: createError } = await supabase
+      .from("hardware_assets")
+      .insert({
+        asset_number: assetNumber,
+        asset_tag: assetNumber,
+        customer_id: customerId,
+        category,
+        quantity: Number.isInteger(quantity) && quantity > 0 ? quantity : 1,
+        manufacturer: ticket.replacement_manufacturer,
+        model: ticket.replacement_model,
+        purchase_cost: purchaseCost,
+        purchase_date: new Date().toISOString().slice(0, 10),
+        device_status: "Active",
+        lifecycle_stage: customerId ? "In Use" : "Inventory",
+        managed_coverage: true,
+        notes: ticket.preferred_vendor
+          ? `Ordered via ${ticket.ticket_number}. Vendor: ${ticket.preferred_vendor}`
+          : `Ordered via ${ticket.ticket_number}`,
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (createError || !created) {
+      return {
+        success: false,
+        message: createError?.message ?? "Failed to create the approved asset.",
+      };
+    }
+    createdAssetId = created.id;
   }
 
   const { error } = await supabase
@@ -545,6 +683,7 @@ export async function reviewAssetOrderTicket(
       reviewed_by: user.id,
       reviewed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      created_asset_id: createdAssetId,
     })
     .eq("id", ticketId);
 
@@ -553,7 +692,19 @@ export async function reviewAssetOrderTicket(
   }
 
   revalidateHardware();
+  if (status === "Approved") {
+    return {
+      success: true,
+      message: customerLabelForApprove(ticket.customer_id),
+    };
+  }
   return { success: true, message: `Order ticket marked ${status}.` };
+}
+
+function customerLabelForApprove(customerId: string | null | undefined): string {
+  return customerId
+    ? "Request approved. New asset added and assigned to the customer."
+    : "Request approved. New asset added to unassigned inventory.";
 }
 
 export async function requestInventoryReorder(
@@ -714,7 +865,7 @@ export async function reviewInventoryReorderRequest(
   };
 }
 
-/** Managers/admins only — direct restock without a technician request. */
+/** Direct restock — technicians are gated by monthly parts budget. */
 export async function restockInventoryPart(
   partId: string,
   amount: number,
@@ -723,11 +874,13 @@ export async function restockInventoryPart(
 
   if (
     !user ||
-    (role !== "administrator" && role !== "service_manager")
+    (role !== "technician" &&
+      role !== "administrator" &&
+      role !== "service_manager")
   ) {
     return {
       success: false,
-      message: "Only managers can restock inventory directly.",
+      message: "Only technicians can order inventory parts.",
     };
   }
   if (!Number.isInteger(amount) || amount < 1 || amount > 50) {
@@ -736,7 +889,7 @@ export async function restockInventoryPart(
 
   const { data: part, error: readError } = await supabase
     .from("inventory_parts")
-    .select("id, part_name, quantity")
+    .select("id, part_name, quantity, unit_cost")
     .eq("id", partId)
     .maybeSingle();
 
@@ -748,6 +901,39 @@ export async function restockInventoryPart(
       success: false,
       message: `Only ${50 - part.quantity} more can be ordered; inventory is capped at 50.`,
     };
+  }
+
+  const unitCost = Number(part.unit_cost ?? 0);
+  const orderCost = Math.round(amount * unitCost * 100) / 100;
+  let technicianId: string | null = null;
+
+  if (role === "technician") {
+    const { data: tech } = await supabase
+      .from("technicians")
+      .select("id")
+      .eq("profile_id", user.id)
+      .maybeSingle();
+
+    if (!tech) {
+      return {
+        success: false,
+        message: "No technician profile is linked to your account.",
+      };
+    }
+    technicianId = tech.id;
+
+    const budget = await ensureTechnicianPartsBudget(supabase, tech.id);
+    const mtd = await monthToDatePartsSpend(supabase, tech.id);
+    if (mtd + orderCost > Number(budget.monthly_limit)) {
+      const remaining = Math.max(
+        0,
+        Math.round((Number(budget.monthly_limit) - mtd) * 100) / 100,
+      );
+      return {
+        success: false,
+        message: `Parts budget exceeded. Remaining this month: $${remaining.toFixed(2)} of $${Number(budget.monthly_limit).toFixed(2)}. Request a limit increase from your manager.`,
+      };
+    }
   }
 
   const { error } = await supabase
@@ -763,9 +949,278 @@ export async function restockInventoryPart(
     return { success: false, message: error.message };
   }
 
+  if (technicianId) {
+    await supabase.from("inventory_part_orders").insert({
+      technician_id: technicianId,
+      part_id: partId,
+      quantity: amount,
+      unit_cost: unitCost,
+      total_cost: orderCost,
+      ordered_by: user.id,
+    });
+  }
+
   revalidateHardware();
   return {
     success: true,
-    message: `${amount} × ${part.part_name} added to inventory.`,
+    message: `${amount} × ${part.part_name} added to inventory${
+      orderCost > 0 ? ` ($${orderCost.toFixed(2)})` : ""
+    }.`,
+  };
+}
+
+async function ensureTechnicianPartsBudget(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  technicianId: string,
+): Promise<{ monthly_limit: number }> {
+  const { data: existing } = await supabase
+    .from("technician_parts_budgets")
+    .select("monthly_limit")
+    .eq("technician_id", technicianId)
+    .maybeSingle();
+
+  if (existing) {
+    return { monthly_limit: Number(existing.monthly_limit) };
+  }
+
+  await supabase.from("technician_parts_budgets").insert({
+    technician_id: technicianId,
+    monthly_limit: 500,
+  });
+
+  return { monthly_limit: 500 };
+}
+
+async function monthToDatePartsSpend(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  technicianId: string,
+): Promise<number> {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const { data } = await supabase
+    .from("inventory_part_orders")
+    .select("total_cost")
+    .eq("technician_id", technicianId)
+    .gte("created_at", start);
+
+  return (data ?? []).reduce(
+    (sum, row) => sum + Number(row.total_cost ?? 0),
+    0,
+  );
+}
+
+/** Assign an unassigned inventory asset to a customer. */
+export async function assignHardwareAsset(
+  formData: FormData,
+): Promise<ActionResult> {
+  const { supabase, role } = await getUserAndRole();
+  if (!isManagerRole(role) && role !== "technician") {
+    return { success: false, message: "Not allowed to assign hardware." };
+  }
+
+  const assetId = String(formData.get("asset_id") ?? "").trim();
+  const customerId = String(formData.get("customer_id") ?? "").trim();
+  const location = String(formData.get("location") ?? "").trim() || null;
+  const deviceStatus =
+    String(formData.get("device_status") ?? "").trim() || "Active";
+
+  if (!assetId || !customerId) {
+    return { success: false, message: "Asset and customer are required." };
+  }
+
+  const { data: asset } = await supabase
+    .from("hardware_assets")
+    .select("id, customer_id")
+    .eq("id", assetId)
+    .maybeSingle();
+
+  if (!asset) {
+    return { success: false, message: "Asset not found." };
+  }
+  if (asset.customer_id) {
+    return {
+      success: false,
+      message: "This asset is already assigned to a customer.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("hardware_assets")
+    .update({
+      customer_id: customerId,
+      location,
+      device_status: deviceStatus,
+      lifecycle_stage: "Deployed",
+    })
+    .eq("id", assetId);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidateHardware();
+  revalidatePath("/end-user/devices");
+  return { success: true, message: "Asset assigned to customer." };
+}
+
+export async function updateTechnicianPartsBudget(
+  technicianId: string,
+  monthlyLimit: number,
+): Promise<ActionResult> {
+  const { supabase, user, role } = await getUserAndRole();
+  if (!user || !isManagerRole(role)) {
+    return { success: false, message: "Only managers can update parts budgets." };
+  }
+  if (!Number.isFinite(monthlyLimit) || monthlyLimit < 0) {
+    return { success: false, message: "Monthly limit must be zero or greater." };
+  }
+
+  const { error } = await supabase.from("technician_parts_budgets").upsert({
+    technician_id: technicianId,
+    monthly_limit: monthlyLimit,
+    updated_at: new Date().toISOString(),
+    updated_by: user.id,
+  });
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidateHardware();
+  return { success: true, message: "Parts budget updated." };
+}
+
+export async function requestPartsBudgetIncrease(
+  requestedLimit: number,
+  reason: string,
+): Promise<ActionResult> {
+  const { supabase, user, role } = await getUserAndRole();
+  if (!user || role !== "technician") {
+    return {
+      success: false,
+      message: "Only technicians can request a budget increase.",
+    };
+  }
+  if (!Number.isFinite(requestedLimit) || requestedLimit <= 0) {
+    return { success: false, message: "Enter a valid requested limit." };
+  }
+
+  const { data: tech } = await supabase
+    .from("technicians")
+    .select("id")
+    .eq("profile_id", user.id)
+    .maybeSingle();
+
+  if (!tech) {
+    return {
+      success: false,
+      message: "No technician profile is linked to your account.",
+    };
+  }
+
+  const budget = await ensureTechnicianPartsBudget(supabase, tech.id);
+  if (requestedLimit <= Number(budget.monthly_limit)) {
+    return {
+      success: false,
+      message: "Requested limit must be higher than your current monthly limit.",
+    };
+  }
+
+  const { data: pending } = await supabase
+    .from("technician_budget_increase_requests")
+    .select("id")
+    .eq("technician_id", tech.id)
+    .eq("status", "Pending")
+    .maybeSingle();
+
+  if (pending) {
+    return {
+      success: false,
+      message: "You already have a pending limit increase request.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("technician_budget_increase_requests")
+    .insert({
+      technician_id: tech.id,
+      requested_limit: requestedLimit,
+      current_limit: Number(budget.monthly_limit),
+      reason: reason.trim() || null,
+      status: "Pending",
+    });
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidateHardware();
+  return {
+    success: true,
+    message: "Limit increase request submitted for manager review.",
+  };
+}
+
+export async function reviewPartsBudgetIncreaseRequest(
+  requestId: string,
+  decision: "Approved" | "Rejected",
+  reviewNotes = "",
+): Promise<ActionResult> {
+  const { supabase, user, role } = await getUserAndRole();
+  if (!user || !isManagerRole(role)) {
+    return {
+      success: false,
+      message: "Only managers can review budget increase requests.",
+    };
+  }
+
+  const { data: request, error: loadError } = await supabase
+    .from("technician_budget_increase_requests")
+    .select("*")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (loadError || !request) {
+    return { success: false, message: "Request not found." };
+  }
+  if (request.status !== "Pending") {
+    return { success: false, message: "This request was already reviewed." };
+  }
+
+  if (decision === "Approved") {
+    const { error: budgetError } = await supabase
+      .from("technician_parts_budgets")
+      .upsert({
+        technician_id: request.technician_id,
+        monthly_limit: Number(request.requested_limit),
+        updated_at: new Date().toISOString(),
+        updated_by: user.id,
+      });
+    if (budgetError) {
+      return { success: false, message: budgetError.message };
+    }
+  }
+
+  const { error } = await supabase
+    .from("technician_budget_increase_requests")
+    .update({
+      status: decision,
+      reviewed_by: user.id,
+      review_notes: reviewNotes.trim() || null,
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq("id", requestId);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidateHardware();
+  return {
+    success: true,
+    message:
+      decision === "Approved"
+        ? "Increase approved; technician limit updated."
+        : "Increase request denied.",
   };
 }

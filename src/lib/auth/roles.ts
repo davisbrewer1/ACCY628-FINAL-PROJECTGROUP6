@@ -44,6 +44,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "service_manager", "account_manager", "billing"],
   },
   {
+    href: "/plans",
+    label: "Plans",
+    icon: "Layers",
+    roles: ["administrator", "service_manager", "account_manager"],
+  },
+  {
     href: "/service-tickets",
     label: "Service Tickets",
     icon: "Ticket",
@@ -56,16 +62,16 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "service_manager"],
   },
   {
+    href: "/technician",
+    label: "My Work",
+    icon: "Wrench",
+    roles: ["technician", "administrator"],
+  },
+  {
     href: "/time-costs",
     label: "Work & Billing",
     icon: "Clock",
     roles: ["administrator", "service_manager", "account_manager", "billing"],
-  },
-  {
-    href: "/time-costs",
-    label: "Expense Tracker",
-    icon: "Receipt",
-    roles: ["technician"],
   },
   {
     href: "/billing",
@@ -90,7 +96,13 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/hardware",
     label: "Hardware Assets",
     icon: "Monitor",
-    roles: ["administrator", "technician", "client_admin"],
+    roles: ["administrator", "service_manager", "account_manager", "technician", "client_admin"],
+  },
+  {
+    href: "/time-costs",
+    label: "Expense Tracker",
+    icon: "Receipt",
+    roles: ["technician"],
   },
   {
     href: "/cybersecurity",
@@ -105,12 +117,6 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "executive", "client_admin"],
   },
   {
-    href: "/technician",
-    label: "My Work",
-    icon: "Wrench",
-    roles: ["technician"],
-  },
-  {
     href: "/portal",
     label: "Client Portal",
     icon: "Home",
@@ -118,7 +124,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/end-user",
-    label: "End User Portal",
+    label: "Client Portal",
     icon: "UserRound",
     roles: ["client_user"],
   },
@@ -189,6 +195,7 @@ export const PROTECTED_ROUTE_PREFIXES = [
   "/operations",
   "/customers",
   "/contracts",
+  "/plans",
   "/service-catalog",
   "/hardware",
   "/service-tickets",

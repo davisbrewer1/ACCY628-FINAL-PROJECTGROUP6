@@ -6,11 +6,23 @@ import { useApprovalWorkflow } from "@/hooks/useApprovalWorkflow";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { isInternalOverLimitApproval } from "@/lib/ticket-expense-budgets";
 import type { Approval, ServiceTicket, Technician } from "@/lib/types";
 
 interface ApprovalManagerPanelProps {
   tickets?: ServiceTicket[];
   technicians?: Technician[];
+}
+
+function approvalTypeLabel(approval: Approval): string {
+  if (approval.ticket_expense_id) {
+    return isInternalOverLimitApproval(approval.reason)
+      ? "Over-limit internal"
+      : "Billable expense";
+  }
+  if (approval.work_entry_id) return "Work entry";
+  if (approval.cost_entry_id) return "Cost entry";
+  return "Request";
 }
 
 export function ApprovalManagerPanel({
@@ -71,10 +83,12 @@ export function ApprovalManagerPanel({
           <div>
             <h2 className="card-title text-base">
               <ShieldAlert className="size-4" aria-hidden="true" />
-              Approval manager
+              Expense approvals
             </h2>
             <p className="text-sm text-base-content/60">
-              Review pending billable cost approvals and notify technicians.
+              Approve billable Expense Tracker items before invoicing, or
+              over-limit internal expenses. Deny billable returns them to
+              internal; deny over-limit excludes them from spend and P&amp;L.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -124,6 +138,7 @@ export function ApprovalManagerPanel({
                   <th>Requested</th>
                   <th>Ticket</th>
                   <th>Technician</th>
+                  <th>Type</th>
                   <th>Cost</th>
                   <th>Reason</th>
                   <th>Status</th>
@@ -154,6 +169,9 @@ export function ApprovalManagerPanel({
                         {approval.technician_id
                           ? techMap.get(approval.technician_id) ?? "Technician"
                           : "—"}
+                      </td>
+                      <td className="whitespace-nowrap text-xs">
+                        {approvalTypeLabel(approval)}
                       </td>
                       <td>{formatCurrency(approval.total_cost)}</td>
                       <td className="max-w-[16rem] text-sm">

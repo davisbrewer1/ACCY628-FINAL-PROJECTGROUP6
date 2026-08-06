@@ -8,11 +8,14 @@ import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
+import { PortalContractLockBanner } from "@/components/PortalContractLockBanner";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ServiceDatePicker } from "@/components/tickets/ServiceDatePicker";
 import { useToast } from "@/components/Toast";
+import { contractsUnlockPortal } from "@/lib/customer-access";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -131,6 +134,7 @@ export default function PortalPage() {
 
   const activeContracts = contracts.filter((c) => c.contract_status === "Active");
   const activeContract = activeContracts[0];
+  const portalLocked = !contractsUnlockPortal(contracts);
 
   const monthHours = useMemo(
     () =>
@@ -207,12 +211,20 @@ export default function PortalPage() {
         title="Client admin portal"
         description={`${customer?.customer_name ?? "Your organization"} — contracts, assets, security health, and support.`}
         action={
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => dialogRef.current?.showModal()}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={portalLocked}
+            title={portalLocked ? "Requires an active service contract" : undefined}
+            onClick={() => dialogRef.current?.showModal()}
+          >
             <Plus className="size-4" />
             Support Request
           </button>
         }
       />
+
+      <PortalContractLockBanner locked={portalLocked} />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
@@ -477,22 +489,12 @@ export default function PortalPage() {
             <FormField label="Location" htmlFor="location">
               <input id="location" name="location" className="input input-bordered w-full" />
             </FormField>
-            <FormField label="Severity" htmlFor="severity">
-              <select id="severity" name="severity" className="select select-bordered w-full" defaultValue="Medium">
-                <option value="Critical">Critical</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </FormField>
-            <FormField label="Priority requested" htmlFor="priority">
-              <select id="priority" name="priority" className="select select-bordered w-full" defaultValue="Medium">
-                <option value="Critical">Critical</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </FormField>
+            <div>
+              <p className="mb-2 text-sm font-medium">
+                When do you need service? <span className="text-error">*</span>
+              </p>
+              <ServiceDatePicker />
+            </div>
             <FormField label="Preferred contact method" htmlFor="service_method">
               <select id="service_method" name="service_method" className="select select-bordered w-full" defaultValue="Email">
                 <option value="Email">Email</option>
