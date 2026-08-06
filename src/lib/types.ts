@@ -121,6 +121,31 @@ export interface Customer {
   created_at: string;
 }
 
+export type PlanPricingModel = "Monthly" | "Yearly" | "Up-front";
+
+export interface ServicePlan {
+  id: string;
+  name: string;
+  description: string | null;
+  pricing_model: PlanPricingModel | string;
+  base_price: number;
+  included_support_hours: number;
+  included_asset_budget: number;
+  additional_hourly_rate: number;
+  additional_asset_rate: number;
+  billing_frequency: string;
+  payment_terms: string | null;
+  invoice_due_days: number | null;
+  setup_fee: number;
+  /** @deprecated Prefer late_fee_percent + late_fee_period_days */
+  late_fee_policy: string | null;
+  late_fee_percent: number;
+  late_fee_period_days: number;
+  revenue_recognition_method: string | null;
+  active: boolean;
+  created_at: string;
+}
+
 export interface Contract {
   id: string;
   customer_id: string;
@@ -133,6 +158,7 @@ export interface Contract {
   service_plan_name: string | null;
   monthly_recurring_fee: number | null;
   included_support_hours: number | null;
+  included_asset_budget?: number | null;
   additional_hourly_rate: number | null;
   emergency_support_rate: number | null;
   onsite_support_rate: number | null;
