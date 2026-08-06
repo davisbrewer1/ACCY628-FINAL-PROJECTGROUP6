@@ -589,7 +589,7 @@ export function WorkEntryModal({
                 onChange={(e) => onServiceMethodChange(e.target.value)}
               >
                 <option value="Remote">Remote</option>
-                <option value="On-site">On-site</option>
+                <option value="On-site">In-person</option>
                 <option value="Phone">Phone</option>
                 <option value="Email">Email</option>
               </select>

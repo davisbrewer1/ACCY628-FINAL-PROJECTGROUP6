@@ -140,16 +140,28 @@ interface TechnicianHeaderToolsProps {
   technicianId?: string | null;
 }
 
+/** Keep notification copy as plain letters, spaces, and simple punctuation. */
+function toPlainText(value: string): string {
+  return value
+    .replace(/Â·/g, " - ")
+    .replace(/\u00c2\u00b7/g, " - ")
+    .replace(/[·•]/g, " - ")
+    .replace(/[—–−]/g, " - ")
+    .replace(/[^\w\s:.,'"!?()/-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildOverdueBody(ticket: ServiceTicket): string {
   const opened = ticket.opened_at ?? ticket.created_at;
   const openDays = daysOpen(opened) ?? 0;
   const dueDays = getWorkOutstandingDueDays(ticket.priority);
   const parts = [
-    `${ticket.ticket_number} — ${ticket.title}`,
-    `${ticket.priority ?? "Medium"} priority · ${ticket.status ?? "Open"}`,
+    `${ticket.ticket_number} - ${ticket.title}`,
+    `${ticket.priority ?? "Medium"} priority - ${ticket.status ?? "Open"}`,
     dueDays === 0
-      ? `Due immediately · open ${openDays === 0 ? "today" : `${openDays} day${openDays === 1 ? "" : "s"}`}`
-      : `Due within ${dueDays} day${dueDays === 1 ? "" : "s"} · open ${openDays} day${openDays === 1 ? "" : "s"}`,
+      ? `Due immediately - open ${openDays === 0 ? "today" : `${openDays} day${openDays === 1 ? "" : "s"}`}`
+      : `Due within ${dueDays} day${dueDays === 1 ? "" : "s"} - open ${openDays} day${openDays === 1 ? "" : "s"}`,
   ];
 
   if (ticket.requester_name) {
@@ -162,7 +174,7 @@ function buildOverdueBody(ticket: ServiceTicket): string {
     parts.push("Security incident");
   }
 
-  return parts.join(" · ");
+  return toPlainText(parts.join(" - "));
 }
 
 export function TechnicianHeaderTools({
@@ -297,8 +309,10 @@ export function TechnicianHeaderTools({
         const receivedAtMs = Date.now();
         return {
           id: `reschedule-${ticket.id}`,
-          title: `Reschedule: ${ticket.ticket_number}`,
-          body: `Customer requested ${dayLabel}. Place a new time in Needs scheduling — ${ticket.title}`,
+          title: toPlainText(`Reschedule: ${ticket.ticket_number}`),
+          body: toPlainText(
+            `Customer requested ${dayLabel}. Place a new time in Needs scheduling - ${ticket.title}`,
+          ),
           createdAt: new Date(receivedAtMs).toISOString(),
           receivedAtMs,
           security: Boolean(ticket.cybersecurity_incident),
@@ -315,10 +329,12 @@ export function TechnicianHeaderTools({
       const isReschedule = item.type === "customer_reschedule";
       return {
         id: `inbox-${item.id}`,
-        title: isReschedule
-          ? "Customer reschedule request"
-          : item.type.replaceAll("_", " "),
-        body: item.message,
+        title: toPlainText(
+          isReschedule
+            ? "Customer reschedule request"
+            : item.type.replaceAll("_", " "),
+        ),
+        body: toPlainText(item.message),
         createdAt: item.created_at,
         receivedAtMs: toTimestamp(item.created_at) ?? 0,
         security: false,
@@ -380,7 +396,9 @@ export function TechnicianHeaderTools({
           title: ticket.cybersecurity_incident
             ? `Security work assigned: ${ticket.title}`
             : `New assignment: ${ticket.title}`,
-          body: `${ticket.ticket_number} · ${ticket.priority ?? "Medium"} priority · ${ticket.status}`,
+          body: toPlainText(
+            `${ticket.ticket_number} - ${ticket.priority ?? "Medium"} priority - ${ticket.status}`,
+          ),
           createdAt: new Date(receivedAtMs).toISOString(),
           receivedAtMs,
           security: Boolean(ticket.cybersecurity_incident),
@@ -572,7 +590,7 @@ export function TechnicianHeaderTools({
                   >
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="text-sm font-semibold text-white">
-                        {item.title}
+                        {toPlainText(item.title)}
                       </h3>
                       <div className="flex shrink-0 items-center gap-1">
                         {item.source === "reschedule" ? (
@@ -616,7 +634,9 @@ export function TechnicianHeaderTools({
                         ) : null}
                       </div>
                     </div>
-                    <p className="mt-1 text-xs text-slate-300">{item.body}</p>
+                    <p className="mt-1 text-xs text-slate-300">
+                      {toPlainText(item.body)}
+                    </p>
                     <p className="mt-2 text-[11px] text-slate-500">
                       {formatDistanceToNow(new Date(item.receivedAtMs), {
                         addSuffix: true,

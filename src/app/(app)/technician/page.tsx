@@ -46,6 +46,7 @@ import {
   DEFAULT_TECH_HOURLY_RATE,
   formatCurrency,
   getCurrentPayPeriod,
+  salariedHoursInPayPeriod,
   sumHoursInRange,
 } from "@/lib/technician-payroll";
 import {
@@ -494,7 +495,8 @@ export default function TechnicianWorkspacePage() {
   }, [assignedOpen]);
 
   const payPeriod = useMemo(() => getCurrentPayPeriod(), []);
-  const payPeriodHours = useMemo(
+  const payPeriodHours = useMemo(() => salariedHoursInPayPeriod(), [payPeriod]);
+  const billableHoursThisPeriod = useMemo(
     () => sumHoursInRange(workEntries, payPeriod.start, payPeriod.end),
     [workEntries, payPeriod],
   );
@@ -1115,12 +1117,12 @@ export default function TechnicianWorkspacePage() {
           title="Hours Completed this Week"
           value={hoursThisWeek.toFixed(1)}
           tone="info"
-          hint="Logged work Mon–Sun · refreshes automatically"
+          hint="Billable work-entry hours Mon-Sun"
         />
         <TechStat
           title="Remaining Hours Scheduled this Week"
           value={hoursScheduledThisWeek.toFixed(1)}
-          hint="Open tickets scheduled Mon–Fri this week"
+          hint="Open tickets scheduled Mon-Fri this week"
         />
       </div>
 
@@ -1438,11 +1440,12 @@ export default function TechnicianWorkspacePage() {
         <div>
           <h2 className="text-base font-semibold text-white">Current pay period</h2>
           <p className="mt-1 text-sm text-slate-400">
-            Biweekly · {format(payPeriod.start, "MMM d")} –{" "}
-            {format(payPeriod.end, "MMM d, yyyy")}
+            Biweekly - {format(payPeriod.start, "MMM d")} to{" "}
+            {format(payPeriod.end, "MMM d, yyyy")}. Paid 8 hours per weekday.
+            Work entry hours bill to client accounts and contracts.
           </p>
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
             <p className="text-sm text-slate-300">Pay rate</p>
             <p className="mt-1 text-3xl font-semibold text-white">
@@ -1450,13 +1453,21 @@ export default function TechnicianWorkspacePage() {
             </p>
           </div>
           <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
-            <p className="text-sm text-slate-300">Hours worked this period</p>
+            <p className="text-sm text-slate-300">Paid hours this period</p>
             <p className="mt-1 text-3xl font-semibold text-white">
               {payPeriodHours.toFixed(1)}
             </p>
+            <p className="mt-1 text-xs text-slate-500">8h x each weekday</p>
           </div>
           <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
-            <p className="text-sm text-slate-300">Current Earnings this period</p>
+            <p className="text-sm text-slate-300">Billable hours (clients)</p>
+            <p className="mt-1 text-3xl font-semibold text-white">
+              {billableHoursThisPeriod.toFixed(1)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">From work entries</p>
+          </div>
+          <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
+            <p className="text-sm text-slate-300">Current earnings this period</p>
             <p className="mt-1 text-3xl font-semibold text-emerald-300">
               {formatCurrency(payPeriodEarnings)}
             </p>

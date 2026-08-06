@@ -79,7 +79,7 @@ BEGIN
         v_row.assigned_technician_id,
         'customer_reschedule',
         format(
-          'Customer requested reschedule of %s to %s. Tag on request — move off current slot and place a new time: %s',
+          'Customer requested reschedule of %s to %s. Place a new time in Needs scheduling: %s',
           v_old_number,
           v_date_text,
           v_title

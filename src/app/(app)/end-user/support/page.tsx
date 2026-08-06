@@ -856,12 +856,23 @@ export default function EndUserSupportPage() {
                     Service method
                   </p>
                   <p className="mt-1 font-medium">
-                    {selectedTicket.service_method ?? "To be determined"}
+                    {selectedTicket.service_method === "On-site"
+                      ? "In-person"
+                      : selectedTicket.service_method ?? "To be determined"}
                   </p>
                 </div>
                 <div className="rounded-box border border-base-300 p-3">
                   <p className="text-xs uppercase tracking-wide text-base-content/60">Location</p>
-                  <p className="mt-1 font-medium">{selectedTicket.location ?? "—"}</p>
+                  <p className="mt-1 font-medium">
+                    {selectedTicket.location === "On-site" ||
+                    selectedTicket.location === "In-person"
+                      ? "In-person"
+                      : selectedTicket.location ??
+                        (selectedTicket.service_method === "On-site"
+                          ? "In-person"
+                          : selectedTicket.service_method) ??
+                        "-"}
+                  </p>
                 </div>
                 <div className="rounded-box border border-base-300 p-3">
                   <p className="text-xs uppercase tracking-wide text-base-content/60">Device</p>
@@ -923,7 +934,13 @@ export default function EndUserSupportPage() {
                               </p>
                               <p className="text-xs text-base-content/60">
                                 {formatDate(entry.work_date ?? entry.created_at)}
-                                {entry.service_method ? ` Â· ${entry.service_method}` : ""}
+                                {entry.service_method
+                                  ? ` - ${
+                                      entry.service_method === "On-site"
+                                        ? "In-person"
+                                        : entry.service_method
+                                    }`
+                                  : ""}
                                 {entry.hours_worked != null
                                   ? ` Â· ${entry.hours_worked} hrs`
                                   : ""}
@@ -1161,14 +1178,20 @@ export default function EndUserSupportPage() {
               </FormField>
             </div>
 
-            <FormField label="Office location" htmlFor="location" required>
-              <input
-                id="location"
-                name="location"
-                className="input input-bordered w-full"
-                placeholder="Office, floor, desk, or remote"
+            <FormField label="Location" htmlFor="service_method" required>
+              <select
+                id="service_method"
+                name="service_method"
+                className="select select-bordered w-full"
+                defaultValue=""
                 required
-              />
+              >
+                <option value="" disabled>
+                  Select location
+                </option>
+                <option value="Remote">Remote</option>
+                <option value="On-site">In-person</option>
+              </select>
             </FormField>
 
             <FormField

@@ -228,6 +228,22 @@ export async function createPortalTicket(
     ? "Critical"
     : String(formData.get("priority") ?? "Medium").trim() || "Medium";
 
+  const serviceMethodRaw = String(formData.get("service_method") ?? "").trim();
+  const serviceMethod =
+    serviceMethodRaw.toLowerCase() === "remote"
+      ? "Remote"
+      : serviceMethodRaw.toLowerCase() === "on-site" ||
+          serviceMethodRaw.toLowerCase() === "in-person"
+        ? "On-site"
+        : "";
+
+  if (!serviceMethod) {
+    return {
+      success: false,
+      message: "Choose Remote or In-person for location.",
+    };
+  }
+
   const { error } = await supabase.from("service_tickets").insert({
     ticket_number: ticketNumber,
     customer_id: customerId,
@@ -236,8 +252,8 @@ export async function createPortalTicket(
     description: String(formData.get("description") ?? "").trim() || null,
     category,
     priority,
-    service_method: String(formData.get("service_method") ?? "").trim() || null,
-    location: String(formData.get("location") ?? "").trim() || null,
+    service_method: serviceMethod,
+    location: serviceMethod === "Remote" ? "Remote" : "In-person",
     requester_name: String(formData.get("requester_name") ?? "").trim() || null,
     severity: priority,
     is_asap: isAsap,
@@ -717,7 +733,7 @@ export async function rescheduleCustomerTicket(
       await insertNotification(supabase, {
         technicianId: String(ticket.assigned_technician_id),
         type: "customer_reschedule",
-        message: `Reschedule: ${ticket.ticket_number} → ${dateKey}. Place a new time in Needs scheduling: ${ticket.title}`,
+        message: `Reschedule: ${ticket.ticket_number} -> ${dateKey}. Place a new time in Needs scheduling: ${ticket.title}`,
       });
     } catch (notifyError) {
       console.warn("customer reschedule notification skipped:", notifyError);
