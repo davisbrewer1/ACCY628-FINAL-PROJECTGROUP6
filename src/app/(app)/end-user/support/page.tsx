@@ -584,7 +584,7 @@ export default function EndUserSupportPage() {
                 <p className="mt-2 text-xs text-base-content/60">
                   Auto-refreshes every 10 seconds
                   {lastRefreshedAt
-                    ? ` Â· Last updated ${lastRefreshedAt.toLocaleTimeString()}`
+                    ? ` · Last updated ${lastRefreshedAt.toLocaleTimeString()}`
                     : ""}
                 </p>
 
@@ -594,17 +594,15 @@ export default function EndUserSupportPage() {
                     return (
                       <li key={step.id} className="flex gap-3">
                         <span
-                          className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                          className={`mt-0.5 size-5 shrink-0 rounded-full ${
                             step.state === "complete"
-                              ? "bg-success text-success-content"
+                              ? "bg-success"
                               : step.state === "active"
-                                ? "bg-primary text-primary-content"
-                                : "bg-base-300 text-base-content/60"
+                                ? "bg-primary"
+                                : "bg-base-300"
                           }`}
                           aria-hidden="true"
-                        >
-                          {step.state === "complete" ? "âœ“" : step.state === "active" ? "â—" : ""}
-                        </span>
+                        />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-baseline justify-between gap-2">
                             <p
@@ -803,9 +801,9 @@ export default function EndUserSupportPage() {
                       ratingValue === value ? "btn-warning" : "btn-outline"
                     }`}
                     onClick={() => setRatingValue(value)}
-                    aria-label={`${value} star${value === 1 ? "" : "s"}`}
+                    aria-label={`Rate ${value} out of 5`}
                   >
-                    {value}â˜…
+                    {value}
                   </button>
                 ))}
               </div>
