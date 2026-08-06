@@ -578,3 +578,263 @@ export function nextInvoiceDateHint(contract: Contract): string | null {
   if (!contract.billing_frequency) return null;
   return `${contract.billing_frequency} billing`;
 }
+
+/** Composite account score for manager preview — not a persisted field. */
+export interface ClientHealthInsight {
+  customerId: string;
+  customerName: string;
+  score: number;
+  drivers: string[];
+  recommendedAction: string;
+  actionHref: string;
+  mrr: number;
+  arBalance: number;
+  openTickets: number;
+}
+
+/**
+ * Score each active customer from SLA, AR, hour burn, criticals, and renewal pressure.
+ * Returns weakest accounts first for the Command Center preview.
+ */
+export function buildClientHealthInsights(
+  customers: Customer[],
+  contracts: Contract[],
+  tickets: ServiceTicket[],
+  workEntries: WorkEntry[],
+  invoices: Invoice[],
+): ClientHealthInsight[] {
+  const burns = computeContractHoursBurns(contracts, workEntries);
+  const openTickets = getOpenTickets(tickets);
+  const pastDueByCustomer = new Map<string, number>();
+  for (const inv of getPastDueInvoices(invoices)) {
+    pastDueByCustomer.set(
+      inv.customer_id,
+      (pastDueByCustomer.get(inv.customer_id) ?? 0) +
+        (inv.remaining_balance ?? 0),
+    );
+  }
+  const renewals30 = new Set(
+    getRenewalsInDays(contracts, 30).map((c) => c.customer_id),
+  );
+  const slaCustomers = new Set(
+    getSlaAtRiskTickets(tickets).map((t) => t.customer_id),
+  );
+
+  return customers
+    .filter((c) => c.status === "Active")
+    .map((customer) => {
+      const custContracts = contracts.filter(
+        (c) => c.customer_id === customer.id && c.contract_status === "Active",
+      );
+      const mrr = custContracts.reduce(
+        (sum, c) => sum + (c.monthly_recurring_fee ?? 0),
+        0,
+      );
+      const custBurns = burns.filter((b) => b.customerId === customer.id);
+      const hoursUsed = custBurns.reduce((sum, b) => sum + b.hoursUsed, 0);
+      const includedHours = custBurns.reduce(
+        (sum, b) => sum + b.includedHours,
+        0,
+      );
+      const overHours = custBurns.some((b) => b.isOver);
+      const arPastDue = pastDueByCustomer.get(customer.id) ?? 0;
+      const custOpen = openTickets.filter((t) => t.customer_id === customer.id);
+      const criticalOpen = custOpen.filter((t) => t.priority === "Critical").length;
+      const renewingSoon = renewals30.has(customer.id);
+      const slaRisk = slaCustomers.has(customer.id);
+
+      let score = 100;
+      const drivers: string[] = [];
+      let recommendedAction = "Keep routine check-ins — account looks stable.";
+      let actionHref = "/customers";
+
+      if (slaRisk) {
+        score -= 18;
+        drivers.push("SLA pressure on open tickets");
+        recommendedAction = "Stabilize SLA — assign owner and set recovery ETA.";
+        actionHref = "/service-tickets?filter=sla";
+      }
+      if (arPastDue > 0) {
+        score -= Math.min(22, 10 + Math.floor(arPastDue / 2500));
+        drivers.push("Past-due AR balance");
+        if (arPastDue >= 500 || !slaRisk) {
+          recommendedAction = "Collections call — clear past-due before more work accumulates.";
+          actionHref = "/billing?filter=past-due";
+        }
+      }
+      if (overHours) {
+        score -= 12;
+        drivers.push("Burned past included hours");
+        if (!slaRisk && arPastDue === 0) {
+          recommendedAction = "Invoice overage or propose a plan upgrade.";
+          actionHref = "/contracts?filter=over-hours";
+        }
+      }
+      if (criticalOpen > 0) {
+        score -= Math.min(15, criticalOpen * 5);
+        drivers.push(`${criticalOpen} critical open ticket${criticalOpen === 1 ? "" : "s"}`);
+        if (!slaRisk && arPastDue === 0 && !overHours) {
+          recommendedAction = "Escalate critical work — daily update until closed.";
+          actionHref = "/service-tickets?filter=critical";
+        }
+      }
+      if (renewingSoon) {
+        score -= 6;
+        drivers.push("Renewal within 30 days");
+        if (drivers.length === 1) {
+          recommendedAction = "Book renewal review with health score and hour burn ready.";
+          actionHref = "/contracts?filter=renewals";
+        }
+      }
+      if (
+        customer.technology_health_score != null &&
+        customer.technology_health_score < 70
+      ) {
+        score -= 10;
+        drivers.push("Low technology health score");
+      }
+      if (includedHours > 0 && hoursUsed / includedHours >= 0.85 && !overHours) {
+        score -= 5;
+        drivers.push("Approaching hour allotment");
+      }
+
+      score = Math.max(0, Math.min(100, Math.round(score)));
+      if (drivers.length === 0) drivers.push("No active risk drivers");
+
+      return {
+        customerId: customer.id,
+        customerName: customer.customer_name,
+        score,
+        drivers,
+        recommendedAction,
+        actionHref,
+        mrr,
+        arBalance: invoices
+          .filter((i) => i.customer_id === customer.id)
+          .reduce((sum, i) => sum + (i.remaining_balance ?? 0), 0),
+        openTickets: custOpen.length,
+      };
+    })
+    .sort((a, b) => a.score - b.score || b.mrr - a.mrr)
+    .slice(0, 8);
+}
+
+export type ProfitLeakKind =
+  | "unbilled_work"
+  | "unbilled_overage"
+  | "margin_shortfall"
+  | "past_due_ar"
+  | "awaiting_send";
+
+export interface ProfitLeakSignal {
+  id: string;
+  kind: ProfitLeakKind;
+  title: string;
+  detail: string;
+  amountAtRisk: number;
+  recommendedAction: string;
+  href: string;
+}
+
+/**
+ * Money left on the table: unbilled work, overage not invoiced, cost > MRR, AR, drafts.
+ */
+export function buildProfitLeakageSignals(
+  customers: Customer[],
+  contracts: Contract[],
+  workEntries: WorkEntry[],
+  invoices: Invoice[],
+): ProfitLeakSignal[] {
+  const customerMap = new Map(customers.map((c) => [c.id, c.customer_name]));
+  const contractMap = new Map(contracts.map((c) => [c.id, c]));
+  const signals: ProfitLeakSignal[] = [];
+
+  const ready = getReadyToInvoiceEntries(workEntries);
+  if (ready.length > 0) {
+    const amount = ready.reduce((sum, e) => {
+      const contract = e.contract_id ? contractMap.get(e.contract_id) : null;
+      const hours = e.included_in_contract ? 0 : (e.hours_worked ?? 0);
+      return (
+        sum +
+        hours * (contract?.additional_hourly_rate ?? 0) +
+        (e.parts_cost ?? 0) +
+        (e.software_cost ?? 0) +
+        (e.equipment_cost ?? 0) +
+        (e.travel_cost ?? 0) +
+        (e.other_cost ?? 0)
+      );
+    }, 0);
+    signals.push({
+      id: "leak-unbilled-work",
+      kind: "unbilled_work",
+      title: `${ready.length} approved entries ready to invoice`,
+      detail: "Approved technician work has not been pushed to billing yet.",
+      amountAtRisk: amount,
+      recommendedAction: "Send to billing this week — cash is sitting in Work & Billing.",
+      href: "/time-costs?filter=ready",
+    });
+  }
+
+  const overHours = computeContractHoursBurns(contracts, workEntries).filter(
+    (b) => b.isOver && b.overageEstimate > 0,
+  );
+  for (const burn of overHours.slice(0, 4)) {
+    signals.push({
+      id: `leak-overage-${burn.contractId}`,
+      kind: "unbilled_overage",
+      title: `${contractMap.get(burn.contractId)?.contract_name ?? "Contract"} over hours`,
+      detail: `${customerMap.get(burn.customerId) ?? "Customer"} · ${burn.hoursUsed.toFixed(1)}h / ${burn.includedHours.toFixed(1)}h included`,
+      amountAtRisk: burn.overageEstimate,
+      recommendedAction: "Bill overage or convert to a higher plan before month close.",
+      href: "/contracts?filter=over-hours",
+    });
+  }
+
+  for (const row of getUnprofitableContracts(contracts, workEntries).slice(0, 4)) {
+    signals.push({
+      id: `leak-margin-${row.contractId}`,
+      kind: "margin_shortfall",
+      title: `${row.contractName} delivering below MRR`,
+      detail: `${customerMap.get(row.customerId) ?? "Customer"} · month cost exceeds recurring fee`,
+      amountAtRisk: row.shortfall,
+      recommendedAction: "Review scope creep, raise rate, or right-size included hours.",
+      href: "/contracts",
+    });
+  }
+
+  const pastDue = getPastDueInvoices(invoices);
+  const pastDueTotal = pastDue.reduce(
+    (sum, i) => sum + (i.remaining_balance ?? 0),
+    0,
+  );
+  if (pastDueTotal > 0) {
+    signals.push({
+      id: "leak-past-due",
+      kind: "past_due_ar",
+      title: `${pastDue.length} past-due invoice${pastDue.length === 1 ? "" : "s"}`,
+      detail: "Open AR past due — collections risk and labor on unpaid accounts.",
+      amountAtRisk: pastDueTotal,
+      recommendedAction: "Collections workflow — pause non-critical work if needed.",
+      href: "/billing?filter=past-due",
+    });
+  }
+
+  const awaiting = getAwaitingSendInvoices(invoices);
+  if (awaiting.length > 0) {
+    const amount = awaiting.reduce(
+      (sum, i) => sum + (i.remaining_balance ?? i.total_amount ?? 0),
+      0,
+    );
+    signals.push({
+      id: "leak-awaiting-send",
+      kind: "awaiting_send",
+      title: `${awaiting.length} draft invoice${awaiting.length === 1 ? "" : "s"} awaiting send`,
+      detail: "Invoices built but not delivered to the client.",
+      amountAtRisk: amount,
+      recommendedAction: "Send drafts today — delay slows cash conversion.",
+      href: "/billing?filter=action",
+    });
+  }
+
+  return signals.sort((a, b) => b.amountAtRisk - a.amountAtRisk);
+}
