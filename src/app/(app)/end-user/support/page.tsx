@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { createPortalTicket } from "@/app/actions/tickets";
+import { submitTicketRating } from "@/app/actions/ticket-ratings";
 import { isOpenTicket } from "@/lib/dashboard-stats";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { FormField } from "@/components/FormField";
-import { PageHeader } from "@/components/PageHeader";
+import { PortalPageHeader } from "@/components/end-user/PortalPageHeader";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -17,6 +18,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   buildTicketLiveSteps,
   formatLiveStepTime,
+  formatTicketScheduleForClient,
   getActiveLiveSummary,
 } from "@/lib/ticket-live-status";
 import {
@@ -28,6 +30,7 @@ import {
   type SupportIssueCategory,
   type Technician,
   type TicketPriority,
+  type TicketRating,
   type WorkEntry,
 } from "@/lib/types";
 
@@ -66,21 +69,27 @@ export default function EndUserSupportPage() {
   const { showToast } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const detailRef = useRef<HTMLDialogElement>(null);
+  const ratingRef = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [assets, setAssets] = useState<HardwareAsset[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
+  const [ratings, setRatings] = useState<TicketRating[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [ratingTicketId, setRatingTicketId] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [issueCategory, setIssueCategory] = useState<SupportIssueCategory | "">("");
+  const [ratingValue, setRatingValue] = useState(5);
+  const [ratingComment, setRatingComment] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [ratingError, setRatingError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   async function loadData(customerId: string, silent = false) {
     const supabase = createClient();
-    const [t, a, tech, work] = await Promise.all([
+    const [t, a, tech, work, ratingRes] = await Promise.all([
       supabase
         .from("service_tickets")
         .select("*")
@@ -97,11 +106,17 @@ export default function EndUserSupportPage() {
         .select("*")
         .eq("customer_id", customerId)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("ticket_ratings")
+        .select("*")
+        .eq("customer_id", customerId)
+        .order("created_at", { ascending: false }),
     ]);
     setTickets(t.data ?? []);
     setAssets(a.data ?? []);
     setTechnicians(tech.data ?? []);
     setWorkEntries(work.data ?? []);
+    setRatings((ratingRes.data ?? []) as TicketRating[]);
     setLastRefreshedAt(new Date());
     if (!silent) setLoading(false);
   }
@@ -181,6 +196,11 @@ export default function EndUserSupportPage() {
     [tickets, selectedTicketId],
   );
 
+  const ratingTicket = useMemo(
+    () => tickets.find((ticket) => ticket.id === ratingTicketId) ?? null,
+    [tickets, ratingTicketId],
+  );
+
   const selectedUpdates = useMemo(() => {
     if (!selectedTicket) return [];
     return workEntries
@@ -193,10 +213,25 @@ export default function EndUserSupportPage() {
     return techById.get(selectedTicket.assigned_technician_id) ?? null;
   }, [selectedTicket, techById]);
 
+  const ratingTech = useMemo(() => {
+    if (!ratingTicket?.assigned_technician_id) return null;
+    return techById.get(ratingTicket.assigned_technician_id) ?? null;
+  }, [ratingTicket, techById]);
+
+  const selectedRating = useMemo(() => {
+    if (!ratingTicket) return null;
+    return ratings.find((item) => item.ticket_id === ratingTicket.id) ?? null;
+  }, [ratings, ratingTicket]);
+
   const selectedAsset = useMemo(() => {
     if (!selectedTicket?.hardware_asset_id) return undefined;
     return assetById.get(selectedTicket.hardware_asset_id);
   }, [selectedTicket, assetById]);
+
+  const ratingByTicketId = useMemo(
+    () => new Map(ratings.map((item) => [item.ticket_id, item])),
+    [ratings],
+  );
 
   const liveSteps = useMemo(() => {
     if (!selectedTicket) return [];
@@ -225,83 +260,158 @@ export default function EndUserSupportPage() {
     detailRef.current?.close();
   }
 
-  function renderTicketTable(list: ServiceTicket[], clickable: boolean) {
+  function openRatingDialog(ticketId: string) {
+    setRatingTicketId(ticketId);
+    setRatingError(null);
+    const existing = ratings.find((item) => item.ticket_id === ticketId);
+    setRatingValue(existing?.rating ?? 5);
+    setRatingComment(existing?.comment ?? "");
+    ratingRef.current?.showModal();
+  }
+
+  function closeRatingDialog() {
+    setRatingTicketId(null);
+    setRatingError(null);
+    ratingRef.current?.close();
+  }
+
+  function handleSubmitRating() {
+    if (!ratingTicket) return;
+    setRatingError(null);
+    startTransition(async () => {
+      const result = await submitTicketRating({
+        ticketId: ratingTicket.id,
+        rating: ratingValue,
+        comment: ratingComment,
+      });
+      if (result.success) {
+        showToast(result.message);
+        if (profile?.customer_id) {
+          await loadData(profile.customer_id, true);
+        }
+        closeRatingDialog();
+      } else {
+        setRatingError(result.message);
+      }
+    });
+  }
+
+  function renderTicketCards(list: ServiceTicket[], kind: "open" | "closed") {
     return (
-      <div className="overflow-x-auto">
-        <table className="table table-zebra">
-          <thead>
-            <tr>
-              <th>Ticket #</th>
-              <th>Title</th>
-              <th>Employee</th>
-              <th>Category</th>
-              <th>Subcategory</th>
-              <th>Device</th>
-              <th>Priority</th>
-              <th>Status</th>
-              <th>Opened</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((ticket) => {
-              const linkedAsset = ticket.hardware_asset_id
-                ? assetById.get(ticket.hardware_asset_id)
-                : undefined;
-              return (
-                <tr
-                  key={ticket.id}
-                  className={clickable ? "cursor-pointer hover:bg-base-200/80" : undefined}
-                  onClick={clickable ? () => openTicketDetails(ticket.id) : undefined}
-                  onKeyDown={
-                    clickable
-                      ? (event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            openTicketDetails(ticket.id);
-                          }
-                        }
-                      : undefined
-                  }
-                  tabIndex={clickable ? 0 : undefined}
-                  role={clickable ? "button" : undefined}
-                  aria-label={
-                    clickable
-                      ? `View live updates for ticket ${ticket.ticket_number}`
-                      : undefined
-                  }
+      <div className="grid gap-3 md:grid-cols-2">
+        {list.map((ticket) => {
+          const linkedAsset = ticket.hardware_asset_id
+            ? assetById.get(ticket.hardware_asset_id)
+            : undefined;
+          const scheduleLabel = formatTicketScheduleForClient(ticket);
+          const existingRating = ratingByTicketId.get(ticket.id);
+
+          return (
+            <div
+              key={ticket.id}
+              className="overflow-hidden rounded-box border border-base-300 bg-base-100 text-left shadow-sm"
+            >
+              {kind === "open" && scheduleLabel ? (
+                <div
+                  className="flex flex-wrap items-center gap-2 border-b border-info/25 bg-info/10 px-4 py-2.5 text-sm"
+                  role="status"
                 >
-                  <td className="font-mono text-sm">{ticket.ticket_number}</td>
-                  <td className="font-medium">
-                    {ticket.title}
-                    {clickable ? (
-                      <div className="text-xs font-normal text-primary">
-                        Click for live status updates
-                      </div>
-                    ) : null}
-                  </td>
-                  <td>
-                    <div>{ticket.requester_name ?? "—"}</div>
-                    <div className="text-xs text-base-content/60">
-                      {ticket.requester_email ?? ""}
-                    </div>
-                  </td>
-                  <td className="text-sm">{issueTypeLabel(ticket)}</td>
-                  <td>{ticket.category ?? "—"}</td>
-                  <td className="text-sm">
-                    {linkedAsset ? deviceLabel(linkedAsset) : "—"}
-                  </td>
-                  <td>
+                  <span className="badge badge-info badge-sm font-semibold uppercase tracking-wide">
+                    Scheduled
+                  </span>
+                  <span className="font-medium text-base-content/85">
+                    {scheduleLabel}
+                  </span>
+                </div>
+              ) : null}
+
+              <div className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-base-content/55">
+                      {ticket.ticket_number}
+                    </p>
+                    <h3 className="mt-0.5 text-base font-semibold leading-snug">
+                      {ticket.title}
+                    </h3>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
                     <PriorityBadge priority={ticket.priority ?? "Medium"} />
-                  </td>
-                  <td>
                     <StatusBadge status={ticket.status ?? "New"} />
-                  </td>
-                  <td>{formatDate(ticket.opened_at)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                </div>
+
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-base-content/50">
+                      Employee
+                    </dt>
+                    <dd className="font-medium">{ticket.requester_name ?? "—"}</dd>
+                    {ticket.requester_email ? (
+                      <dd className="truncate text-xs text-base-content/55">
+                        {ticket.requester_email}
+                      </dd>
+                    ) : null}
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-base-content/50">
+                      Category
+                    </dt>
+                    <dd className="font-medium">{issueTypeLabel(ticket)}</dd>
+                    <dd className="text-xs text-base-content/55">
+                      {ticket.category ?? "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-base-content/50">
+                      Device
+                    </dt>
+                    <dd className="font-medium">
+                      {linkedAsset ? deviceLabel(linkedAsset) : "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-base-content/50">
+                      Opened
+                    </dt>
+                    <dd className="font-medium">{formatDate(ticket.opened_at)}</dd>
+                  </div>
+                </dl>
+
+                {kind === "open" ? (
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-block"
+                      onClick={() => openTicketDetails(ticket.id)}
+                    >
+                      Open live status
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-block"
+                      onClick={() => openTicketDetails(ticket.id)}
+                    >
+                      Open completion details
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-block"
+                      onClick={() => openRatingDialog(ticket.id)}
+                    >
+                      {existingRating
+                        ? `Rate your technician (${existingRating.rating}/5)`
+                        : "Rate your technician"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -370,9 +480,9 @@ export default function EndUserSupportPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <PortalPageHeader
         title="Support tickets"
-        description="Submit AI, security, or software/hardware support tickets. Click an open ticket to see live status updates."
+        description="Submit AI, security, or software/hardware support tickets. Use Open live status on each open ticket to follow progress."
         action={
           <button type="button" className="btn btn-primary btn-sm" onClick={openDialog}>
             <Plus className="size-4" />
@@ -387,7 +497,7 @@ export default function EndUserSupportPage() {
             Open tickets ({openTickets.length})
           </h2>
           <p className="text-sm text-base-content/60">
-            Click any open ticket to view live progress, technician assignment, and work updates.
+            Open live status for progress updates. When a technician books a visit, a Scheduled banner shows the date and time at the top of the ticket.
           </p>
           {openTickets.length === 0 ? (
             <EmptyState
@@ -400,7 +510,7 @@ export default function EndUserSupportPage() {
               }
             />
           ) : (
-            renderTicketTable(openTickets, true)
+            renderTicketCards(openTickets, "open")
           )}
         </div>
       </div>
@@ -411,7 +521,7 @@ export default function EndUserSupportPage() {
             Closed tickets ({closedTickets.length})
           </h2>
           <p className="text-sm text-base-content/60">
-            Completed and closed requests, still ranked by original priority.
+            Review completion details, or rate the technician who finished the work.
           </p>
           {closedTickets.length === 0 ? (
             <EmptyState
@@ -419,7 +529,7 @@ export default function EndUserSupportPage() {
               description="Resolved tickets will appear here once they are completed or closed."
             />
           ) : (
-            renderTicketTable(closedTickets, false)
+            renderTicketCards(closedTickets, "closed")
           )}
         </div>
       </div>
@@ -630,6 +740,91 @@ export default function EndUserSupportPage() {
               <div className="modal-action">
                 <button type="button" className="btn" onClick={closeTicketDetails}>
                   Close
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit">close</button>
+        </form>
+      </dialog>
+
+      <dialog
+        ref={ratingRef}
+        className="modal"
+        onClose={() => {
+          setRatingTicketId(null);
+          setRatingError(null);
+        }}
+      >
+        <div className="modal-box max-w-md">
+          {ratingTicket ? (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-bold">Rate your technician</h3>
+                <p className="mt-1 font-mono text-sm text-base-content/60">
+                  {ratingTicket.ticket_number}
+                </p>
+                <p className="mt-1 text-sm text-base-content/75">
+                  {ratingTech?.technician_name
+                    ? `How was your experience with ${ratingTech.technician_name}?`
+                    : "How was your experience with the Nexus technician who handled this ticket?"}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`btn btn-sm ${
+                      ratingValue === value ? "btn-warning" : "btn-outline"
+                    }`}
+                    onClick={() => setRatingValue(value)}
+                    aria-label={`${value} star${value === 1 ? "" : "s"}`}
+                  >
+                    {value}★
+                  </button>
+                ))}
+              </div>
+
+              <FormField label="Comment (optional)" htmlFor="ticket-rating-comment">
+                <textarea
+                  id="ticket-rating-comment"
+                  className="textarea textarea-bordered w-full"
+                  rows={3}
+                  value={ratingComment}
+                  onChange={(event) => setRatingComment(event.target.value)}
+                  placeholder="Share what went well or what could improve."
+                />
+              </FormField>
+
+              {ratingError ? (
+                <p className="text-sm text-error">{ratingError}</p>
+              ) : null}
+              {selectedRating ? (
+                <p className="text-xs text-base-content/60">
+                  You previously rated this ticket {selectedRating.rating}/5
+                  {selectedRating.comment ? ` — “${selectedRating.comment}”` : ""}.
+                </p>
+              ) : null}
+
+              <div className="modal-action">
+                <button type="button" className="btn" onClick={closeRatingDialog}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={isPending}
+                  onClick={handleSubmitRating}
+                >
+                  {isPending
+                    ? "Saving..."
+                    : selectedRating
+                      ? "Update rating"
+                      : "Submit rating"}
                 </button>
               </div>
             </div>

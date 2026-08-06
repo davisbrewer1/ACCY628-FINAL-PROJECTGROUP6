@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
-import { PageHeader } from "@/components/PageHeader";
+import { PortalPageHeader } from "@/components/end-user/PortalPageHeader";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
@@ -199,7 +199,7 @@ export default function EndUserDeviceDetailPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <PortalPageHeader
         title={deviceDisplayName(asset)}
         description={`${asset.asset_number} · ${coverageLabel(asset)}`}
         action={

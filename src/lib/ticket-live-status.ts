@@ -1,4 +1,8 @@
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
+import {
+  getWindowById,
+  parseWindowSpec,
+} from "@/lib/technician-schedule";
 import type { ServiceTicket, WorkEntry } from "@/lib/types";
 
 export type LiveStepState = "complete" | "active" | "upcoming";
@@ -25,6 +29,34 @@ function capitalizeName(name: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
+/** Client-friendly schedule text from technician calendar fields. */
+export function formatTicketScheduleForClient(
+  ticket: Pick<ServiceTicket, "scheduled_start" | "scheduled_window">,
+): string | null {
+  if (!ticket.scheduled_start) return null;
+
+  const when = formatDateTime(ticket.scheduled_start);
+  if (when === "—") return null;
+
+  const spec = parseWindowSpec(ticket.scheduled_window);
+  const window = getWindowById(spec?.windowId ?? ticket.scheduled_window);
+  if (window) {
+    const hours = spec?.durationHours ?? 1;
+    return hours > 1
+      ? `${formatDate(ticket.scheduled_start)} · ${window.label} (${hours} hrs)`
+      : `${formatDate(ticket.scheduled_start)} · ${window.label}`;
+  }
+
+  if (
+    ticket.scheduled_window &&
+    ticket.scheduled_window !== "Unscheduled"
+  ) {
+    return `${when} · ${ticket.scheduled_window}`;
+  }
+
+  return when;
+}
+
 /**
  * Builds a client-friendly progress timeline for an open support ticket.
  */
@@ -41,9 +73,12 @@ export function buildTicketLiveSteps(
     status === "Waiting on Approval";
   const isEscalated = status === "Escalated";
   const hasAssignment = Boolean(ticket.assigned_technician_id);
+  const scheduleLabel = formatTicketScheduleForClient(ticket);
+  const hasSchedule = Boolean(scheduleLabel);
   const hasReviewSignal = Boolean(
     ticket.responded_at ||
       hasAssignment ||
+      hasSchedule ||
       workEntries.length > 0 ||
       (status !== "New" && status !== "Closed"),
   );
@@ -59,6 +94,7 @@ export function buildTicketLiveSteps(
   const remote = isRemoteMethod(method);
   const techName = technicianName ?? "A technician";
   const techLabel = technicianName ?? "a technician";
+  const readyForWork = hasAssignment || hasSchedule;
 
   const steps: TicketLiveStep[] = [
     {
@@ -82,13 +118,36 @@ export function buildTicketLiveSteps(
       label: "Technician assigned",
       detail: hasAssignment
         ? `${techName} has been assigned to this ticket.`
-        : "A technician has not been assigned yet.",
-      state: hasAssignment
+        : hasSchedule
+          ? "A technician has this ticket on their schedule."
+          : "A technician has not been assigned yet.",
+      state: hasAssignment || hasSchedule
         ? "complete"
         : hasReviewSignal
           ? "active"
           : "upcoming",
-      at: hasAssignment ? ticket.responded_at ?? ticket.opened_at : null,
+      at: hasAssignment || hasSchedule
+        ? ticket.responded_at ?? ticket.scheduled_start ?? ticket.opened_at
+        : null,
+    },
+    {
+      id: "scheduled",
+      label: hasSchedule
+        ? "Added to technician schedule"
+        : "Waiting to be scheduled",
+      detail: hasSchedule
+        ? `${techName} added this support ticket to their schedule for ${scheduleLabel}.`
+        : hasAssignment
+          ? "Your assigned technician has not added this ticket to their schedule yet."
+          : "After assignment, the technician will add this ticket to their work schedule.",
+      state: hasSchedule
+        ? hasStartedWork
+          ? "complete"
+          : "active"
+        : hasAssignment
+          ? "active"
+          : "upcoming",
+      at: hasSchedule ? ticket.scheduled_start : null,
     },
   ];
 
@@ -97,17 +156,21 @@ export function buildTicketLiveSteps(
     steps.push({
       id: "en_route",
       label: "Technician on the way",
-      detail: hasAssignment
+      detail: readyForWork
         ? hasStartedWork
           ? `${techName} was dispatched and traveled to your location.`
-          : `${techName} is on the way to your location.`
+          : hasSchedule
+            ? `${techName} is scheduled and will travel to your location.`
+            : `${techName} is on the way to your location.`
         : "After assignment, the technician will travel to your site.",
-      state: !hasAssignment
+      state: !readyForWork
         ? "upcoming"
         : hasStartedWork
           ? "complete"
-          : "active",
-      at: hasAssignment ? ticket.responded_at ?? ticket.opened_at : null,
+          : hasSchedule
+            ? "upcoming"
+            : "active",
+      at: readyForWork ? ticket.responded_at ?? ticket.opened_at : null,
     });
 
     steps.push({
@@ -117,7 +180,7 @@ export function buildTicketLiveSteps(
         ? latestWork?.work_performed
           ? `${techName} has arrived on site and is working on this problem: ${latestWork.work_performed}`
           : `${techName} has arrived on site and is actively working on this problem.`
-        : hasAssignment
+        : readyForWork
           ? "Work in progress begins once the technician arrives on site."
           : "On-site work begins after the technician is assigned and arrives.",
       state: hasStartedWork
@@ -136,16 +199,16 @@ export function buildTicketLiveSteps(
         ? latestWork?.work_performed
           ? `${techName} is virtually connected and working on this problem: ${latestWork.work_performed}`
           : `${techName} is virtually connected and actively working on this problem remotely.`
-        : hasAssignment
-          ? `${capitalizeName(techLabel)} will begin virtual work shortly.`
+        : readyForWork
+          ? hasSchedule
+            ? `${capitalizeName(techLabel)} has this ticket on their schedule and will begin virtual work at the scheduled time.`
+            : `${capitalizeName(techLabel)} will begin virtual work shortly.`
           : "Virtual work begins after a technician is assigned.",
       state: hasStartedWork
         ? isResolved || isWaiting || isEscalated
           ? "complete"
           : "active"
-        : hasAssignment
-          ? "active"
-          : "upcoming",
+        : "upcoming",
       at: latestWork?.work_date ?? latestWork?.created_at ?? null,
     });
   } else {
@@ -157,16 +220,16 @@ export function buildTicketLiveSteps(
         ? latestWork?.work_performed
           ? `${techName} is actively working on this problem: ${latestWork.work_performed}`
           : `${techName} is actively working on this problem.`
-        : hasAssignment
-          ? `${capitalizeName(techLabel)} is preparing to begin work.`
+        : readyForWork
+          ? hasSchedule
+            ? `${capitalizeName(techLabel)} has this ticket on their schedule and will begin work at the scheduled time.`
+            : `${capitalizeName(techLabel)} is preparing to begin work.`
           : "Work begins after a technician is assigned.",
       state: hasStartedWork
         ? isResolved || isWaiting || isEscalated
           ? "complete"
           : "active"
-        : hasAssignment
-          ? "active"
-          : "upcoming",
+        : "upcoming",
       at: latestWork?.work_date ?? latestWork?.created_at ?? null,
     });
   }
