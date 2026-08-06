@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { isSameDay } from "date-fns";
 import { Check, Plus, Star, Trash2, X } from "lucide-react";
 import { reviewPtoRequest } from "@/app/actions/pto";
 import { createTechnician, deleteTechnician } from "@/app/actions/technicians";
@@ -11,7 +12,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
-import { isThisMonth } from "@/lib/dashboard-stats";
 import {
   formatCurrency,
   formatDate,
@@ -25,20 +25,24 @@ import {
   formatResponseDuration,
   formatStarRating,
 } from "@/lib/technician-metrics";
+import {
+  getWorkWeekDays,
+  parseScheduledSlot,
+} from "@/lib/technician-schedule";
 import type {
   ServiceTicket,
   Technician,
   TechnicianPtoRequest,
   TicketRating,
-  WorkEntry,
 } from "@/lib/types";
-/** Standard available hours per month for utilization (8 hrs × 20 days). */
-const MONTHLY_CAPACITY_HOURS = 160;
+
+/** Standard weekly capacity for utilization (8 hrs × 5 days). */
+const WEEKLY_CAPACITY_HOURS = 40;
 
 interface TechCard extends Technician {
   openLoad: number;
   criticalLoad: number;
-  monthHours: number;
+  scheduledHours: number;
   utilizationRate: number;
   avgRating: number | null;
   avgResponseHours: number | null;
@@ -64,7 +68,6 @@ export default function TechniciansPage() {
   const [loading, setLoading] = useState(true);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
-  const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [ticketRatings, setTicketRatings] = useState<TicketRating[]>([]);
   const [ptoRequests, setPtoRequests] = useState<TechnicianPtoRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -74,10 +77,9 @@ export default function TechniciansPage() {
 
   async function loadData() {
     const supabase = createClient();
-    const [tech, t, w, ratingsRes, pto] = await Promise.all([
+    const [tech, t, ratingsRes, pto] = await Promise.all([
       supabase.from("technicians").select("*").order("technician_name"),
       supabase.from("service_tickets").select("*"),
-      supabase.from("work_entries").select("*"),
       supabase
         .from("ticket_ratings")
         .select("*")
@@ -89,7 +91,6 @@ export default function TechniciansPage() {
     ]);
     setTechnicians(tech.data ?? []);
     setTickets(t.data ?? []);
-    setWorkEntries(w.data ?? []);
     setTicketRatings((ratingsRes.data ?? []) as TicketRating[]);
     setPtoRequests((pto.data ?? []) as TechnicianPtoRequest[]);
     setLoading(false);
@@ -132,17 +133,24 @@ export default function TechniciansPage() {
 
   const cards: TechCard[] = useMemo(() => {
     const open = getOpenTickets(tickets);
+    const weekDays = getWorkWeekDays(new Date());
+
     return technicians.map((tech) => {
-      const assigned = open.filter((t) => t.assigned_technician_id === tech.id);
-      const monthHours = workEntries
-        .filter(
-          (e) => e.technician_id === tech.id && isThisMonth(e.work_date),
-        )
-        .reduce((sum, e) => sum + (e.hours_worked ?? 0), 0);
-      const utilizationRate = Math.min(
-        100,
-        (monthHours / MONTHLY_CAPACITY_HOURS) * 100,
+      const assignedOpen = open.filter((t) => t.assigned_technician_id === tech.id);
+      const assignedAll = tickets.filter(
+        (t) => t.assigned_technician_id === tech.id,
       );
+
+      // Utilization = scheduled hours this work week ÷ 40.
+      const scheduledHours = assignedAll.reduce((sum, ticket) => {
+        const parsed = parseScheduledSlot(ticket);
+        if (!parsed) return sum;
+        if (!weekDays.some((day) => isSameDay(day, parsed.day))) return sum;
+        return sum + parsed.durationHours;
+      }, 0);
+
+      const utilizationRate = (scheduledHours / WEEKLY_CAPACITY_HOURS) * 100;
+
       const performance = computeTechnicianPerformance(
         tech.id,
         tickets,
@@ -163,9 +171,10 @@ export default function TechniciansPage() {
 
       return {
         ...tech,
-        openLoad: assigned.length,
-        criticalLoad: assigned.filter((t) => t.priority === "Critical").length,
-        monthHours,
+        openLoad: assignedOpen.length,
+        criticalLoad: assignedOpen.filter((t) => t.priority === "Critical")
+          .length,
+        scheduledHours,
         utilizationRate,
         avgRating: performance.avgRating,
         avgResponseHours: performance.avgResponseHours,
@@ -174,7 +183,7 @@ export default function TechniciansPage() {
         recentComments,
       };
     });
-  }, [technicians, tickets, workEntries, ticketRatings]);
+  }, [technicians, tickets, ticketRatings]);
 
   const teamUtilization = useMemo(() => {
     const active = cards.filter((c) => c.active);
@@ -306,7 +315,7 @@ export default function TechniciansPage() {
             </p>
             <p className="text-2xl font-semibold">{formatPercent(teamUtilization)}</p>
             <p className="mt-1 text-xs text-base-content/60">
-              Hours logged ÷ {MONTHLY_CAPACITY_HOURS} capacity hours
+              Scheduled hours this week ÷ {WEEKLY_CAPACITY_HOURS} hr capacity
             </p>
           </div>
         ) : null}
@@ -533,11 +542,12 @@ export default function TechniciansPage() {
                           ? "progress-warning"
                           : "progress-success"
                     }`}
-                    value={tech.utilizationRate}
+                    value={Math.min(100, tech.utilizationRate)}
                     max={100}
                   />
                   <p className="mt-1 text-xs text-base-content/60">
-                    {formatHours(tech.monthHours)} logged this month
+                    {formatHours(tech.scheduledHours)} scheduled /{" "}
+                    {formatHours(WEEKLY_CAPACITY_HOURS)} capacity
                   </p>
                 </div>
 
