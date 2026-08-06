@@ -7,6 +7,7 @@ import { createInvoicesFromWorkEntries } from "@/app/actions/billing";
 import { updateWorkEntryApproval } from "@/app/actions/work-entries";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
+import { ApprovalManagerPanel } from "@/components/ApprovalManagerPanel";
 import { ExpenseTracker } from "@/components/ExpenseTracker";
 import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
@@ -90,7 +91,7 @@ export default function WorkBillingPage() {
       supabase
         .from("service_tickets")
         .select("*")
-        .order("opened_at", { ascending: false }),
+        .order("created_at", { ascending: false }),
     ]);
     const techRows = tech.data ?? [];
     const ticketRows = t.data ?? [];
@@ -109,7 +110,7 @@ export default function WorkBillingPage() {
     }
 
     const open = ticketRows.filter((row) => isOpenTicket(row.status));
-    const first = open[0] ?? ticketRows[0];
+    const first = ticketRows[0] ?? open[0];
     setExpenseTicketId(first?.id ?? "");
     setLoading(false);
   }
@@ -275,9 +276,18 @@ export default function WorkBillingPage() {
   }
 
   const expenseTicketOptions = useMemo(() => {
-    const open = tickets.filter((ticket) => isOpenTicket(ticket.status));
-    const closed = tickets.filter((ticket) => !isOpenTicket(ticket.status));
-    return [...open, ...closed];
+    const receivedAt = (ticket: ServiceTicket) => {
+      const created = ticket.created_at
+        ? new Date(ticket.created_at).getTime()
+        : 0;
+      const opened = ticket.opened_at
+        ? new Date(ticket.opened_at).getTime()
+        : 0;
+      // Prefer created_at as received time; fall back to opened_at.
+      return created || opened || 0;
+    };
+
+    return [...tickets].sort((a, b) => receivedAt(b) - receivedAt(a));
   }, [tickets]);
 
   const selectedExpenseTicket = tickets.find(
@@ -724,6 +734,8 @@ export default function WorkBillingPage() {
           })}
         </div>
       )}
+
+      <ApprovalManagerPanel tickets={tickets} technicians={technicians} />
     </div>
   );
 }

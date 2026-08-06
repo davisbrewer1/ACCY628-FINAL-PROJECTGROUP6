@@ -51,6 +51,33 @@ body {
   color: #e2e8f0;
 }
 
+/* Corporate theme base-content is dark; force readable muted text on the slate shell */
+.tech-shell .label-text,
+.tech-shell .label-text-alt {
+  color: #94a3b8;
+}
+
+.tech-shell .text-base-content {
+  color: #e2e8f0;
+}
+
+.tech-shell .text-base-content\/70,
+.tech-shell .text-base-content\/60,
+.tech-shell .text-base-content\/55,
+.tech-shell .text-base-content\/50 {
+  color: #94a3b8;
+}
+
+.tech-shell .text-base-content\/40 {
+  color: #64748b;
+}
+
+.tech-shell p,
+.tech-shell .card-body,
+.tech-shell .form-control {
+  color: #e2e8f0;
+}
+
 .tech-shell .table th {
   color: #94a3b8;
   background: transparent;
@@ -61,6 +88,10 @@ body {
   background: transparent;
 }
 
+.tech-shell .table-zebra tbody tr:nth-child(even) :where(td, th) {
+  background: rgba(30, 41, 59, 0.55);
+}
+
 .tech-shell .input,
 .tech-shell .select,
 .tech-shell .textarea {
@@ -69,10 +100,63 @@ body {
   color: #f1f5f9;
 }
 
+.tech-shell .input::placeholder,
+.tech-shell .textarea::placeholder {
+  color: #64748b;
+}
+
+.tech-shell .select option {
+  background: #020617;
+  color: #f1f5f9;
+}
+
 .tech-shell .btn-primary {
   background: #06b6d4;
   border-color: #06b6d4;
   color: #020617;
+}
+
+.tech-shell .btn-ghost {
+  color: #cbd5e1;
+}
+
+.tech-shell .btn-outline {
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+.tech-shell .badge-ghost {
+  background: rgba(51, 65, 85, 0.7);
+  color: #e2e8f0;
+  border-color: transparent;
+}
+
+.tech-shell .expense-receipt-panel {
+  background: rgba(2, 6, 23, 0.65);
+  border-color: rgba(71, 85, 105, 0.85);
+  color: #e2e8f0;
+}
+
+.tech-shell .expense-receipt-dropzone,
+.tech-shell .expense-receipt-tile {
+  background: #020617;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.tech-shell .expense-receipt-dropzone:hover {
+  border-color: rgba(6, 182, 212, 0.55);
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.tech-shell .expense-receipt-dropzone .text-primary,
+.tech-shell .expense-receipt-panel .text-primary {
+  color: #22d3ee;
+}
+
+.tech-shell .expense-receipt-tile button {
+  background: rgba(15, 23, 42, 0.9);
+  color: #e2e8f0;
 }
 
 /* Hardware assets page — muted base-content text is unreadable on the dark

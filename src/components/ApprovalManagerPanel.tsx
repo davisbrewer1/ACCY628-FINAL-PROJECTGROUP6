@@ -74,7 +74,8 @@ export function ApprovalManagerPanel({
               Approval manager
             </h2>
             <p className="text-sm text-base-content/60">
-              Review pending billable cost approvals and notify technicians.
+              Review billable expenses for customer invoices, plus other
+              pending cost approvals.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -124,6 +125,7 @@ export function ApprovalManagerPanel({
                   <th>Requested</th>
                   <th>Ticket</th>
                   <th>Technician</th>
+                  <th>Type</th>
                   <th>Cost</th>
                   <th>Reason</th>
                   <th>Status</th>
@@ -154,6 +156,15 @@ export function ApprovalManagerPanel({
                         {approval.technician_id
                           ? techMap.get(approval.technician_id) ?? "Technician"
                           : "—"}
+                      </td>
+                      <td className="whitespace-nowrap text-xs">
+                        {approval.ticket_expense_id
+                          ? "Billable expense"
+                          : approval.work_entry_id
+                            ? "Work entry"
+                            : approval.cost_entry_id
+                              ? "Cost entry"
+                              : "Request"}
                       </td>
                       <td>{formatCurrency(approval.total_cost)}</td>
                       <td className="max-w-[16rem] text-sm">

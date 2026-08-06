@@ -1,0 +1,1 @@
+delete from public.knowledge_base_articles;

@@ -335,12 +335,12 @@ export interface AppNotification {
 }
 
 export type KnowledgeBaseCategory =
-  | "Hardware"
-  | "Software"
-  | "Networking"
-  | "Security"
-  | "SOPs"
-  | "Repairs";
+  | "Service Procedures"
+  | "Troubleshooting Guides"
+  | "Tools & Software"
+  | "Standards & Policies"
+  | "Templates & Forms"
+  | "Quick Access";
 
 export interface KnowledgeBaseArticle {
   id: string;
@@ -411,15 +411,23 @@ export type ExpenseType =
   | "Parking"
   | "Miscellaneous";
 
+export type ExpenseTag =
+  | "Billable to Customer"
+  | "Internal Company Expense";
+
+export type ApprovalStatus = "Pending" | "Approved" | "Denied";
+
 export interface TicketExpense {
   id: string;
   ticket_id: string;
   technician_id: string | null;
   type: ExpenseType | string;
+  expense_tag: ExpenseTag | string;
   amount: number;
   description: string | null;
   date: string;
   receipt_url: string | null;
+  approval_status: ApprovalStatus | string | null;
   created_at: string;
 }
 
@@ -431,7 +439,12 @@ export const EXPENSE_TYPES: ExpenseType[] = [
   "Miscellaneous",
 ];
 
-export type ApprovalStatus = "Pending" | "Approved" | "Denied";
+export const EXPENSE_TAGS: ExpenseTag[] = [
+  "Internal Company Expense",
+  "Billable to Customer",
+];
+
+export const DEFAULT_EXPENSE_TAG: ExpenseTag = "Internal Company Expense";
 
 export interface Approval {
   id: string;
@@ -440,6 +453,7 @@ export interface Approval {
   manager_id: string | null;
   cost_entry_id: string | null;
   work_entry_id: string | null;
+  ticket_expense_id: string | null;
   status: ApprovalStatus | string;
   reason: string | null;
   manager_notes: string | null;

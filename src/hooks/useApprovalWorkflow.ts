@@ -13,6 +13,7 @@ export interface ApprovalRequestInput {
   technicianId: string;
   costEntryId?: string | null;
   workEntryId?: string | null;
+  ticketExpenseId?: string | null;
   reason: string;
   totalCost?: number | null;
   files?: File[];
@@ -91,6 +92,7 @@ export function useApprovalWorkflow(options?: {
         technicianId: input.technicianId,
         costEntryId: input.costEntryId,
         workEntryId: input.workEntryId,
+        ticketExpenseId: input.ticketExpenseId,
         reason: input.reason,
         totalCost: input.totalCost,
         files,

@@ -13,11 +13,24 @@ function revalidateApprovalPaths() {
   revalidatePath("/service-tickets");
 }
 
+function isExpenseOnlyApproval(approval: {
+  ticket_expense_id?: string | null;
+  cost_entry_id?: string | null;
+  work_entry_id?: string | null;
+}) {
+  return Boolean(
+    approval.ticket_expense_id &&
+      !approval.cost_entry_id &&
+      !approval.work_entry_id,
+  );
+}
+
 export async function createApprovalRequest(input: {
   ticketId: string;
   technicianId: string;
   costEntryId?: string | null;
   workEntryId?: string | null;
+  ticketExpenseId?: string | null;
   reason: string;
   totalCost?: number | null;
   files?: Array<{
@@ -29,6 +42,9 @@ export async function createApprovalRequest(input: {
 }): Promise<ActionResult & { approvalId?: string }> {
   const supabase = await createClient();
   const reason = input.reason.trim();
+  const expenseOnly = Boolean(
+    input.ticketExpenseId && !input.costEntryId && !input.workEntryId,
+  );
 
   if (!input.ticketId || !input.technicianId) {
     return { success: false, message: "Ticket and technician are required." };
@@ -44,6 +60,7 @@ export async function createApprovalRequest(input: {
       technician_id: input.technicianId,
       cost_entry_id: input.costEntryId || null,
       work_entry_id: input.workEntryId || null,
+      ticket_expense_id: input.ticketExpenseId || null,
       status: "Pending",
       reason,
       total_cost: input.totalCost ?? null,
@@ -109,18 +126,30 @@ export async function createApprovalRequest(input: {
       .eq("id", input.workEntryId);
   }
 
-  await supabase
-    .from("service_tickets")
-    .update({
-      approval_status: "Pending",
-      status: "Waiting on Approval",
-    })
-    .eq("id", input.ticketId);
+  if (input.ticketExpenseId) {
+    await supabase
+      .from("ticket_expenses")
+      .update({ approval_status: "Pending" })
+      .eq("id", input.ticketExpenseId);
+  }
+
+  // Expense-only requests should not put the whole ticket on hold.
+  if (!expenseOnly) {
+    await supabase
+      .from("service_tickets")
+      .update({
+        approval_status: "Pending",
+        status: "Waiting on Approval",
+      })
+      .eq("id", input.ticketId);
+  }
 
   revalidateApprovalPaths();
   return {
     success: true,
-    message: "Approval request submitted.",
+    message: expenseOnly
+      ? "Billable expense sent to management for invoice approval."
+      : "Approval request submitted.",
     approvalId,
   };
 }
@@ -171,6 +200,7 @@ export async function decideApproval(input: {
   }
 
   const approvalStatus = input.decision;
+  const expenseOnly = isExpenseOnlyApproval(approval);
 
   if (approval.cost_entry_id) {
     await supabase
@@ -193,7 +223,24 @@ export async function decideApproval(input: {
       .eq("id", approval.work_entry_id);
   }
 
-  if (approval.ticket_id) {
+  if (approval.ticket_expense_id) {
+    const expenseUpdate: {
+      approval_status: string;
+      expense_tag?: string;
+    } = {
+      approval_status: approvalStatus,
+    };
+    // Denied billable expenses stay logged as internal company cost.
+    if (approvalStatus === "Denied") {
+      expenseUpdate.expense_tag = "Internal Company Expense";
+    }
+    await supabase
+      .from("ticket_expenses")
+      .update(expenseUpdate)
+      .eq("id", approval.ticket_expense_id);
+  }
+
+  if (approval.ticket_id && !expenseOnly) {
     await supabase
       .from("service_tickets")
       .update({
@@ -207,17 +254,27 @@ export async function decideApproval(input: {
 
   if (approval.technician_id) {
     try {
+      const isExpense = Boolean(approval.ticket_expense_id);
+      const subject = isExpense
+        ? "billable expense"
+        : "approval request";
+      const expenseNote =
+        isExpense && approvalStatus === "Approved"
+          ? " It can be included on the customer invoice."
+          : isExpense && approvalStatus === "Denied"
+            ? " It will remain an internal company expense."
+            : "";
       await insertNotification(supabase, {
         technicianId: approval.technician_id,
         type: "work_approval",
         message:
           approvalStatus === "Approved"
-            ? `Your approval request was approved.${
+            ? `Your ${subject} was approved.${expenseNote}${
                 input.managerNotes?.trim()
                   ? ` Manager note: ${input.managerNotes.trim()}`
                   : ""
               }`
-            : `Your approval request was denied.${
+            : `Your ${subject} was denied.${expenseNote}${
                 input.managerNotes?.trim()
                   ? ` Manager note: ${input.managerNotes.trim()}`
                   : ""
@@ -233,8 +290,12 @@ export async function decideApproval(input: {
     success: true,
     message:
       approvalStatus === "Approved"
-        ? "Approval granted. Technician notified."
-        : "Approval denied. Technician notified.",
+        ? expenseOnly
+          ? "Expense approved for customer invoice. Technician notified."
+          : "Approval granted. Technician notified."
+        : expenseOnly
+          ? "Expense denied for invoice. Logged as internal. Technician notified."
+          : "Approval denied. Technician notified.",
   };
 }
 
