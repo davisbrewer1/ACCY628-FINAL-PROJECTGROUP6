@@ -308,7 +308,7 @@ export function TechnicianHeaderTools({
     <div className="relative flex items-center gap-2">
       <button
         type="button"
-        className="btn btn-sm gap-2 border-slate-600 bg-slate-900 text-slate-100 hover:border-cyan-500/50"
+        className="btn btn-sm gap-2 border-slate-600 bg-slate-900 text-slate-100 hover:border-blue-500/50"
         aria-expanded={panel === "knowledge"}
         onClick={() => toggle("knowledge")}
       >
@@ -317,14 +317,14 @@ export function TechnicianHeaderTools({
       </button>
       <button
         type="button"
-        className="btn btn-sm gap-2 border-slate-600 bg-slate-900 text-slate-100 hover:border-cyan-500/50"
+        className="btn btn-sm gap-2 border-slate-600 bg-slate-900 text-slate-100 hover:border-blue-500/50"
         aria-expanded={panel === "notifications"}
         onClick={() => toggle("notifications")}
       >
         <Bell className="size-4" aria-hidden="true" />
         <span className="hidden sm:inline">Notifications</span>
         {unreadCount > 0 ? (
-          <span className="badge badge-sm border-0 bg-cyan-500 text-slate-950">
+          <span className="badge badge-sm border-0 bg-gradient-to-br from-[#CEF6D6] via-[#B8E4F0] to-[#A5C8ED] font-[family-name:var(--font-nexus-button)] text-[#0B1220]">
             {unreadCount}
           </span>
         ) : null}
@@ -338,8 +338,8 @@ export function TechnicianHeaderTools({
             aria-label="Close panel"
             onClick={() => setPanel(null)}
           />
-          <div className="absolute right-0 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-cyan-500/25 bg-slate-950 shadow-2xl shadow-cyan-950/40">
-            <div className="flex items-center justify-between border-b border-cyan-500/15 px-4 py-3">
+          <div className="absolute right-0 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-blue-500/25 bg-slate-950 shadow-2xl shadow-blue-950/40">
+            <div className="flex items-center justify-between border-b border-blue-500/20 px-4 py-3">
               <div>
                 <p className="text-sm font-semibold text-white">
                   {panel === "knowledge" ? "Service knowledge base" : "Notifications"}
@@ -370,7 +370,7 @@ export function TechnicianHeaderTools({
                         className="rounded-xl border border-slate-700 bg-slate-900/80 p-3"
                       >
                         <div className="flex items-start gap-3">
-                          <div className="rounded-lg bg-cyan-500/15 p-2 text-cyan-300">
+                          <div className="rounded-lg bg-blue-500/15 p-2 text-teal-300">
                             <Icon className="size-4" aria-hidden="true" />
                           </div>
                           <div>

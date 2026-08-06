@@ -67,30 +67,22 @@ export default function HomePage() {
 
       {/* Hero — full-bleed visual plane */}
       <section className="relative isolate min-h-[calc(100vh-4rem)] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950" />
         <div
-          className="absolute inset-0 opacity-[0.12]"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(255,255,255,.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.4) 1px, transparent 1px)",
-            backgroundSize: "56px 56px",
-          }}
+          className="absolute inset-0 bg-[#0B1220] bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: "url('/brand/nexus-hero-bg.png')" }}
+          aria-hidden="true"
         />
-        <div className="absolute -left-20 top-24 h-72 w-72 rounded-full bg-cyan-500/20 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-[28rem] w-[28rem] rounded-full bg-sky-600/15 blur-3xl" />
+        <div className="absolute inset-0 bg-[#0B1220]/45" aria-hidden="true" />
         <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage:
-              "radial-gradient(ellipse at 70% 40%, rgba(8,145,178,0.35), transparent 55%), url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2394a3b8' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")",
-          }}
+          className="absolute inset-0 bg-gradient-to-r from-[#0B1220]/75 via-[#0B1220]/35 to-transparent"
+          aria-hidden="true"
         />
 
         <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-6xl flex-col justify-center px-4 py-16 lg:px-8">
-          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200/90">
+          <p className="font-display mb-4 text-sm uppercase tracking-[0.28em] text-[#5EEAD4]/90">
             Nexus Technology Solutions
           </p>
-          <h1 className="max-w-3xl text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
+          <h1 className="font-display max-w-3xl text-4xl tracking-tight text-white sm:text-5xl lg:text-6xl">
             Technology that runs the business — managed end to end.
           </h1>
           <p className="mt-5 max-w-xl text-lg text-slate-200">
@@ -117,29 +109,48 @@ export default function HomePage() {
       {/* Services */}
       <section id="services" className="scroll-mt-20 border-t border-base-300 bg-base-200 px-4 py-16 lg:px-8">
         <div className="mx-auto max-w-6xl">
-          <h2 className="text-3xl font-bold tracking-tight">Products & services</h2>
+          <h2 className="font-display text-3xl tracking-tight">Products & services</h2>
           <p className="mt-3 max-w-2xl text-base-content/70">
             Nexus sells and manages technology services — not just products —
             so customers know what is included, what it costs, and how work gets
             delivered.
           </p>
-          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-10 grid gap-6 overflow-visible sm:grid-cols-2 lg:grid-cols-3">
             {SERVICES.map((service) => {
               const Icon = service.icon;
               return (
                 <article
                   key={service.title}
-                  className="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm"
+                  className="nexus-hover-card rounded-box border border-white/10 p-5 shadow-lg"
                 >
-                  <div className="mb-4 flex size-11 items-center justify-center rounded-box bg-primary/10 text-primary">
-                    <Icon className="size-5" aria-hidden="true" />
+                  <div
+                    className="nexus-hover-card__bg"
+                    style={{ backgroundImage: "url('/brand/nexus-section-bg.png')" }}
+                    aria-hidden="true"
+                  />
+                  <div
+                    className="absolute inset-0 bg-[#0B1220]/80"
+                    aria-hidden="true"
+                  />
+                  <div className="relative z-10 flex items-start gap-4">
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-box border border-white/15 bg-white/10 text-[#5EEAD4] backdrop-blur-sm">
+                      <Icon className="size-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-display-italic text-base leading-snug sm:text-lg">
+                        {service.title}
+                      </h3>
+                      <p className="mt-2 text-sm font-medium text-white/95">
+                        {service.problem}
+                      </p>
+                      <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#5EEAD4]">
+                        What&apos;s included
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-white/90">
+                        {service.includes}
+                      </p>
+                    </div>
                   </div>
-                  <h3 className="text-lg font-semibold">{service.title}</h3>
-                  <p className="mt-2 text-sm text-base-content/70">{service.problem}</p>
-                  <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-base-content/50">
-                    What&apos;s included
-                  </p>
-                  <p className="mt-1 text-sm">{service.includes}</p>
                 </article>
               );
             })}
@@ -150,21 +161,31 @@ export default function HomePage() {
       {/* Lifecycle */}
       <section className="border-t border-base-300 px-4 py-16 lg:px-8">
         <div className="mx-auto max-w-6xl">
-          <h2 className="text-3xl font-bold tracking-tight">How Nexus works</h2>
+          <h2 className="font-display text-3xl tracking-tight">How Nexus works</h2>
           <p className="mt-3 max-w-2xl text-base-content/70">
             One connected lifecycle from the first customer need through renewal
             or asset retirement.
           </p>
-          <ol className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <ol className="mt-10 grid gap-3 overflow-visible sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {LIFECYCLE.map((step, index) => (
               <li
                 key={step}
-                className="rounded-box border border-base-300 bg-base-100 p-4 text-center"
+                className="nexus-hover-card rounded-box border border-white/10 p-4 text-left shadow-lg"
               >
-                <span className="text-xs font-bold text-primary">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <p className="mt-2 text-sm font-semibold">{step}</p>
+                <div
+                  className="nexus-hover-card__bg"
+                  style={{ backgroundImage: "url('/brand/nexus-section-bg.png')" }}
+                  aria-hidden="true"
+                />
+                <div className="absolute inset-0 bg-[#0B1220]/80" aria-hidden="true" />
+                <div className="relative z-10 flex items-start gap-3">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-box border border-white/15 bg-white/10 text-xs font-bold text-[#5EEAD4]">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <p className="font-display-italic pt-2 text-sm leading-snug">
+                    {step}
+                  </p>
+                </div>
               </li>
             ))}
           </ol>
@@ -174,35 +195,58 @@ export default function HomePage() {
       {/* Why Nexus */}
       <section className="border-t border-base-300 bg-base-200 px-4 py-16 lg:px-8">
         <div className="mx-auto max-w-6xl">
-          <h2 className="text-3xl font-bold tracking-tight">Why businesses choose Nexus</h2>
+          <h2 className="font-display text-3xl tracking-tight">Why businesses choose Nexus</h2>
           <p className="mt-3 max-w-2xl text-base-content/70">
             Leadership, service delivery, technicians, billing, and client users
             each see the views they need — with profitability and risk in the
             same system.
           </p>
-          <div className="mt-10 grid gap-6 md:grid-cols-3">
-            <div className="rounded-box border border-base-300 bg-base-100 p-6">
-              <h3 className="font-semibold">Operations clarity</h3>
-              <p className="mt-2 text-sm text-base-content/70">
-                Tickets, SLA status, deployments, and technician workload in one
-                console for service managers.
-              </p>
-            </div>
-            <div className="rounded-box border border-base-300 bg-base-100 p-6">
-              <h3 className="font-semibold">AI & cyber oversight</h3>
-              <p className="mt-2 text-sm text-base-content/70">
-                Simulated monitoring for enterprise AI platforms and security
-                posture — policies, risks, and recommendations without live AI
-                APIs.
-              </p>
-            </div>
-            <div className="rounded-box border border-base-300 bg-base-100 p-6">
-              <h3 className="font-semibold">Profitability visibility</h3>
-              <p className="mt-2 text-sm text-base-content/70">
-                Contract fees, labor costs, invoices, and margins so teams can
-                see whether each customer and service is profitable.
-              </p>
-            </div>
+          <div className="mt-10 grid gap-6 overflow-visible md:grid-cols-3">
+            {(
+              [
+                {
+                  title: "Operations clarity",
+                  body: "Tickets, SLA status, deployments, and technician workload in one console for service managers.",
+                  icon: LifeBuoy,
+                },
+                {
+                  title: "AI & cyber oversight",
+                  body: "Simulated monitoring for enterprise AI platforms and security posture — policies, risks, and recommendations without live AI APIs.",
+                  icon: Shield,
+                },
+                {
+                  title: "Profitability visibility",
+                  body: "Contract fees, labor costs, invoices, and margins so teams can see whether each customer and service is profitable.",
+                  icon: Brain,
+                },
+              ] as const
+            ).map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.title}
+                  className="nexus-hover-card rounded-box border border-white/10 p-5 shadow-lg"
+                >
+                  <div
+                    className="nexus-hover-card__bg"
+                    style={{ backgroundImage: "url('/brand/nexus-section-bg.png')" }}
+                    aria-hidden="true"
+                  />
+                  <div className="absolute inset-0 bg-[#0B1220]/80" aria-hidden="true" />
+                  <div className="relative z-10 flex items-start gap-4">
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-box border border-white/15 bg-white/10 text-[#5EEAD4] backdrop-blur-sm">
+                      <Icon className="size-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-display-italic text-base leading-snug sm:text-lg">
+                        {item.title}
+                      </h3>
+                      <p className="mt-2 text-sm font-medium text-white/95">{item.body}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -211,7 +255,7 @@ export default function HomePage() {
       <section className="border-t border-base-300 px-4 py-16 lg:px-8">
         <div className="mx-auto flex max-w-6xl flex-col items-start gap-6 rounded-box border border-base-300 bg-base-100 p-8 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-2xl font-bold">Enter the operations platform</h2>
+            <h2 className="font-display text-2xl tracking-tight">Enter the operations platform</h2>
             <p className="mt-2 max-w-xl text-base-content/70">
               Use the Portal menu for a one-click demo as Manager, Technician, or
               Client User — or sign in with email for other roles.

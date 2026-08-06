@@ -491,7 +491,7 @@ export default function HardwarePage() {
         <section
           className={`card border shadow-sm ${
             isTechnicianView
-              ? "border-cyan-500/20 bg-slate-900/80 text-slate-100"
+              ? "border-blue-500/25 bg-slate-900/80 text-slate-100"
               : "bg-base-100"
           }`}
         >
@@ -826,7 +826,7 @@ export default function HardwarePage() {
       <section
         className={`card border shadow-sm ${
           isTechnicianView
-            ? "border-cyan-500/20 bg-slate-900/80 text-slate-100"
+            ? "border-blue-500/25 bg-slate-900/80 text-slate-100"
             : "bg-base-100"
         }`}
       >

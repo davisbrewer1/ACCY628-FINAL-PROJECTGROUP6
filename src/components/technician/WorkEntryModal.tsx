@@ -283,7 +283,7 @@ export function WorkEntryModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="work-entry-title"
-        className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-cyan-500/30 bg-slate-900 p-5 shadow-2xl shadow-cyan-950/40"
+        className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-blue-500/30 bg-slate-900 p-5 shadow-2xl shadow-blue-950/40"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
@@ -313,7 +313,7 @@ export function WorkEntryModal({
             {selectedTicket ? (
               <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-mono text-sm text-cyan-300">
+                  <p className="font-mono text-sm text-teal-300">
                     {selectedTicket.ticket_number}
                   </p>
                   <PriorityBadge priority={selectedTicket.priority ?? "Medium"} />
@@ -355,7 +355,7 @@ export function WorkEntryModal({
                   ? "border-amber-400/35 bg-gradient-to-br from-slate-950 to-amber-950/40"
                   : sessionEnRoute && !sessionActive
                     ? "border-sky-400/35 bg-gradient-to-br from-slate-950 to-sky-950/40"
-                    : "border-cyan-500/25 bg-gradient-to-br from-slate-950 to-cyan-950/40"
+                    : "border-blue-500/25 bg-gradient-to-br from-slate-950 to-[#1E3A5F]/40"
               }`}
             >
               <p
@@ -364,7 +364,7 @@ export function WorkEntryModal({
                     ? "text-amber-200/90"
                     : sessionEnRoute && !sessionActive
                       ? "text-sky-200/90"
-                      : "text-cyan-200/80"
+                      : "text-teal-200/80"
                 }`}
               >
                 {statusLabel}
@@ -396,7 +396,7 @@ export function WorkEntryModal({
               <div className="grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  className="btn h-12 border-0 bg-sky-500 text-slate-950 hover:bg-sky-400"
+                  className="btn h-12 border-0 bg-teal-400 text-[#0B1220] hover:bg-sky-400"
                   disabled={!selectedTicketId || sessionEnRoute || isPending}
                   onClick={onEnRoute}
                 >
@@ -450,7 +450,7 @@ export function WorkEntryModal({
             {endTime ? (
               <button
                 type="button"
-                className="btn h-12 w-full border-0 bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                className="btn h-12 w-full btn-primary border-0"
                 onClick={() => onPhaseChange("form")}
               >
                 Continue to work details
@@ -616,7 +616,7 @@ export function WorkEntryModal({
                 />
                 <button
                   type="button"
-                  className="btn btn-sm border-0 bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                  className="btn btn-sm btn-primary border-0"
                   onClick={addPart}
                   disabled={!selectedPartId || availableParts.length === 0}
                 >
@@ -653,7 +653,7 @@ export function WorkEntryModal({
                       </span>
                     </li>
                   ))}
-                  <li className="flex justify-between border-t border-slate-700 pt-2 text-sm font-medium text-cyan-200">
+                  <li className="flex justify-between border-t border-slate-700 pt-2 text-sm font-medium text-teal-200">
                     <span>Parts total</span>
                     <span>{formatCurrency(partsCostTotal)}</span>
                   </li>
@@ -691,7 +691,7 @@ export function WorkEntryModal({
               </button>
               <button
                 type="submit"
-                className="btn border-0 bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                className="btn btn-primary border-0"
                 disabled={isPending || !selectedTicketId}
               >
                 {isPending ? (

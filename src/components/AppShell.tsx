@@ -29,7 +29,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { NexusLogo } from "@/components/brand/NexusLogo";
 import { DemoRoleSwitcher } from "@/components/DemoRoleSwitcher";
-import { ThemeSelector } from "@/components/ThemeSelector";
 import { TechnicianHeaderTools } from "@/components/technician/TechnicianHeaderTools";
 import {
   getNavForRole,
@@ -91,6 +90,75 @@ interface AppShellProps {
   technicianId?: string | null;
 }
 
+const NAV_BUTTON_SHADES = [
+  "#1e3a8a", // deep royal
+  "#1d4ed8",
+  "#2563eb",
+  "#3b82f6",
+  "#0ea5e9",
+  "#14b8a6",
+  "#2dd4bf",
+  "#5eead4",
+  "#99f6e4",
+  "#a5f3fc",
+  "#bae6fd",
+  "#bfdbfe",
+] as const;
+
+/** Muted gray-blue header bar tones — shift with the active nav tab. */
+const HEADER_BAR_SHADES = [
+  "#1e293b", // slate-800
+  "#1e3a5f", // deep blue-gray
+  "#243447",
+  "#1e40af", // blue-800
+  "#334155", // slate-700
+  "#1d4ed8", // royal
+  "#0f766e", // teal-700
+  "#164e63", // cyan-900
+  "#1e3a8a", // indigo-navy
+  "#312e81", // indigo-900
+  "#0c4a6e", // sky-900
+  "#115e59", // teal-800
+] as const;
+
+function shadeAtIndex(
+  shades: readonly string[],
+  index: number,
+  total: number,
+): string {
+  if (total <= 1) return shades[0] ?? "#1e293b";
+  const last = shades.length - 1;
+  const t = Math.min(1, Math.max(0, index / (total - 1)));
+  const pos = Math.round(t * last);
+  return shades[pos] ?? shades[last] ?? "#1e293b";
+}
+
+function navButtonShade(index: number, total: number): string {
+  return shadeAtIndex(NAV_BUTTON_SHADES, index, total);
+}
+
+function navButtonTextClass(index: number, total: number): string {
+  const t = total <= 1 ? 0 : index / (total - 1);
+  // Darker blues need light text; mint/sky near the end need dark ink
+  return t >= 0.72 ? "text-[#0B1220]" : "text-white";
+}
+
+function activeNavIndex(items: NavItem[], pathname: string): number {
+  let best = 0;
+  let bestScore = -1;
+  items.forEach((item, index) => {
+    const exact = pathname === item.href;
+    const nested = pathname.startsWith(`${item.href}/`);
+    if (!exact && !nested) return;
+    const score = item.href.length + (exact ? 1000 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = index;
+    }
+  });
+  return best;
+}
+
 function NavLinks({
   items,
   pathname,
@@ -101,8 +169,8 @@ function NavLinks({
   onNavigate?: () => void;
 }) {
   return (
-    <ul className="menu menu-sm gap-1 px-2">
-      {items.map((item) => {
+    <ul className="flex flex-col gap-2 px-3 py-1">
+      {items.map((item, index) => {
         const Icon = ICON_MAP[item.icon] ?? LayoutDashboard;
         const hasMoreSpecificMatch = items.some(
           (other) =>
@@ -113,16 +181,23 @@ function NavLinks({
         const isActive =
           pathname === item.href ||
           (pathname.startsWith(`${item.href}/`) && !hasMoreSpecificMatch);
+        const shade = navButtonShade(index, items.length);
+        const textClass = navButtonTextClass(index, items.length);
 
         return (
           <li key={item.href}>
             <Link
               href={item.href}
-              className={isActive ? "active font-semibold" : undefined}
               onClick={onNavigate}
+              className={`font-button flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[1.05rem] font-normal leading-snug tracking-[0.02em] shadow-sm transition ${textClass} hover:brightness-110 ${
+                isActive
+                  ? "ring-2 ring-[#5EEAD4] ring-offset-2 ring-offset-[#0B1220]"
+                  : "ring-1 ring-white/10"
+              }`}
+              style={{ backgroundColor: shade }}
             >
-              <Icon className="size-4" aria-hidden="true" />
-              {item.label}
+              <Icon className="size-4 shrink-0 opacity-95" aria-hidden="true" />
+              <span>{item.label}</span>
             </Link>
           </li>
         );
@@ -131,7 +206,7 @@ function NavLinks({
   );
 }
 
-function BrandMark({ techTheme }: { techTheme?: boolean }) {
+function BrandMark() {
   return (
     <Link
       href="/"
@@ -140,20 +215,10 @@ function BrandMark({ techTheme }: { techTheme?: boolean }) {
     >
       <NexusLogo size="lg" decorative />
       <div>
-        <p
-          className={`text-sm font-semibold leading-tight ${
-            techTheme ? "text-white" : ""
-          }`}
-        >
+        <p className="font-display text-sm leading-tight text-white">
           Nexus Technology Solutions
         </p>
-        <p
-          className={`text-xs ${
-            techTheme ? "text-slate-400" : "text-base-content/60"
-          }`}
-        >
-          Technology Operations Platform
-        </p>
+        <p className="text-xs text-slate-400">Technology Operations Platform</p>
       </div>
     </Link>
   );
@@ -169,7 +234,6 @@ function SidebarPanel({
   onDemoRoleChange,
   onLogout,
   onNavigate,
-  techTheme,
 }: {
   pathname: string;
   navItems: NavItem[];
@@ -180,40 +244,26 @@ function SidebarPanel({
   onDemoRoleChange?: (role: UserRole) => void;
   onLogout: () => void;
   onNavigate?: () => void;
-  techTheme?: boolean;
 }) {
   return (
-    <div className="flex h-full flex-col">
-      <BrandMark techTheme={techTheme} />
-      <div className={`divider my-0 ${techTheme ? "before:bg-cyan-500/20 after:bg-cyan-500/20" : ""}`} />
+    <div className="flex h-full flex-col bg-[#0B1220] text-slate-100">
+      <BrandMark />
+      <div className="divider my-0 before:bg-blue-500/25 after:bg-blue-500/25" />
       <nav className="flex-1 overflow-y-auto py-2">
         <NavLinks items={navItems} pathname={pathname} onNavigate={onNavigate} />
       </nav>
-      <div
-        className={`space-y-3 border-t p-4 ${
-          techTheme ? "border-cyan-500/20" : "border-base-300"
-        }`}
-      >
+      <div className="space-y-3 border-t border-blue-500/25 p-4">
         <div>
-          <p
-            className={`text-sm font-semibold ${techTheme ? "text-white" : ""}`}
-          >
+          <p className="text-sm font-semibold text-white">
             {userName || userEmail || "Signed in user"}
           </p>
           {userName && userEmail ? (
-            <p className={`text-xs ${techTheme ? "text-slate-400" : "text-base-content/60"}`}>
-              {userEmail}
-            </p>
+            <p className="text-xs text-slate-400">{userEmail}</p>
           ) : null}
-          <p
-            className={`mt-1 text-xs font-medium uppercase tracking-wide ${
-              techTheme ? "text-cyan-300" : "text-primary"
-            }`}
-          >
+          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-[#5EEAD4]">
             {ROLE_LABELS[activeRole]}
           </p>
         </div>
-        {!techTheme ? <ThemeSelector /> : null}
         {onDemoRoleChange ? (
           <DemoRoleSwitcher
             realRole={realRole}
@@ -223,11 +273,7 @@ function SidebarPanel({
         ) : null}
         <button
           type="button"
-          className={`btn btn-sm w-full ${
-            techTheme
-              ? "border-slate-600 bg-slate-950 text-slate-100 hover:border-cyan-500/50"
-              : "btn-outline"
-          }`}
+          className="btn btn-sm w-full border-slate-500 bg-transparent text-slate-100 hover:border-[#5EEAD4] hover:bg-blue-500/15"
           onClick={onLogout}
         >
           <LogOut className="size-4" aria-hidden="true" />
@@ -254,6 +300,12 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const navItems = getNavForRole(activeRole);
   const techTheme = activeRole === "technician";
+  const headerNavIndex = activeNavIndex(navItems, pathname);
+  const headerBarColor = shadeAtIndex(
+    HEADER_BAR_SHADES,
+    headerNavIndex,
+    Math.max(navItems.length, 1),
+  );
 
   async function handleLogout() {
     const supabase = createClient();
@@ -275,21 +327,18 @@ export function AppShell({
       <div
         className={`drawer-content flex min-h-screen flex-col ${
           techTheme
-            ? "bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 text-slate-100"
+            ? "bg-gradient-to-br from-[#0B1220] via-[#111827] to-[#1E3A5F] text-slate-100"
             : "bg-base-200"
         }`}
       >
         <header
-          className={`navbar sticky top-0 z-20 border-b px-4 lg:px-6 ${
-            techTheme
-              ? "border-cyan-500/20 bg-slate-950/90 text-white backdrop-blur"
-              : "border-base-300 bg-base-100"
-          }`}
+          className="navbar sticky top-0 z-20 border-b border-white/10 px-4 text-white backdrop-blur transition-[background-color] duration-300 lg:px-6"
+          style={{ backgroundColor: headerBarColor }}
         >
           <div className="flex-none lg:hidden" suppressHydrationWarning>
             <label
               htmlFor="app-shell-drawer"
-              className={`btn btn-square btn-ghost ${techTheme ? "text-white" : ""}`}
+              className="btn btn-square btn-ghost text-white"
               aria-label="Open navigation menu"
               suppressHydrationWarning
             >
@@ -303,29 +352,19 @@ export function AppShell({
               aria-label="Nexus Technology Solutions home"
             >
               <NexusLogo size="lg" decorative />
-              <span
-                className={`truncate text-sm font-semibold leading-tight sm:text-base ${
-                  techTheme ? "text-white" : ""
-                }`}
-              >
+              <span className="font-display truncate text-sm leading-tight text-white sm:text-base">
                 Nexus Technology Solutions
               </span>
             </Link>
             <span
-              className={`hidden h-5 w-px shrink-0 sm:block ${
-                techTheme ? "bg-cyan-500/30" : "bg-base-300"
-              }`}
+              className="hidden h-5 w-px shrink-0 bg-white/25 sm:block"
               aria-hidden="true"
             />
-            <h1
-              className={`hidden truncate text-base font-medium sm:block lg:text-lg ${
-                techTheme ? "text-slate-300" : "text-base-content/70"
-              }`}
-            >
+            <h1 className="hidden truncate text-base font-medium text-slate-200 sm:block lg:text-lg">
               {pageTitle}
             </h1>
           </div>
-          <div className="flex flex-none items-center gap-1">
+          <div className="flex flex-none items-center gap-1 text-white [&_.btn-ghost]:text-white">
             {techTheme ? (
               <TechnicianHeaderTools technicianId={technicianId} />
             ) : null}
@@ -347,13 +386,7 @@ export function AppShell({
           className="drawer-overlay"
           aria-label="Close navigation menu"
         />
-        <aside
-          className={`min-h-full w-72 ${
-            techTheme
-              ? "border-r border-cyan-500/20 bg-slate-950 text-slate-100"
-              : "bg-base-100"
-          }`}
-        >
+        <aside className="min-h-full w-72 border-r border-blue-500/25 bg-[#0B1220] text-slate-100">
           <SidebarPanel
             pathname={pathname}
             navItems={navItems}
@@ -364,7 +397,6 @@ export function AppShell({
             onDemoRoleChange={onDemoRoleChange}
             onLogout={handleLogout}
             onNavigate={() => setMobileOpen(false)}
-            techTheme={techTheme}
           />
         </aside>
       </div>

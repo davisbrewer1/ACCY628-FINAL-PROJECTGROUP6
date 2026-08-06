@@ -292,7 +292,7 @@ export function TechnicianScheduleCalendar({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-cyan-200/80">
+          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-teal-200/80">
             Schedule calendar
           </h3>
           <p className="mt-1 text-sm text-slate-300">
@@ -305,7 +305,7 @@ export function TechnicianScheduleCalendar({
               type="button"
               className={`btn btn-sm join-item border-0 ${
                 mode === "week"
-                  ? "bg-cyan-500 text-slate-950"
+                  ? "btn-primary"
                   : "bg-slate-900 text-slate-200"
               }`}
               onClick={() => onModeChange("week")}
@@ -316,7 +316,7 @@ export function TechnicianScheduleCalendar({
               type="button"
               className={`btn btn-sm join-item border-0 ${
                 mode === "month"
-                  ? "bg-cyan-500 text-slate-950"
+                  ? "btn-primary"
                   : "bg-slate-900 text-slate-200"
               }`}
               onClick={() => onModeChange("month")}
@@ -326,7 +326,7 @@ export function TechnicianScheduleCalendar({
           </div>
           <button
             type="button"
-            className="btn btn-sm border-slate-600 bg-slate-900 text-slate-100 hover:border-cyan-500/50 hover:bg-slate-800"
+            className="btn btn-sm border-slate-600 bg-slate-900 text-slate-100 hover:border-blue-500/50 hover:bg-slate-800"
             onClick={() => shift(-1)}
             aria-label={mode === "week" ? "Previous week" : "Previous month"}
           >
@@ -334,14 +334,14 @@ export function TechnicianScheduleCalendar({
           </button>
           <button
             type="button"
-            className="btn btn-sm border-slate-600 bg-slate-900 text-slate-100 hover:border-cyan-500/50 hover:bg-slate-800"
+            className="btn btn-sm border-slate-600 bg-slate-900 text-slate-100 hover:border-blue-500/50 hover:bg-slate-800"
             onClick={() => onAnchorChange(new Date())}
           >
             Today
           </button>
           <button
             type="button"
-            className="btn btn-sm border-slate-600 bg-slate-900 text-slate-100 hover:border-cyan-500/50 hover:bg-slate-800"
+            className="btn btn-sm border-slate-600 bg-slate-900 text-slate-100 hover:border-blue-500/50 hover:bg-slate-800"
             onClick={() => shift(1)}
             aria-label={mode === "week" ? "Next week" : "Next month"}
           >
@@ -491,12 +491,12 @@ function WeekGrid({
   const templateRows = `auto repeat(${rowCount}, ${hourRowSize})`;
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-cyan-500/20 bg-slate-950/60">
+    <div className="overflow-x-auto rounded-xl border border-blue-500/25 bg-slate-950/60">
       <div
         className="grid min-w-[820px] grid-cols-[6.5rem_repeat(5,minmax(0,1fr))]"
         style={{ gridTemplateRows: templateRows }}
       >
-        <div className="sticky left-0 z-10 border-b border-r border-cyan-500/15 bg-slate-900/90 p-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <div className="sticky left-0 z-10 border-b border-r border-blue-500/20 bg-slate-900/90 p-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
           Hour
         </div>
         {days.map((day, dayIndex) => {
@@ -506,11 +506,11 @@ function WeekGrid({
             <div
               key={dateKey}
               style={{ gridColumn: dayIndex + 2, gridRow: 1 }}
-              className={`border-b border-cyan-500/15 p-2 text-center ${
-                onPto ? "bg-violet-500/15" : isToday(day) ? "bg-cyan-500/10" : "bg-slate-900/80"
+              className={`border-b border-blue-500/20 p-2 text-center ${
+                onPto ? "bg-violet-500/15" : isToday(day) ? "bg-blue-500/10" : "bg-slate-900/80"
               }`}
             >
-              <p className="text-xs font-semibold uppercase tracking-wide text-cyan-200/70">
+              <p className="text-xs font-semibold uppercase tracking-wide text-teal-200/70">
                 {format(day, "EEE")}
               </p>
               <p className="text-sm font-medium text-white">{format(day, "MMM d")}</p>
@@ -527,7 +527,7 @@ function WeekGrid({
           <div
             key={`label-${window.id}`}
             style={{ gridColumn: 1, gridRow: windowIndex + 2 }}
-            className="sticky left-0 z-10 flex h-full items-center border-b border-r border-cyan-500/10 bg-slate-900/80 px-2 text-sm font-medium text-slate-300"
+            className="sticky left-0 z-10 flex h-full items-center border-b border-r border-blue-500/15 bg-slate-900/80 px-2 text-sm font-medium text-slate-300"
           >
             {window.label}
           </div>
@@ -563,9 +563,9 @@ function WeekGrid({
                   gridColumn: dayIndex + 2,
                   gridRow: `${windowIndex + 2} / span ${span}`,
                 }}
-                className={`h-full border-b border-l border-cyan-500/10 p-1 transition ${
-                  isToday(day) ? "bg-cyan-950/20" : "bg-slate-950/40"
-                } ${isDropTarget ? "bg-cyan-500/20 ring-1 ring-inset ring-cyan-400/60" : ""}`}
+                className={`h-full border-b border-l border-blue-500/15 p-1 transition ${
+                  isToday(day) ? "bg-blue-950/30" : "bg-slate-950/40"
+                } ${isDropTarget ? "bg-blue-500/20 ring-1 ring-inset ring-blue-400/60" : ""}`}
                 onDragOver={(event: DragEvent<HTMLDivElement>) => {
                   event.preventDefault();
                   onDragOverCell(key);
@@ -610,8 +610,8 @@ function WeekGrid({
                                 : ""
                             } ${
                               selectedTicketId === occupant.ticket.id
-                                ? "border-cyan-400 bg-cyan-500/20 shadow-[0_0_0_1px_rgba(34,211,238,0.35)]"
-                                : "border-slate-600/80 bg-slate-900/90 hover:border-cyan-500/50 hover:bg-slate-800"
+                                ? "border-teal-400 bg-blue-500/20 shadow-[0_0_0_1px_rgba(45,212,191,0.35)]"
+                                : "border-slate-600/80 bg-slate-900/90 hover:border-blue-500/50 hover:bg-slate-800"
                             }`
                     }`}
                   >
@@ -644,7 +644,7 @@ function WeekGrid({
                           className="badge-xs"
                         />
                         {isEnRoute ? (
-                          <span className="badge badge-xs gap-1 border-0 bg-sky-500 text-slate-950">
+                          <span className="badge badge-xs gap-1 border-0 bg-teal-400 text-[#0B1220]">
                             <Navigation className="size-3" aria-hidden="true" />
                             En route
                           </span>
@@ -708,8 +708,8 @@ function MonthGrid({
   }, [tickets, schedule]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-cyan-500/20 bg-slate-950/60">
-      <div className="grid grid-cols-7 border-b border-cyan-500/15 bg-slate-900/80">
+    <div className="overflow-hidden rounded-xl border border-blue-500/25 bg-slate-950/60">
+      <div className="grid grid-cols-7 border-b border-blue-500/20 bg-slate-900/80">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
           <div
             key={label}
@@ -730,9 +730,9 @@ function MonthGrid({
               key={key}
               type="button"
               onClick={() => onOpenWeek(day)}
-              className={`min-h-[6.5rem] border-b border-r border-cyan-500/10 p-2 text-left transition hover:bg-cyan-500/10 ${
+              className={`min-h-[6.5rem] border-b border-r border-blue-500/15 p-2 text-left transition hover:bg-blue-500/10 ${
                 inMonth ? "bg-slate-950/40" : "bg-slate-950/20 opacity-50"
-              } ${isToday(day) ? "ring-1 ring-inset ring-cyan-400/40" : ""} ${
+              } ${isToday(day) ? "ring-1 ring-inset ring-blue-400/40" : ""} ${
                 onPto ? "bg-violet-500/10" : ""
               }`}
             >
@@ -750,7 +750,7 @@ function MonthGrid({
                     key={ticket.id}
                     className={`truncate rounded px-1.5 py-0.5 text-[10px] ${
                       selectedTicketId === ticket.id
-                        ? "bg-cyan-500/30 text-cyan-50"
+                        ? "bg-blue-500/30 text-blue-50"
                         : ticket.cybersecurity_incident
                           ? "bg-rose-500/25 text-rose-100"
                           : "bg-slate-800 text-slate-200"

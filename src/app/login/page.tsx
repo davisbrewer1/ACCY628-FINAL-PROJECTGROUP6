@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { NexusLogo } from "@/components/brand/NexusLogo";
 import { FormField } from "@/components/FormField";
-import { ThemeSelector } from "@/components/ThemeSelector";
 import { getDefaultDashboard, normalizeRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
 
@@ -112,19 +111,14 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-24 top-16 h-80 w-80 rounded-full bg-cyan-500/15 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-[28rem] w-[28rem] rounded-full bg-sky-600/10 blur-3xl" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.12),transparent_45%)]" />
+    <div className="relative flex min-h-screen flex-col bg-[#0B1220]">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         <div
-          className="absolute inset-0 opacity-[0.07]"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(255,255,255,.35) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.35) 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
-          }}
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: "url('/brand/nexus-hero-bg.png')" }}
         />
+        <div className="absolute inset-0 bg-[#0B1220]/55" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0B1220]/40 via-transparent to-[#0B1220]/70" />
       </div>
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 py-12">
@@ -141,7 +135,7 @@ export default function LoginPage() {
           <div className="mx-auto mb-4 flex justify-center">
             <NexusLogo size="lg" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          <h1 className="font-display text-3xl tracking-tight sm:text-4xl">
             Portal sign-in
           </h1>
           <p className="mt-3 text-base text-slate-200">
@@ -267,8 +261,6 @@ export default function LoginPage() {
                 </button>
               </form>
             )}
-
-            <ThemeSelector />
           </div>
         </div>
 

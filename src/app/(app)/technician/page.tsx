@@ -74,10 +74,10 @@ function TechStat({
       : tone === "warning"
         ? "border-amber-400/30 bg-amber-400/10"
         : tone === "info"
-          ? "border-cyan-400/30 bg-cyan-500/10"
+          ? "border-blue-400/30 bg-blue-500/10"
           : tone === "pto"
             ? "border-violet-400/30 bg-violet-500/10"
-            : "border-cyan-500/20 bg-slate-900/70";
+            : "border-blue-500/25 bg-slate-900/70";
 
   return (
     <div className={`rounded-xl border p-4 shadow-sm ${toneClass}`}>
@@ -678,14 +678,14 @@ export default function TechnicianWorkspacePage() {
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <span className="loading loading-spinner loading-lg text-cyan-400" />
+        <span className="loading loading-spinner loading-lg text-blue-400" />
       </div>
     );
   }
 
   if (!technician) {
     return (
-      <div className="rounded-xl border border-cyan-500/20 bg-slate-900/80 p-8 text-center text-slate-200">
+      <div className="rounded-xl border border-blue-500/25 bg-slate-900/80 p-8 text-center text-slate-200">
         <h3 className="text-lg font-semibold text-white">No technician profile linked</h3>
         <p className="mt-2 text-sm text-slate-400">
           Your account is not linked to a technician record. Contact an administrator to assign
@@ -703,7 +703,7 @@ export default function TechnicianWorkspacePage() {
         action={
           <button
             type="button"
-            className="btn border-0 bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+            className="btn btn-primary border-0"
             onClick={openBlankWorkEntry}
           >
             <ClipboardPlus className="size-4" aria-hidden="true" />
@@ -855,7 +855,7 @@ export default function TechnicianWorkspacePage() {
                       <div className="flex flex-wrap gap-2 sm:col-span-2">
                         <button
                           type="submit"
-                          className="btn btn-sm border-0 bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                          className="btn btn-sm btn-primary border-0"
                           disabled={isPending}
                         >
                           Resubmit for approval
@@ -888,7 +888,7 @@ export default function TechnicianWorkspacePage() {
         </section>
       ) : null}
 
-      <div className="rounded-xl border border-cyan-500/20 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-4 shadow-lg sm:p-5">
+      <div className="rounded-xl border border-blue-500/25 bg-gradient-to-br from-[#0B1220] via-[#111827] to-[#1E3A5F] p-4 shadow-lg sm:p-5">
         <TechnicianScheduleCalendar
           tickets={calendarTickets}
           anchor={calendarAnchor}
@@ -1063,7 +1063,7 @@ export default function TechnicianWorkspacePage() {
       </div>
 
       {workEntries.length > 0 ? (
-        <div className="rounded-xl border border-cyan-500/20 bg-slate-900/80 shadow-sm">
+        <div className="rounded-xl border border-blue-500/25 bg-slate-900/80 shadow-sm">
           <div className="space-y-4 p-5">
             <div>
               <h2 className="text-base font-semibold text-white">Recent work</h2>
@@ -1085,7 +1085,7 @@ export default function TechnicianWorkspacePage() {
                   {workEntries.slice(0, 8).map((entry) => (
                     <tr
                       key={entry.id}
-                      className="cursor-pointer border-slate-800 transition hover:bg-cyan-500/10"
+                      className="cursor-pointer border-slate-800 transition hover:bg-blue-500/10"
                       onClick={() => openWorkEntryForEdit(entry)}
                     >
                       <td>{entry.work_date ?? "—"}</td>

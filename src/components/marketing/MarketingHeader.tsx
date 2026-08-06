@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { NexusLogo } from "@/components/brand/NexusLogo";
-import { ThemeSelector } from "@/components/ThemeSelector";
 import { PortalLoginMenu } from "@/components/marketing/PortalLoginMenu";
 
 export function MarketingHeader() {
@@ -15,15 +14,12 @@ export function MarketingHeader() {
           aria-label="Nexus Technology Solutions home"
         >
           <NexusLogo size="lg" decorative />
-          <span className="hidden text-sm font-semibold leading-tight sm:block">
+          <span className="font-display hidden text-sm leading-tight sm:block">
             Nexus Technology Solutions
           </span>
         </Link>
       </div>
       <div className="flex flex-none items-center gap-2 sm:gap-3">
-        <div className="hidden max-w-[9rem] md:block">
-          <ThemeSelector />
-        </div>
         <a href="#services" className="btn btn-ghost btn-sm hidden sm:inline-flex">
           Services
         </a>

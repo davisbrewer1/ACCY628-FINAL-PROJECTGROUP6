@@ -67,7 +67,7 @@ export function MarketingChatAssistant() {
         >
           <header className="flex items-start justify-between gap-3 border-b border-base-300 bg-slate-900 px-4 py-3 text-white">
             <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex size-9 items-center justify-center rounded-full bg-cyan-500/20 text-cyan-200">
+              <span className="mt-0.5 flex size-9 items-center justify-center rounded-full bg-blue-500/20 text-teal-200">
                 <Bot className="size-5" aria-hidden="true" />
               </span>
               <div>

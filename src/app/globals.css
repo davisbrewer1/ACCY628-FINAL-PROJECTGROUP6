@@ -1,11 +1,61 @@
 @import "tailwindcss";
 @plugin "daisyui" {
-  themes: corporate --default, business, nord, winter, dim, light, dark, cupcake, emerald, synthwave;
+  themes: corporate, business, nord, winter, dim, light, dark, cupcake, emerald, synthwave;
+}
+
+@plugin "daisyui/theme" {
+  name: "nexus";
+  default: true;
+  color-scheme: light;
+
+  /* Cool slate surfaces — not flat pure white */
+  --color-base-100: #f1f5f9;
+  --color-base-200: #e2e8f0;
+  --color-base-300: #cbd5e1;
+  --color-base-content: #0f172a;
+
+  /* Deep Nexus Blue */
+  --color-primary: #2563eb;
+  --color-primary-content: #ffffff;
+  --color-secondary: #1e3a5f;
+  --color-secondary-content: #f8fafc;
+  --color-accent: #2dd4bf;
+  --color-accent-content: #0b1220;
+  --color-neutral: #111827;
+  --color-neutral-content: #f8fafc;
+
+  --color-info: #38bdf8;
+  --color-info-content: #0b1220;
+  --color-success: #22c55e;
+  --color-success-content: #052e16;
+  --color-warning: #f59e0b;
+  --color-warning-content: #451a03;
+  --color-error: #ef4444;
+  --color-error-content: #450a0a;
+
+  --radius-selector: 0.35rem;
+  --radius-field: 0.35rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
 }
 
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-nexus-display);
+  --font-display-italic: var(--font-nexus-display-italic);
+  --font-button: var(--font-nexus-button);
+  --color-nexus-navy: #0b1220;
+  --color-nexus-elevated: #111827;
+  --color-nexus-primary: #2563eb;
+  --color-nexus-primary-deep: #1d4ed8;
+  --color-nexus-accent: #2dd4bf;
+  --color-nexus-glow: #5eead4;
+  --color-nexus-surface: #1e293b;
 }
 
 html,
@@ -15,6 +65,140 @@ body {
 
 body {
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-nexus-display), var(--font-geist-sans), ui-sans-serif, system-ui,
+    sans-serif;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+}
+
+.font-display-italic {
+  font-family: var(--font-nexus-display-italic), var(--font-nexus-display),
+    var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-style: italic;
+  letter-spacing: 0.03em;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 18px rgba(94, 234, 212, 0.25);
+}
+
+/* Brand primary buttons — NX mint→sky gradient + Libel Suit */
+.btn-primary,
+.btn.bg-blue-600,
+.btn.bg-blue-500 {
+  border-width: 0 !important;
+  border-color: transparent !important;
+  background-color: transparent !important;
+  background-image: linear-gradient(
+    to bottom right,
+    #cef6d6,
+    #b8e4f0,
+    #a5c8ed
+  ) !important;
+  color: #0b1220 !important;
+  font-family: var(--font-nexus-button), var(--font-geist-sans), ui-sans-serif,
+    system-ui, sans-serif !important;
+  font-size: 1.15em !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.02em;
+  box-shadow: 0 0 24px rgba(165, 200, 237, 0.35);
+}
+
+.btn-primary:hover,
+.btn.bg-blue-600:hover,
+.btn.bg-blue-500:hover,
+.btn-primary:focus-visible,
+.btn.bg-blue-600:focus-visible {
+  filter: brightness(1.1);
+  box-shadow: 0 0 28px rgba(206, 246, 214, 0.45);
+  color: #0b1220 !important;
+  background-image: linear-gradient(
+    to bottom right,
+    #cef6d6,
+    #b8e4f0,
+    #a5c8ed
+  ) !important;
+}
+
+.btn-primary:disabled,
+.btn-primary[disabled],
+.btn.bg-blue-600:disabled {
+  filter: grayscale(0.2) brightness(0.92);
+  opacity: 0.7;
+}
+
+/* Homepage category cards — grow + wave background on hover */
+.nexus-hover-card {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.35s ease,
+    box-shadow 0.35s ease,
+    border-color 0.35s ease;
+  will-change: transform;
+}
+
+.nexus-hover-card:hover {
+  z-index: 20;
+  transform: scale(1.05);
+  border-color: rgba(94, 234, 212, 0.45);
+  box-shadow:
+    0 18px 40px rgba(11, 18, 32, 0.45),
+    0 0 0 1px rgba(94, 234, 212, 0.2);
+}
+
+.nexus-hover-card__bg {
+  position: absolute;
+  inset: -12%;
+  background-color: #0b1220;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: scale(1.08);
+  transition: transform 0.5s ease;
+  will-change: transform;
+}
+
+.nexus-hover-card:hover .nexus-hover-card__bg {
+  animation: nexus-wave 3.8s ease-in-out infinite;
+}
+
+@keyframes nexus-wave {
+  0% {
+    transform: scale(1.12) translate3d(0, 0, 0) rotate(0deg);
+  }
+  20% {
+    transform: scale(1.16) translate3d(-2.2%, 1.4%, 0) rotate(0.5deg);
+  }
+  40% {
+    transform: scale(1.14) translate3d(1.8%, -1.2%, 0) rotate(-0.4deg);
+  }
+  60% {
+    transform: scale(1.17) translate3d(-1.4%, -1.6%, 0) rotate(0.35deg);
+  }
+  80% {
+    transform: scale(1.13) translate3d(1.2%, 1%, 0) rotate(-0.25deg);
+  }
+  100% {
+    transform: scale(1.12) translate3d(0, 0, 0) rotate(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-hover-card,
+  .nexus-hover-card__bg {
+    transition: none;
+  }
+
+  .nexus-hover-card:hover {
+    transform: none;
+  }
+
+  .nexus-hover-card:hover .nexus-hover-card__bg {
+    animation: none;
+  }
 }
 
 .form-grid label {
@@ -30,15 +214,19 @@ body {
   min-width: 0;
 }
 
-/* Technician console — match marketing homepage slate/cyan look */
+/* Technician console — Deep Nexus Blue dark shell */
 .tech-shell .menu :where(li > *:not(ul):not(.menu-title):not(details):not(.btn)) {
   color: #cbd5e1;
 }
 
 .tech-shell .menu :where(li > *:not(ul):not(.menu-title):not(details):not(.btn)):hover,
 .tech-shell .menu :where(li > *:not(ul):not(.menu-title):not(details):not(.btn)).active {
-  background: rgba(6, 182, 212, 0.18);
+  background: rgba(37, 99, 235, 0.22);
   color: #ecfeff;
+}
+
+.tech-shell .menu :where(li > *:not(ul):not(.menu-title):not(details):not(.btn)).active {
+  box-shadow: inset 3px 0 0 #2dd4bf;
 }
 
 .tech-shell h2 {
@@ -46,8 +234,8 @@ body {
 }
 
 .tech-shell .card {
-  background: rgba(15, 23, 42, 0.85);
-  border-color: rgba(6, 182, 212, 0.2);
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(37, 99, 235, 0.28);
   color: #e2e8f0;
 }
 
@@ -64,15 +252,42 @@ body {
 .tech-shell .input,
 .tech-shell .select,
 .tech-shell .textarea {
-  background: #020617;
+  background: #0b1220;
   border-color: #475569;
   color: #f1f5f9;
 }
 
-.tech-shell .btn-primary {
-  background: #06b6d4;
-  border-color: #06b6d4;
-  color: #020617;
+.tech-shell .btn-primary,
+.tech-shell .btn.bg-blue-600,
+.tech-shell .btn.bg-blue-500 {
+  border-width: 0 !important;
+  border-color: transparent !important;
+  background-color: transparent !important;
+  background-image: linear-gradient(
+    to bottom right,
+    #cef6d6,
+    #b8e4f0,
+    #a5c8ed
+  ) !important;
+  color: #0b1220 !important;
+  font-family: var(--font-nexus-button), var(--font-geist-sans), ui-sans-serif,
+    system-ui, sans-serif !important;
+  font-size: 1.15em !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.02em;
+}
+
+.tech-shell .btn-primary:hover,
+.tech-shell .btn.bg-blue-600:hover,
+.tech-shell .btn.bg-blue-500:hover {
+  filter: brightness(1.1);
+  background-image: linear-gradient(
+    to bottom right,
+    #cef6d6,
+    #b8e4f0,
+    #a5c8ed
+  ) !important;
+  color: #0b1220 !important;
 }
 
 /* Hardware assets page — muted base-content text is unreadable on the dark
@@ -91,8 +306,8 @@ body {
 }
 
 .tech-shell .hardware-page .btn-outline:not(dialog *):hover {
-  background: rgba(6, 182, 212, 0.18);
-  border-color: #06b6d4;
+  background: rgba(37, 99, 235, 0.22);
+  border-color: #2563eb;
   color: #ecfeff;
 }
 
