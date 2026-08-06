@@ -43,10 +43,10 @@ const PRIORITY_RANK: Record<string, number> = {
 };
 
 const URGENCY_OPTIONS: { value: TicketPriority; label: string }[] = [
-  { value: "Critical", label: "Critical â€” cannot work at all" },
-  { value: "High", label: "High â€” major impact on work" },
-  { value: "Medium", label: "Medium â€” partial impact" },
-  { value: "Low", label: "Low â€” minor inconvenience" },
+  { value: "Critical", label: "Critical — cannot work at all" },
+  { value: "High", label: "High — major impact on work" },
+  { value: "Medium", label: "Medium — partial impact" },
+  { value: "Low", label: "Low — minor inconvenience" },
 ];
 
 function deviceLabel(asset: HardwareAsset): string {
@@ -56,7 +56,7 @@ function deviceLabel(asset: HardwareAsset): string {
     asset.model,
     asset.assigned_employee ? `(${asset.assigned_employee})` : null,
   ].filter(Boolean);
-  return parts.join(" â€” ");
+  return parts.join(" — ");
 }
 
 function issueTypeLabel(ticket: ServiceTicket): string {
@@ -348,7 +348,7 @@ export default function EndUserSupportPage() {
                     <dt className="text-xs uppercase tracking-wide text-base-content/50">
                       Employee
                     </dt>
-                    <dd className="font-medium">{ticket.requester_name ?? "â€”"}</dd>
+                    <dd className="font-medium">{ticket.requester_name ?? "—"}</dd>
                     {ticket.requester_email ? (
                       <dd className="truncate text-xs text-base-content/55">
                         {ticket.requester_email}
@@ -361,7 +361,7 @@ export default function EndUserSupportPage() {
                     </dt>
                     <dd className="font-medium">{issueTypeLabel(ticket)}</dd>
                     <dd className="text-xs text-base-content/55">
-                      {ticket.category ?? "â€”"}
+                      {ticket.category ?? "—"}
                     </dd>
                   </div>
                   <div>
@@ -369,7 +369,7 @@ export default function EndUserSupportPage() {
                       Device
                     </dt>
                     <dd className="font-medium">
-                      {linkedAsset ? deviceLabel(linkedAsset) : "â€”"}
+                      {linkedAsset ? deviceLabel(linkedAsset) : "—"}
                     </dd>
                   </div>
                   <div>
@@ -646,7 +646,7 @@ export default function EndUserSupportPage() {
                   <p className="text-xs uppercase tracking-wide text-base-content/60">
                     Subcategory
                   </p>
-                  <p className="mt-1 font-medium">{selectedTicket.category ?? "â€”"}</p>
+                  <p className="mt-1 font-medium">{selectedTicket.category ?? "—"}</p>
                 </div>
                 <div className="rounded-box border border-base-300 p-3">
                   <p className="text-xs uppercase tracking-wide text-base-content/60">Technician</p>
@@ -670,7 +670,7 @@ export default function EndUserSupportPage() {
                 </div>
                 <div className="rounded-box border border-base-300 p-3">
                   <p className="text-xs uppercase tracking-wide text-base-content/60">Location</p>
-                  <p className="mt-1 font-medium">{selectedTicket.location ?? "â€”"}</p>
+                  <p className="mt-1 font-medium">{selectedTicket.location ?? "—"}</p>
                 </div>
                 <div className="rounded-box border border-base-300 p-3">
                   <p className="text-xs uppercase tracking-wide text-base-content/60">Device</p>
@@ -827,7 +827,7 @@ export default function EndUserSupportPage() {
               {selectedRating ? (
                 <p className="text-xs text-base-content/60">
                   You previously rated this ticket {selectedRating.rating}/5
-                  {selectedRating.comment ? ` â€” â€œ${selectedRating.comment}â€` : ""}.
+                  {selectedRating.comment ? ` — “${selectedRating.comment}”` : ""}.
                 </p>
               ) : null}
 

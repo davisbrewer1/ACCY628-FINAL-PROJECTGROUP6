@@ -218,7 +218,7 @@ export default function EndUserPage() {
               Welcome back{firstName ? `, ${firstName}` : ""}
             </h1>
             <p className="mt-2 text-base text-base-content/75">
-              {greeting}. Here&apos;s a quick look at your Nexus account ΓÇö announcements, recent
+              {greeting}. Here&apos;s a quick look at your Nexus account — announcements, recent
               activity, and shortcuts to the tools you use most.
             </p>
           </div>
@@ -425,7 +425,7 @@ export default function EndUserPage() {
               </a>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-base-content/75">
-              Use this number for true emergencies only ΓÇö company-wide outages, suspected security
+              Use this number for true emergencies only — company-wide outages, suspected security
               breaches, ransomware, or critical systems that cannot wait for a normal support ticket.
               For routine issues, submit a support ticket in the portal.
             </p>
