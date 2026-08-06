@@ -662,11 +662,13 @@ export type AssetOrderTicketStatus =
   | "Rejected"
   | "Needs more information";
 
+export type AssetOrderRequestType = "purchase" | "replacement";
+
 export interface AssetOrderTicket {
   id: string;
   ticket_number: string;
-  asset_id: string;
-  customer_id: string;
+  asset_id: string | null;
+  customer_id: string | null;
   requested_by: string;
   replacement_manufacturer: string;
   replacement_model: string;
@@ -677,6 +679,9 @@ export interface AssetOrderTicket {
   preferred_vendor: string | null;
   estimated_unit_cost: number | null;
   needed_by: string | null;
+  category: string | null;
+  request_type: AssetOrderRequestType;
+  created_asset_id: string | null;
   status: AssetOrderTicketStatus;
   admin_notes: string | null;
   reviewed_by: string | null;

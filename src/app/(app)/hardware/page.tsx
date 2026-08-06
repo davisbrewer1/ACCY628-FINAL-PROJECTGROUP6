@@ -105,6 +105,9 @@ export default function HardwarePage() {
   const [filterCustomerId, setFilterCustomerId] = useState("");
   const [assignAssetId, setAssignAssetId] = useState("");
   const [orderAssetId, setOrderAssetId] = useState("");
+  const [orderRequestType, setOrderRequestType] = useState<
+    "purchase" | "replacement"
+  >("purchase");
   const [drawerAssetId, setDrawerAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
@@ -305,12 +308,24 @@ export default function HardwarePage() {
   }, [assets]);
 
   const alertCount = rows.filter((r) => r.alertBadges.length > 0).length;
+  const pendingPurchaseRequests = useMemo(
+    () =>
+      orderTickets.filter(
+        (t) => t.status === "Pending" || t.status === "Needs more information",
+      ),
+    [orderTickets],
+  );
   const replacementAssets = assets.filter((asset) => asset.needs_replacement);
   const selectedAsset = assets.find((asset) => asset.id === orderAssetId);
   const unavailableOrderAssetIds = new Set(
     orderTickets
-      .filter((ticket) => ticket.status !== "Rejected")
-      .map((ticket) => ticket.asset_id),
+      .filter(
+        (ticket) =>
+          Boolean(ticket.asset_id) &&
+          (ticket.status === "Pending" ||
+            ticket.status === "Needs more information"),
+      )
+      .map((ticket) => ticket.asset_id as string),
   );
   const normalizedPartSearch = partSearch.trim().toLowerCase();
   const filteredParts = parts.filter((part) => {
@@ -484,10 +499,15 @@ export default function HardwarePage() {
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
-                  onClick={() => orderDialogRef.current?.showModal()}
+                  onClick={() => {
+                    setOrderError(null);
+                    setOrderRequestType("purchase");
+                    setOrderAssetId("");
+                    orderDialogRef.current?.showModal();
+                  }}
                 >
                   <ClipboardList className="size-4" />
-                  Asset Order Ticket
+                  Request asset purchase
                 </button>
               ) : null}
               {canAdd ? (
@@ -513,6 +533,11 @@ export default function HardwarePage() {
             onClick={() => setManagerTab("devices")}
           >
             Devices
+            {pendingPurchaseRequests.length > 0 ? (
+              <span className="badge badge-warning badge-sm">
+                {pendingPurchaseRequests.length}
+              </span>
+            ) : null}
           </button>
           <button
             type="button"
@@ -537,6 +562,10 @@ export default function HardwarePage() {
                 <h2 className="card-title text-base">
                   Pending limit increase requests
                 </h2>
+                <p className="text-sm text-base-content/70">
+                  These are the only parts-budget items that need your approval.
+                  Day-to-day restocks within a tech’s monthly limit do not.
+                </p>
                 <div className="overflow-x-auto">
                   <table className="table table-sm">
                     <thead>
@@ -617,8 +646,10 @@ export default function HardwarePage() {
                 Technician parts restock budgets (this month)
               </h2>
               <p className="text-sm text-base-content/70">
-                Limits apply to parts restock orders (quantity × unit cost). Techs
-                blocked at the limit can request an increase here.
+                Technicians restock parts on their own as long as the order stays
+                within their monthly limit (quantity × unit cost). No manager
+                approval is required for those orders. You only review requests
+                here when a tech needs a higher limit after hitting the cap.
               </p>
               {technicians.length === 0 ? (
                 <EmptyState
@@ -740,27 +771,36 @@ export default function HardwarePage() {
         </div>
       </div>
 
-      {isAdministratorView ? (
+      {isManagerView ? (
         <section className="card border bg-base-100 shadow-sm">
           <div className="card-body">
             <div>
-              <h2 className="card-title text-base">Asset order reviews</h2>
+              <h2 className="card-title text-base">Asset purchase requests</h2>
               <p className="text-sm text-base-content/60">
-                Review replacement requests submitted from Technician view.
+                Technicians request purchases (or replacements). Approving adds
+                the asset to inventory or the selected customer — nothing is
+                created until you approve.
               </p>
             </div>
             {orderTickets.length === 0 ? (
-              <p className="text-sm text-base-content/60">No asset order tickets submitted.</p>
+              <p className="text-sm text-base-content/60">
+                No asset purchase requests submitted.
+              </p>
             ) : (
               <div className="mt-2 space-y-3">
                 {orderTickets.map((ticket) => {
-                  const asset = assets.find((item) => item.id === ticket.asset_id);
-                  const customer = customers.find(
-                    (item) => item.id === ticket.customer_id,
-                  );
-                  const total = ticket.estimated_unit_cost === null
-                    ? null
-                    : ticket.estimated_unit_cost * ticket.requested_quantity;
+                  const asset = ticket.asset_id
+                    ? assets.find((item) => item.id === ticket.asset_id)
+                    : null;
+                  const customer = ticket.customer_id
+                    ? customers.find((item) => item.id === ticket.customer_id)
+                    : null;
+                  const total =
+                    ticket.estimated_unit_cost === null
+                      ? null
+                      : ticket.estimated_unit_cost * ticket.requested_quantity;
+                  const isPurchase =
+                    ticket.request_type === "purchase" || !ticket.asset_id;
 
                   return (
                     <div key={ticket.id} className="rounded-box border p-4">
@@ -774,15 +814,24 @@ export default function HardwarePage() {
                             <span className="badge badge-outline badge-sm">
                               {ticket.priority}
                             </span>
+                            <span className="badge badge-ghost badge-sm">
+                              {isPurchase ? "New purchase" : "Replacement"}
+                            </span>
                           </div>
                           <p className="mt-1 font-medium">
-                            {asset?.asset_number ?? "Unknown asset"} →{" "}
-                            {ticket.replacement_manufacturer} {ticket.replacement_model}
+                            {isPurchase
+                              ? `${ticket.category ?? "Asset"} · ${ticket.replacement_manufacturer} ${ticket.replacement_model}`
+                              : `${asset?.asset_number ?? "Unknown asset"} → ${ticket.replacement_manufacturer} ${ticket.replacement_model}`}
                           </p>
                           <p className="text-sm text-base-content/60">
-                            {customer?.customer_name ?? "Unknown customer"} · Qty{" "}
-                            {ticket.requested_quantity}
-                            {total === null ? "" : ` · Estimated total ${formatCurrency(total)}`}
+                            {customer?.customer_name ?? "Unassigned inventory"} ·
+                            Qty {ticket.requested_quantity}
+                            {total === null
+                              ? ""
+                              : ` · Estimated total ${formatCurrency(total)}`}
+                            {ticket.created_asset_id
+                              ? " · Asset created"
+                              : ""}
                           </p>
                         </div>
                         <span className="text-xs text-base-content/50">
@@ -797,15 +846,16 @@ export default function HardwarePage() {
                       ) : null}
                       {ticket.admin_notes ? (
                         <div className="mt-3 rounded-box bg-base-200 p-3 text-sm">
-                          <span className="font-semibold">Administrator note:</span>{" "}
+                          <span className="font-semibold">Manager note:</span>{" "}
                           {ticket.admin_notes}
                         </div>
                       ) : null}
-                      {ticket.status !== "Approved" && ticket.status !== "Rejected" ? (
+                      {ticket.status !== "Approved" &&
+                      ticket.status !== "Rejected" ? (
                         <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-end">
                           <label className="form-control flex-1">
                             <span className="label-text mb-1 text-xs">
-                              Administrator note
+                              Manager note
                             </span>
                             <input
                               className="input input-bordered input-sm w-full"
@@ -824,16 +874,21 @@ export default function HardwarePage() {
                               type="button"
                               className="btn btn-success btn-sm"
                               disabled={isPending}
-                              onClick={() => handleReview(ticket.id, "Approved")}
+                              onClick={() =>
+                                handleReview(ticket.id, "Approved")
+                              }
                             >
-                              Approve
+                              Approve &amp; add asset
                             </button>
                             <button
                               type="button"
                               className="btn btn-sm"
                               disabled={isPending}
                               onClick={() =>
-                                handleReview(ticket.id, "Needs more information")
+                                handleReview(
+                                  ticket.id,
+                                  "Needs more information",
+                                )
                               }
                             >
                               Request info
@@ -842,7 +897,9 @@ export default function HardwarePage() {
                               type="button"
                               className="btn btn-error btn-outline btn-sm"
                               disabled={isPending}
-                              onClick={() => handleReview(ticket.id, "Rejected")}
+                              onClick={() =>
+                                handleReview(ticket.id, "Rejected")
+                              }
                             >
                               Reject
                             </button>
@@ -1118,13 +1175,22 @@ export default function HardwarePage() {
             <div>
               <h2 className="card-title text-base">Parts reorder requests</h2>
               <p className="text-sm text-base-content/60">
-                Technician requests to restock inventory parts. Approving adds
-                stock automatically.
+                Routine restocks do not appear here — technicians order parts
+                directly when they are within their monthly budget. Manager
+                approval is only needed for limit-increase requests on the Parts
+                budgets tab.
               </p>
             </div>
+            <div className="alert alert-info mt-2 text-sm">
+              <span>
+                This list is only for any leftover approval-queue requests. New
+                restocks within budget skip this queue entirely.
+              </span>
+            </div>
             {pendingReorderRequests.length === 0 ? (
-              <p className="text-sm text-base-content/60">
-                No pending parts reorder requests.
+              <p className="mt-2 text-sm text-base-content/60">
+                No pending approval-queue requests. Within-budget restocks are
+                already applied by technicians without review.
               </p>
             ) : (
               <div className="mt-2 space-y-3">
@@ -1553,10 +1619,10 @@ export default function HardwarePage() {
       {isTechnicianView ? (
       <dialog ref={orderDialogRef} className="modal">
         <div className="modal-box max-h-[90vh] max-w-4xl overflow-y-auto">
-          <h3 className="text-lg font-bold">Asset Order Ticket</h3>
+          <h3 className="text-lg font-bold">Request asset purchase</h3>
           <p className="mt-1 text-sm text-base-content/60">
-            Request a replacement asset for administrator review. Order quantity
-            always matches the quantity of the selected asset.
+            Submit a purchase request for manager approval. The asset is not
+            added to inventory until a manager approves.
           </p>
 
           {orderError ? (
@@ -1566,53 +1632,176 @@ export default function HardwarePage() {
           ) : null}
 
           <form action={handleOrderSubmit} className="form-grid mt-5 grid gap-4 sm:grid-cols-2">
-            <FormField label="Asset being replaced" htmlFor="asset_id" required className="sm:col-span-2">
+            <input type="hidden" name="request_type" value={orderRequestType} />
+            <FormField label="Request type" htmlFor="order_request_type" className="sm:col-span-2">
               <select
-                id="asset_id"
-                name="asset_id"
+                id="order_request_type"
                 className="select select-bordered w-full"
-                required
-                value={orderAssetId}
-                onChange={(event) => setOrderAssetId(event.target.value)}
+                value={orderRequestType}
+                onChange={(event) => {
+                  const next = event.target.value === "replacement"
+                    ? "replacement"
+                    : "purchase";
+                  setOrderRequestType(next);
+                  setOrderAssetId("");
+                }}
               >
-                <option value="" disabled>Select an asset marked Needs replacement</option>
-                {replacementAssets.map((asset) => {
-                  const unavailable = unavailableOrderAssetIds.has(asset.id);
-                  return (
-                    <option key={asset.id} value={asset.id} disabled={unavailable}>
-                      {asset.asset_number} — {asset.manufacturer} {asset.model}
-                      {unavailable ? " (ticket already placed)" : ""}
-                    </option>
-                  );
-                })}
+                <option value="purchase">New purchase</option>
+                <option value="replacement">Replace existing asset</option>
               </select>
             </FormField>
 
-            <FormField label="Order quantity" htmlFor="requested_quantity">
-              <input
-                id="requested_quantity"
-                className="input input-bordered w-full"
-                value={selectedAsset?.quantity ?? ""}
-                placeholder="Select an asset"
-                readOnly
-              />
+            {orderRequestType === "replacement" ? (
+              <FormField
+                label="Asset being replaced"
+                htmlFor="asset_id"
+                required
+                className="sm:col-span-2"
+              >
+                <select
+                  id="asset_id"
+                  name="asset_id"
+                  className="select select-bordered w-full"
+                  required
+                  value={orderAssetId}
+                  onChange={(event) => setOrderAssetId(event.target.value)}
+                >
+                  <option value="" disabled>
+                    Select an asset marked Needs replacement
+                  </option>
+                  {replacementAssets.map((asset) => {
+                    const unavailable = unavailableOrderAssetIds.has(asset.id);
+                    return (
+                      <option
+                        key={asset.id}
+                        value={asset.id}
+                        disabled={unavailable}
+                      >
+                        {asset.asset_number} — {asset.manufacturer}{" "}
+                        {asset.model}
+                        {unavailable ? " (ticket already placed)" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </FormField>
+            ) : (
+              <>
+                <FormField label="Category" htmlFor="order_category" required>
+                  <select
+                    id="order_category"
+                    name="category"
+                    className="select select-bordered w-full"
+                    required
+                    defaultValue=""
+                  >
+                    <option value="" disabled>
+                      Select type
+                    </option>
+                    {HARDWARE_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Assign to customer" htmlFor="order_customer_id">
+                  <select
+                    id="order_customer_id"
+                    name="customer_id"
+                    className="select select-bordered w-full"
+                    defaultValue="unassigned"
+                  >
+                    <option value="unassigned">
+                      Unassigned inventory (stock)
+                    </option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.customer_name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </>
+            )}
+
+            {orderRequestType === "replacement" && selectedAsset?.category ? (
+              <input type="hidden" name="category" value={selectedAsset.category} />
+            ) : null}
+            <FormField label="Quantity" htmlFor="requested_quantity" required>
+              {orderRequestType === "replacement" ? (
+                <input
+                  id="requested_quantity"
+                  className="input input-bordered w-full"
+                  value={selectedAsset?.quantity ?? ""}
+                  placeholder="Select an asset"
+                  readOnly
+                />
+              ) : (
+                <input
+                  id="requested_quantity"
+                  name="requested_quantity"
+                  type="number"
+                  min="1"
+                  step="1"
+                  defaultValue="1"
+                  className="input input-bordered w-full"
+                  required
+                />
+              )}
             </FormField>
             <FormField label="Priority" htmlFor="priority" required>
-              <select id="priority" name="priority" className="select select-bordered w-full" defaultValue="Medium" required>
+              <select
+                id="priority"
+                name="priority"
+                className="select select-bordered w-full"
+                defaultValue="Medium"
+                required
+              >
                 <option value="Low">Low</option>
                 <option value="Medium">Medium</option>
                 <option value="High">High</option>
                 <option value="Urgent">Urgent</option>
               </select>
             </FormField>
-            <FormField label="Replacement manufacturer" htmlFor="replacement_manufacturer" required>
-              <input id="replacement_manufacturer" name="replacement_manufacturer" className="input input-bordered w-full" required />
+            <FormField
+              label={
+                orderRequestType === "replacement"
+                  ? "Replacement manufacturer"
+                  : "Manufacturer"
+              }
+              htmlFor="replacement_manufacturer"
+              required
+            >
+              <input
+                id="replacement_manufacturer"
+                name="replacement_manufacturer"
+                className="input input-bordered w-full"
+                required
+              />
             </FormField>
-            <FormField label="Replacement model" htmlFor="replacement_model" required>
-              <input id="replacement_model" name="replacement_model" className="input input-bordered w-full" required />
+            <FormField
+              label={
+                orderRequestType === "replacement"
+                  ? "Replacement model"
+                  : "Model"
+              }
+              htmlFor="replacement_model"
+              required
+            >
+              <input
+                id="replacement_model"
+                name="replacement_model"
+                className="input input-bordered w-full"
+                required
+              />
             </FormField>
             <FormField label="Preferred vendor" htmlFor="preferred_vendor">
-              <input id="preferred_vendor" name="preferred_vendor" className="input input-bordered w-full" />
+              <input
+                id="preferred_vendor"
+                name="preferred_vendor"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <FormField label="Estimated unit cost" htmlFor="estimated_unit_cost">
               <input
@@ -1625,7 +1814,12 @@ export default function HardwarePage() {
               />
             </FormField>
             <FormField label="Needed by" htmlFor="needed_by">
-              <input id="needed_by" name="needed_by" type="date" className="input input-bordered w-full" />
+              <input
+                id="needed_by"
+                name="needed_by"
+                type="date"
+                className="input input-bordered w-full"
+              />
             </FormField>
             <FormField
               label="Technical requirements"
@@ -1651,7 +1845,7 @@ export default function HardwarePage() {
                 name="business_justification"
                 className="textarea textarea-bordered w-full"
                 rows={3}
-                placeholder="Explain the failure, risk, service impact, and why replacement is needed"
+                placeholder="Why this purchase is needed"
                 required
               />
             </FormField>
@@ -1663,19 +1857,31 @@ export default function HardwarePage() {
               >
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary" disabled={isPending}>
-                {isPending ? <span className="loading loading-spinner loading-sm" /> : "Submit for Approval"}
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isPending}
+              >
+                {isPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Submit for manager approval"
+                )}
               </button>
             </div>
           </form>
 
-          <div className="divider my-6">Administrator approval status</div>
+          <div className="divider my-6">Your request status</div>
           {orderTickets.length === 0 ? (
-            <p className="text-sm text-base-content/60">No order tickets submitted yet.</p>
+            <p className="text-sm text-base-content/60">
+              No purchase requests submitted yet.
+            </p>
           ) : (
             <div className="space-y-3">
               {orderTickets.map((ticket) => {
-                const asset = assets.find((item) => item.id === ticket.asset_id);
+                const asset = ticket.asset_id
+                  ? assets.find((item) => item.id === ticket.asset_id)
+                  : null;
                 return (
                   <div key={ticket.id} className="rounded-box border p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1684,18 +1890,21 @@ export default function HardwarePage() {
                           {ticket.ticket_number}
                         </span>
                         <span className="ml-2 text-sm">
-                          {asset?.asset_number ?? "Unknown asset"} · Qty{" "}
-                          {ticket.requested_quantity}
+                          {ticket.request_type === "replacement" || ticket.asset_id
+                            ? `${asset?.asset_number ?? "Replacement"} · `
+                            : `${ticket.category ?? "Purchase"} · `}
+                          Qty {ticket.requested_quantity}
                         </span>
                       </div>
                       <StatusBadge status={ticket.status} />
                     </div>
                     <p className="mt-1 text-sm">
-                      {ticket.replacement_manufacturer} {ticket.replacement_model}
+                      {ticket.replacement_manufacturer}{" "}
+                      {ticket.replacement_model}
                     </p>
                     {ticket.admin_notes ? (
                       <p className="mt-2 text-xs text-base-content/70">
-                        Administrator note: {ticket.admin_notes}
+                        Manager note: {ticket.admin_notes}
                       </p>
                     ) : null}
                   </div>
