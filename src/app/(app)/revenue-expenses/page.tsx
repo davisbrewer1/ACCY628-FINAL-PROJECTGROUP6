@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
@@ -36,6 +36,8 @@ export default function RevenueExpensesPage() {
   const [ticketExpenses, setTicketExpenses] = useState<TicketExpense[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [revenueOpen, setRevenueOpen] = useState(false);
+  const [fulfillmentOpen, setFulfillmentOpen] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -168,22 +170,149 @@ export default function RevenueExpensesPage() {
 
       <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
         <div className="border-b border-base-300 px-5 py-4">
-          <h2 className="text-base font-semibold">Revenue from invoices</h2>
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-base font-semibold">Contract profitability</h2>
+              <p className="mt-1 text-sm text-base-content/70">
+                Recognized invoice revenue vs fulfillment costs attributed to each
+                open contract.
+              </p>
+            </div>
+            <Link href="/contracts" className="link text-sm">
+              Open Contracts
+            </Link>
+          </div>
+        </div>
+        {contractProfit.length === 0 ? (
+          <div className="p-5">
+            <EmptyState
+              title="No open contracts"
+              description="Active or pending contracts appear here with invoice revenue and fulfillment costs."
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Contract</th>
+                  <th>Customer</th>
+                  <th>Status</th>
+                  <th className="text-right">Revenue</th>
+                  <th className="text-right">Fulfillment</th>
+                  <th className="text-right">Margin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contractProfit.map((row) => (
+                  <tr key={row.contractId} className="hover">
+                    <td>
+                      <Link
+                        href={`/contracts?contract=${row.contractId}`}
+                        className="link link-hover font-medium"
+                      >
+                        {row.contractName}
+                      </Link>
+                      <div className="mt-0.5">
+                        <Link
+                          href={`/service-tickets?contract=${row.contractId}`}
+                          className="link link-hover text-xs text-base-content/60"
+                        >
+                          Related tickets
+                        </Link>
+                      </div>
+                    </td>
+                    <td>{customerMap.get(row.customerId) ?? "Unknown"}</td>
+                    <td>
+                      <StatusBadge status={row.status ?? "Active"} />
+                    </td>
+                    <td className="text-right font-medium">
+                      {formatCurrency(row.revenue)}
+                    </td>
+                    <td className="text-right">
+                      {formatCurrency(row.fulfillment)}
+                      <div className="text-xs text-base-content/55">
+                        {formatCurrency(row.fulfillmentWork)} work ·{" "}
+                        {formatCurrency(row.fulfillmentBillable)} expenses
+                      </div>
+                    </td>
+                    <td
+                      className={`text-right font-semibold ${
+                        row.margin >= 0 ? "text-success" : "text-error"
+                      }`}
+                    >
+                      {formatCurrency(row.margin)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
+        <div className="border-b border-base-300 px-5 py-4">
+          <h2 className="text-base font-semibold">Operating expenses</h2>
           <p className="mt-1 text-sm text-base-content/70">
+            Current-period technician salaried payroll (same rules as My Work), plus{" "}
+            {formatCurrency(totals.operatingTracked)} accepted Internal Company
+            Expense tracker spend.
+          </p>
+        </div>
+        <div className="p-5">
+          <div className="rounded-box border border-base-300 bg-base-200/30 px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">
+                  Technician paid hours (this pay period)
+                </p>
+                <p className="mt-1 text-xs text-base-content/60">
+                  {payroll.activeTechCount} active tech
+                  {payroll.activeTechCount === 1 ? "" : "s"} ×{" "}
+                  {payroll.paidHoursPerTech} paid hours ×{" "}
+                  {formatCurrency(payroll.hourlyRate)}/hr · Period {payPeriodLabel}
+                </p>
+              </div>
+              <p className="text-lg font-semibold">
+                {formatCurrency(payroll.payrollCost)}
+              </p>
+            </div>
+            <p className="mt-2 text-xs text-base-content/55">
+              <Link href="/my-work" className="link">
+                My Work
+              </Link>{" "}
+              pay uses 8 salaried hours per weekday; billable delivery costs stay
+              under fulfillment. Internal tracker expenses open in{" "}
+              <Link href="/time-costs?filter=expenses" className="link">
+                Work &amp; Billing
+              </Link>
+              .
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <CollapsibleSection
+        title="Revenue from invoices"
+        summary={`${totals.recognizedInvoices.length} invoices · ${formatCurrency(totals.revenue)}`}
+        description={
+          <>
             Recognized invoice totals. Open a row to inspect it in{" "}
             <Link href="/billing" className="link">
               Billing
             </Link>
             .
-          </p>
-        </div>
+          </>
+        }
+        open={revenueOpen}
+        onToggle={() => setRevenueOpen((value) => !value)}
+      >
         {totals.recognizedInvoices.length === 0 ? (
-          <div className="p-5">
-            <EmptyState
-              title="No recognized invoices yet"
-              description="Issued and paid invoices appear here after billing cadence or manual invoice creation."
-            />
-          </div>
+          <EmptyState
+            title="No recognized invoices yet"
+            description="Issued and paid invoices appear here after billing cadence or manual invoice creation."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="table table-sm">
@@ -227,19 +356,16 @@ export default function RevenueExpensesPage() {
             </table>
           </div>
         )}
-      </section>
+      </CollapsibleSection>
 
-      <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
-        <div className="border-b border-base-300 px-5 py-4">
-          <h2 className="text-base font-semibold">Ticket fulfillment expenses</h2>
-          <p className="mt-1 text-sm text-base-content/70">
-            Direct costs to deliver tickets: work-entry labor and pass-through, plus
-            accepted billable ticket expenses. Does not change how client invoices or
-            expense approvals work.
-          </p>
-        </div>
-
-        <div className="space-y-6 p-5">
+      <CollapsibleSection
+        title="Ticket fulfillment expenses"
+        summary={`${formatCurrency(totals.fulfillment)} total`}
+        description="Direct costs to deliver tickets: work-entry labor and pass-through, plus accepted billable ticket expenses."
+        open={fulfillmentOpen}
+        onToggle={() => setFulfillmentOpen((value) => !value)}
+      >
+        <div className="space-y-6">
           <div>
             <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
               <h3 className="text-sm font-semibold">
@@ -334,174 +460,80 @@ export default function RevenueExpensesPage() {
             )}
           </div>
         </div>
-      </section>
-
-      <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
-        <div className="border-b border-base-300 px-5 py-4">
-          <h2 className="text-base font-semibold">Operating expenses</h2>
-          <p className="mt-1 text-sm text-base-content/70">
-            Accepted Internal Company Expense tracker spend plus current-period
-            technician salaried payroll (same rules as My Work).
-          </p>
-        </div>
-        <div className="space-y-5 p-5">
-          <div className="rounded-box border border-base-300 bg-base-200/30 px-4 py-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold">
-                  Technician paid hours (this pay period)
-                </p>
-                <p className="mt-1 text-xs text-base-content/60">
-                  {payroll.activeTechCount} active tech
-                  {payroll.activeTechCount === 1 ? "" : "s"} ×{" "}
-                  {payroll.paidHoursPerTech} paid hours ×{" "}
-                  {formatCurrency(payroll.hourlyRate)}/hr · Period {payPeriodLabel}
-                </p>
-              </div>
-              <p className="text-lg font-semibold">
-                {formatCurrency(payroll.payrollCost)}
-              </p>
-            </div>
-            <p className="mt-2 text-xs text-base-content/55">
-              <Link href="/my-work" className="link">
-                My Work
-              </Link>{" "}
-              pay uses 8 salaried hours per weekday; billable delivery costs stay
-              under fulfillment.
-            </p>
-          </div>
-
-          <div>
-            <h3 className="mb-2 text-sm font-semibold">
-              Internal company expenses ({formatCurrency(totals.operatingTracked)})
-            </h3>
-            {totals.operatingExpenses.length === 0 ? (
-              <EmptyState
-                title="No operating expenses yet"
-                description="Internal Company Expense rows from the expense tracker appear here once accepted."
-              />
-            ) : (
-              <ExpenseTable
-                expenses={totals.operatingExpenses}
-                ticketMap={ticketMap}
-              />
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
-        <div className="border-b border-base-300 px-5 py-4">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h2 className="text-base font-semibold">Contract profitability</h2>
-              <p className="mt-1 text-sm text-base-content/70">
-                Recognized invoice revenue vs fulfillment costs attributed to each
-                open contract.
-              </p>
-            </div>
-            <Link href="/contracts" className="link text-sm">
-              Open Contracts
-            </Link>
-          </div>
-        </div>
-        {contractProfit.length === 0 ? (
-          <div className="p-5">
-            <EmptyState
-              title="No open contracts"
-              description="Active or pending contracts appear here with invoice revenue and fulfillment costs."
-            />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th>Contract</th>
-                  <th>Customer</th>
-                  <th>Status</th>
-                  <th className="text-right">Revenue</th>
-                  <th className="text-right">Fulfillment</th>
-                  <th className="text-right">Margin</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contractProfit.map((row) => (
-                  <tr key={row.contractId} className="hover">
-                    <td>
-                      <Link
-                        href={`/contracts?contract=${row.contractId}`}
-                        className="link link-hover font-medium"
-                      >
-                        {row.contractName}
-                      </Link>
-                      <div className="mt-0.5">
-                        <Link
-                          href={`/service-tickets?contract=${row.contractId}`}
-                          className="link link-hover text-xs text-base-content/60"
-                        >
-                          Related tickets
-                        </Link>
-                      </div>
-                    </td>
-                    <td>{customerMap.get(row.customerId) ?? "Unknown"}</td>
-                    <td>
-                      <StatusBadge status={row.status ?? "Active"} />
-                    </td>
-                    <td className="text-right font-medium">
-                      {formatCurrency(row.revenue)}
-                    </td>
-                    <td className="text-right">
-                      {formatCurrency(row.fulfillment)}
-                      <div className="text-xs text-base-content/55">
-                        {formatCurrency(row.fulfillmentWork)} work ·{" "}
-                        {formatCurrency(row.fulfillmentBillable)} expenses
-                      </div>
-                    </td>
-                    <td
-                      className={`text-right font-semibold ${
-                        row.margin >= 0 ? "text-success" : "text-error"
-                      }`}
-                    >
-                      {formatCurrency(row.margin)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      </CollapsibleSection>
 
       <div className="rounded-box border border-base-300 bg-base-200/40 px-5 py-4 text-sm text-base-content/75">
         <p className="font-medium text-base-content">How these connect</p>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li>
-            Revenue rows open{" "}
+            Expand Revenue or Ticket fulfillment below for source rows that open{" "}
             <Link href="/billing" className="link">
               Billing
             </Link>{" "}
-            on that invoice.
-          </li>
-          <li>
-            Work costs and expenses open{" "}
+            and{" "}
             <Link href="/time-costs" className="link">
               Work &amp; Billing
-            </Link>{" "}
-            / Expense Tracker, and tickets open{" "}
-            <Link href="/service-tickets" className="link">
-              Service Tickets
             </Link>
             .
           </li>
           <li>
+            Contract profitability compares recognized invoice revenue to
+            contract-linked fulfillment costs.
+          </li>
+          <li>
             Operating expenses include current biweekly technician salaried payroll
-            plus accepted Internal Company Expense rows. Client billable hours and
+            plus accepted Internal Company Expense totals. Client billable hours and
             expenses stay under fulfillment and invoices.
           </li>
         </ul>
       </div>
     </div>
+  );
+}
+
+function CollapsibleSection({
+  title,
+  summary,
+  description,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  summary: string;
+  description: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
+      <button
+        type="button"
+        className="flex w-full items-start justify-between gap-3 px-5 py-4 text-left hover:bg-base-200/40"
+        onClick={onToggle}
+        aria-expanded={open}
+      >
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold">{title}</h2>
+          <p className="mt-1 text-sm text-base-content/70">{description}</p>
+          {!open ? (
+            <p className="mt-2 text-xs font-medium text-base-content/55">
+              {summary} · Click to expand
+            </p>
+          ) : null}
+        </div>
+        <span
+          className="mt-0.5 shrink-0 text-base-content/50"
+          aria-hidden="true"
+        >
+          {open ? "▾" : "▸"}
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t border-base-300 p-5">{children}</div>
+      ) : null}
+    </section>
   );
 }
 
