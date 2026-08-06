@@ -71,11 +71,11 @@ export function ApprovalManagerPanel({
           <div>
             <h2 className="card-title text-base">
               <ShieldAlert className="size-4" aria-hidden="true" />
-              Approval manager
+              Billable expense approvals
             </h2>
             <p className="text-sm text-base-content/60">
-              Review billable expenses for customer invoices, plus other
-              pending cost approvals.
+              Approve Expense Tracker items marked Billable to Customer before
+              they can be invoiced. Deny returns them to internal (not billed).
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

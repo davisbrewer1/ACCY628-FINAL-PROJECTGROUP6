@@ -8,12 +8,14 @@ import {
   expectedPlanPeriods,
   invoiceSubtotal,
 } from "@/lib/plan-pricing";
+import { pickPrimaryActiveContract } from "@/lib/customer-access";
 import { computeContractAssetBurns } from "@/lib/manager-ops";
 import { createClient } from "@/lib/supabase/server";
 import type {
   Contract,
   HardwareAsset,
   ServicePlan,
+  TicketExpense,
   WorkEntry,
 } from "@/lib/types";
 
@@ -928,4 +930,252 @@ export async function createInvoicesFromWorkEntries(
         ? `${parts.join("; ")}.`
         : "No billable amounts from selected work.",
   };
+}
+
+/**
+ * Draft invoices from Expense Tracker rows that are Billable to Customer,
+ * manager-Approved, and not yet linked to an invoice.
+ */
+export async function createInvoicesFromApprovedExpenses(
+  expenseIds?: string[],
+): Promise<ActionResult & { created?: number; billedExpenseCount?: number }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let query = supabase
+    .from("ticket_expenses")
+    .select("*")
+    .eq("expense_tag", "Billable to Customer")
+    .eq("approval_status", "Approved")
+    .is("invoice_id", null)
+    .gt("amount", 0);
+
+  if (expenseIds && expenseIds.length > 0) {
+    query = query.in("id", expenseIds);
+  }
+
+  const { data: expenses, error: loadError } = await query;
+  if (loadError) {
+    return { success: false, message: loadError.message };
+  }
+
+  const rows = (expenses as TicketExpense[]) ?? [];
+  if (rows.length === 0) {
+    return {
+      success: true,
+      message: "No approved billable expenses ready to invoice.",
+      created: 0,
+      billedExpenseCount: 0,
+    };
+  }
+
+  const ticketIds = Array.from(new Set(rows.map((e) => e.ticket_id)));
+  const { data: tickets, error: ticketError } = await supabase
+    .from("service_tickets")
+    .select("id, customer_id, contract_id, ticket_number")
+    .in("id", ticketIds);
+
+  if (ticketError) {
+    return { success: false, message: ticketError.message };
+  }
+
+  const ticketMap = new Map((tickets ?? []).map((t) => [t.id, t]));
+  const customerIds = Array.from(
+    new Set(
+      (tickets ?? [])
+        .map((t) => t.customer_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+
+  const { data: contracts } = await supabase
+    .from("contracts")
+    .select("*")
+    .in("customer_id", customerIds.length > 0 ? customerIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const contractsByCustomer = new Map<string, Contract[]>();
+  for (const c of (contracts as Contract[]) ?? []) {
+    const list = contractsByCustomer.get(c.customer_id) ?? [];
+    list.push(c);
+    contractsByCustomer.set(c.customer_id, list);
+  }
+
+  type ExpenseGroup = {
+    customerId: string;
+    contractId: string | null;
+    dueDays: number;
+    expenseIds: string[];
+    total: number;
+  };
+
+  const groups = new Map<string, ExpenseGroup>();
+  const skipped: string[] = [];
+
+  for (const expense of rows) {
+    const ticket = ticketMap.get(expense.ticket_id);
+    if (!ticket?.customer_id) {
+      skipped.push(expense.id);
+      continue;
+    }
+
+    const customerContracts = contractsByCustomer.get(ticket.customer_id) ?? [];
+    let contractId = ticket.contract_id ?? null;
+    let dueDays = 30;
+    if (contractId) {
+      const linked = customerContracts.find((c) => c.id === contractId);
+      dueDays = Number(linked?.invoice_due_days ?? 30) || 30;
+    } else {
+      const primary = pickPrimaryActiveContract(customerContracts);
+      contractId = primary?.id ?? null;
+      dueDays = Number(primary?.invoice_due_days ?? 30) || 30;
+    }
+
+    const key = `${ticket.customer_id}::${contractId ?? "none"}`;
+    const existing = groups.get(key);
+    const amount = Number(expense.amount ?? 0);
+    if (existing) {
+      existing.expenseIds.push(expense.id);
+      existing.total += amount;
+    } else {
+      groups.set(key, {
+        customerId: ticket.customer_id,
+        contractId,
+        dueDays,
+        expenseIds: [expense.id],
+        total: amount,
+      });
+    }
+  }
+
+  if (groups.size === 0) {
+    return {
+      success: false,
+      message:
+        "Approved expenses need a ticket linked to a customer before they can invoice.",
+    };
+  }
+
+  const today = new Date();
+  const invoiceDate = today.toISOString().slice(0, 10);
+  let created = 0;
+  let billedExpenseCount = 0;
+
+  for (const group of groups.values()) {
+    const amount = roundMoney(group.total);
+    if (amount <= 0) continue;
+
+    const due = new Date(today);
+    due.setDate(due.getDate() + (group.dueDays || 30));
+    const dueDate = due.toISOString().slice(0, 10);
+
+    const stamp = Date.now().toString(36).toUpperCase();
+    const suffix = Math.floor(Math.random() * 900 + 100);
+    const invoiceNumber = `INV-EX-${stamp}-${suffix}`;
+
+    const { data: invoice, error: insertError } = await supabase
+      .from("invoices")
+      .insert({
+        invoice_number: invoiceNumber,
+        customer_id: group.customerId,
+        contract_id: group.contractId,
+        invoice_date: invoiceDate,
+        due_date: dueDate,
+        recurring_service_fee: 0,
+        additional_support_charges: 0,
+        software_charges: 0,
+        equipment_charges: 0,
+        other_charges: amount,
+        late_fee_amount: 0,
+        total_amount: amount,
+        amount_paid: 0,
+        remaining_balance: amount,
+        status: "Draft",
+        invoice_source: "ticket_expenses",
+        billing_period: null,
+        created_by: user?.id ?? null,
+      })
+      .select("id")
+      .single();
+
+    if (insertError || !invoice) {
+      return {
+        success: false,
+        message: insertError?.message ?? "Failed to create expense invoice.",
+      };
+    }
+
+    const { error: linkError } = await supabase
+      .from("ticket_expenses")
+      .update({ invoice_id: invoice.id })
+      .in("id", group.expenseIds);
+
+    if (linkError) {
+      return { success: false, message: linkError.message };
+    }
+
+    created += 1;
+    billedExpenseCount += group.expenseIds.length;
+  }
+
+  revalidateBillingPaths();
+  revalidatePath("/time-costs");
+  revalidatePath("/technician");
+
+  const skipNote =
+    skipped.length > 0
+      ? ` Skipped ${skipped.length} without a customer-linked ticket.`
+      : "";
+
+  return {
+    success: true,
+    message:
+      created > 0
+        ? `Created ${created} draft invoice${created === 1 ? "" : "s"} from ${billedExpenseCount} approved billable expense${billedExpenseCount === 1 ? "" : "s"}.${skipNote}`
+        : `No expense invoices created.${skipNote}`,
+    created,
+    billedExpenseCount,
+  };
+}
+
+/**
+ * Push selected work entries and/or all ready approved expenses to Billing drafts.
+ */
+export async function sendWorkAndExpensesToBilling(
+  entryIds: string[],
+): Promise<ActionResult> {
+  const messages: string[] = [];
+
+  if (entryIds.length > 0) {
+    const workResult = await createInvoicesFromWorkEntries(entryIds);
+    if (!workResult.success) {
+      return workResult;
+    }
+    messages.push(workResult.message.replace(/\.$/, ""));
+  }
+
+  const expenseResult = await createInvoicesFromApprovedExpenses();
+  if (!expenseResult.success) {
+    if (messages.length === 0) return expenseResult;
+    // Work invoices succeeded; surface expense failure clearly.
+    return {
+      success: false,
+      message: `${messages.join("; ")}. Expense invoicing failed: ${expenseResult.message}`,
+    };
+  }
+
+  if ((expenseResult.created ?? 0) > 0 || entryIds.length === 0) {
+    messages.push(expenseResult.message.replace(/\.$/, ""));
+  }
+
+  if (messages.length === 0) {
+    return {
+      success: false,
+      message:
+        "Select approved work entries and/or ensure there are approved billable expenses ready to invoice.",
+    };
+  }
+
+  return { success: true, message: `${messages.join("; ")}.` };
 }

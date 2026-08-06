@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { createInvoicesFromWorkEntries } from "@/app/actions/billing";
+import { createInvoicesFromApprovedExpenses, sendWorkAndExpensesToBilling } from "@/app/actions/billing";
 import { updateWorkEntryApproval } from "@/app/actions/work-entries";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
@@ -19,11 +19,19 @@ import {
   getDisputedWorkEntries,
   getPendingApprovalEntries,
   getReadyToInvoiceEntries,
+  isReadyToInvoiceExpense,
 } from "@/lib/manager-ops";
 import { allocateOverageHours } from "@/lib/plan-pricing";
 import { isOpenTicket, isThisMonth } from "@/lib/dashboard-stats";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, ServiceTicket, Technician, WorkEntry } from "@/lib/types";
+import type {
+  Contract,
+  Customer,
+  ServiceTicket,
+  Technician,
+  TicketExpense,
+  WorkEntry,
+} from "@/lib/types";
 
 interface WorkEntryRow extends WorkEntry {
   technicianName: string;
@@ -35,7 +43,7 @@ interface WorkEntryRow extends WorkEntry {
   costBreakdown: Array<{ label: string; amount: number }>;
 }
 
-type ViewMode = "queue" | "returned" | "ready" | "history";
+type ViewMode = "expenses" | "queue" | "returned" | "ready" | "history";
 
 const MANAGER_ROLES = new Set([
   "administrator",
@@ -61,9 +69,12 @@ export default function WorkBillingPage() {
       ? "ready"
       : initialFilter === "returned"
         ? "returned"
-        : "queue",
+        : initialFilter === "expenses"
+          ? "expenses"
+          : "expenses",
   );
   const [entries, setEntries] = useState<WorkEntry[]>([]);
+  const [ticketExpenses, setTicketExpenses] = useState<TicketExpense[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -83,7 +94,7 @@ export default function WorkBillingPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    const [w, tech, c, co, t] = await Promise.all([
+    const [w, tech, c, co, t, ex] = await Promise.all([
       supabase.from("work_entries").select("*").order("work_date", { ascending: false }),
       supabase.from("technicians").select("*").order("technician_name"),
       supabase.from("customers").select("*"),
@@ -92,10 +103,15 @@ export default function WorkBillingPage() {
         .from("service_tickets")
         .select("*")
         .order("created_at", { ascending: false }),
+      supabase
+        .from("ticket_expenses")
+        .select("*")
+        .order("date", { ascending: false }),
     ]);
     const techRows = tech.data ?? [];
     const ticketRows = t.data ?? [];
     setEntries(w.data ?? []);
+    setTicketExpenses((ex.data as TicketExpense[]) ?? []);
     setTechnicians(techRows);
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
@@ -123,6 +139,7 @@ export default function WorkBillingPage() {
     if (initialFilter === "ready") setView("ready");
     if (initialFilter === "returned") setView("returned");
     if (initialFilter === "queue") setView("queue");
+    if (initialFilter === "expenses") setView("expenses");
   }, [initialFilter]);
 
   const rows: WorkEntryRow[] = useMemo(() => {
@@ -190,6 +207,24 @@ export default function WorkBillingPage() {
   const pending = useMemo(() => getPendingApprovalEntries(entries), [entries]);
   const returned = useMemo(() => getDisputedWorkEntries(entries), [entries]);
   const ready = useMemo(() => getReadyToInvoiceEntries(entries), [entries]);
+  const readyExpenses = useMemo(
+    () => ticketExpenses.filter(isReadyToInvoiceExpense),
+    [ticketExpenses],
+  );
+  const pendingBillableExpenseCount = useMemo(
+    () =>
+      ticketExpenses.filter(
+        (e) =>
+          e.expense_tag === "Billable to Customer" &&
+          e.approval_status === "Pending",
+      ).length,
+    [ticketExpenses],
+  );
+  const readyExpenseTotal = useMemo(
+    () =>
+      readyExpenses.reduce((sum, e) => sum + Number(e.amount ?? 0), 0),
+    [readyExpenses],
+  );
 
   const monthRollup = useMemo(() => {
     const monthEntries = entries.filter((e) => isThisMonth(e.work_date));
@@ -263,12 +298,27 @@ export default function WorkBillingPage() {
 
   function handlePushToInvoice() {
     startTransition(async () => {
-      const result = await createInvoicesFromWorkEntries(selectedIds);
+      const result = await sendWorkAndExpensesToBilling(selectedIds);
       if (result.success) {
         showToast(result.message);
         setSelectedIds([]);
         await loadData();
         router.push("/billing");
+      } else {
+        showToast(result.message, "error");
+      }
+    });
+  }
+
+  function handleInvoiceApprovedExpenses() {
+    startTransition(async () => {
+      const result = await createInvoicesFromApprovedExpenses();
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+        if ((result.created ?? 0) > 0) {
+          router.push("/billing");
+        }
       } else {
         showToast(result.message, "error");
       }
@@ -380,10 +430,31 @@ export default function WorkBillingPage() {
     <div className="space-y-6">
       <PageHeader
         title="Work & Billing"
-        description="Approve or return technician time, then push work into Billing. Plan hour pools cover included support; only overages and pass-through expenses (travel, meals, parts) invoice."
+        description="Approve technician time and billable Expense Tracker items, then send to Billing. Travel/meals invoice only after Billable + manager approval. Parts and equipment follow work-entry and contract budget rules."
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ApprovalManagerPanel tickets={tickets} technicians={technicians} />
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <button
+          type="button"
+          onClick={() => setView("expenses")}
+          className={`rounded-box border p-4 text-left transition ${
+            view === "expenses"
+              ? "border-warning bg-warning/10"
+              : "border-base-300 bg-base-100 hover:border-base-content/20"
+          }`}
+        >
+          <p className="text-xs uppercase tracking-wide text-base-content/60">
+            Billable expenses
+          </p>
+          <p className="mt-1 text-2xl font-semibold">
+            {pendingBillableExpenseCount}
+          </p>
+          <p className="text-xs text-base-content/55">
+            Pending approval · {readyExpenses.length} ready to invoice
+          </p>
+        </button>
         <button
           type="button"
           onClick={() => setView("queue")}
@@ -463,9 +534,13 @@ export default function WorkBillingPage() {
       <div className="flex flex-wrap gap-2">
         {(
           [
+            ["expenses", `Billable expenses (${pendingBillableExpenseCount})`],
             ["queue", `Approve queue (${pending.length})`],
             ["returned", `Returned (${returned.length})`],
-            ["ready", `Ready to invoice (${ready.length})`],
+            [
+              "ready",
+              `Ready to invoice (${ready.length + readyExpenses.length})`,
+            ],
             ["history", "History"],
           ] as const
         ).map(([value, label]) => (
@@ -483,24 +558,113 @@ export default function WorkBillingPage() {
         </Link>
       </div>
 
-      {view === "ready" ? (
-        <div className="rounded-box border border-base-300 bg-base-200/40 px-4 py-3 text-sm text-base-content/70">
-          Select approved entries, then{" "}
-          <span className="font-medium text-base-content">Send to Billing</span>.
-          Plan hour pools are applied automatically (in-pool hours = $0 support charge).
-          Travel, meals, parts, and overage hours still invoice. Creates{" "}
-          <span className="font-medium text-base-content">Draft</span> invoices
-          (one per customer + contract).
+      {view === "expenses" ? (
+        <div className="space-y-4">
+          <div className="rounded-box border border-base-300 bg-base-200/40 px-4 py-3 text-sm text-base-content/70">
+            Technicians mark Expense Tracker items as{" "}
+            <span className="font-medium text-base-content">Billable to Customer</span>
+            . Approve them in the panel above. Approved items appear under Ready to
+            invoice and can be sent to Billing as draft invoices. Internal expenses
+            never invoice.
+          </div>
+          {readyExpenses.length > 0 ? (
+            <div className="card border border-primary/30 bg-primary/5 shadow-sm">
+              <div className="card-body gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-medium">
+                      Approved expenses ready to invoice
+                    </h3>
+                    <p className="text-sm text-base-content/60">
+                      {readyExpenses.length} item
+                      {readyExpenses.length === 1 ? "" : "s"} ·{" "}
+                      {formatCurrency(readyExpenseTotal)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={isPending}
+                    onClick={handleInvoiceApprovedExpenses}
+                  >
+                    {isPending ? (
+                      <span className="loading loading-spinner loading-sm" />
+                    ) : (
+                      "Invoice approved expenses"
+                    )}
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Ticket</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th className="text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {readyExpenses.map((expense) => {
+                        const ticket = tickets.find(
+                          (t) => t.id === expense.ticket_id,
+                        );
+                        return (
+                          <tr key={expense.id}>
+                            <td>{formatDate(expense.date)}</td>
+                            <td className="font-mono text-xs">
+                              {ticket?.ticket_number ?? "—"}
+                            </td>
+                            <td>{expense.type}</td>
+                            <td className="max-w-xs truncate text-sm">
+                              {expense.description ?? "—"}
+                            </td>
+                            <td className="text-right">
+                              {formatCurrency(expense.amount)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-base-content/60">
+              No approved billable expenses waiting to invoice. Pending items are
+              in the approval panel above.
+            </p>
+          )}
         </div>
       ) : null}
 
-      {view === "ready" && selectedIds.length > 0 ? (
+      {view === "ready" ? (
+        <div className="rounded-box border border-base-300 bg-base-200/40 px-4 py-3 text-sm text-base-content/70">
+          Select approved work entries, then{" "}
+          <span className="font-medium text-base-content">Send to Billing</span>.
+          Plan hour pools apply automatically. Send also invoices any approved
+          Expense Tracker billable items ({readyExpenses.length} ready ·{" "}
+          {formatCurrency(readyExpenseTotal)}). Parts and equipment on work entries
+          keep existing contract-budget rules. Creates{" "}
+          <span className="font-medium text-base-content">Draft</span> invoices.
+        </div>
+      ) : null}
+
+      {view === "ready" &&
+      (selectedIds.length > 0 || readyExpenses.length > 0) ? (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-3 rounded-box border border-primary/40 bg-primary/10 p-3 shadow-sm">
-          <span className="text-sm font-medium">{selectedIds.length} selected</span>
+          <span className="text-sm font-medium">
+            {selectedIds.length} work selected
+            {readyExpenses.length > 0
+              ? ` · ${readyExpenses.length} expenses ready`
+              : ""}
+          </span>
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            disabled={isPending}
+            disabled={isPending || (selectedIds.length === 0 && readyExpenses.length === 0)}
             onClick={handlePushToInvoice}
           >
             {isPending ? (
@@ -509,16 +673,22 @@ export default function WorkBillingPage() {
               "Send to Billing"
             )}
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedIds([])}>
-            Clear
-          </button>
+          {selectedIds.length > 0 ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setSelectedIds([])}
+            >
+              Clear
+            </button>
+          ) : null}
           <span className="text-xs text-base-content/60">
             Creates draft invoices and opens Billing
           </span>
         </div>
       ) : null}
 
-      {visibleRows.length === 0 ? (
+      {view !== "expenses" && visibleRows.length === 0 ? (
         <EmptyState
           title={
             view === "queue"
@@ -531,7 +701,9 @@ export default function WorkBillingPage() {
           }
           description="Entries appear after technicians log work on tickets in My Work."
         />
-      ) : (
+      ) : null}
+
+      {view !== "expenses" && visibleRows.length > 0 ? (
         <div className="space-y-3">
           {visibleRows.map((row) => {
             const expanded = expandedId === row.id;
@@ -740,9 +912,7 @@ export default function WorkBillingPage() {
             );
           })}
         </div>
-      )}
-
-      <ApprovalManagerPanel tickets={tickets} technicians={technicians} />
+      ) : null}
     </div>
   );
 }

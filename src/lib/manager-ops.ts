@@ -274,6 +274,21 @@ export function getReadyToInvoiceEntries(workEntries: WorkEntry[]): WorkEntry[] 
   );
 }
 
+/** Billable Expense Tracker rows waiting for invoice after manager approval. */
+export function isReadyToInvoiceExpense(expense: {
+  expense_tag?: string | null;
+  approval_status?: string | null;
+  invoice_id?: string | null;
+  amount?: number | null;
+}): boolean {
+  return (
+    expense.expense_tag === "Billable to Customer" &&
+    expense.approval_status === "Approved" &&
+    !expense.invoice_id &&
+    Number(expense.amount ?? 0) > 0
+  );
+}
+
 /**
  * Split this month's hours into pool-covered vs overage using each contract's
  * included_support_hours (chronological within the month).

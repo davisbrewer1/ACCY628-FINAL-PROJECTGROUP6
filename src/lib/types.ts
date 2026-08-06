@@ -457,6 +457,7 @@ export interface TicketExpense {
   date: string;
   receipt_url: string | null;
   approval_status: ApprovalStatus | string | null;
+  invoice_id: string | null;
   created_at: string;
 }
 
@@ -505,7 +506,8 @@ export type InvoiceSource =
   | "manual"
   | "plan_recurring"
   | "work_entries"
-  | "asset_overage";
+  | "asset_overage"
+  | "ticket_expenses";
 
 export interface Invoice {
   id: string;

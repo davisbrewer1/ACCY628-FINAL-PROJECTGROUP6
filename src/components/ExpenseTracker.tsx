@@ -386,7 +386,7 @@ export function ExpenseTracker({
             </select>
             {expenseTag === "Billable to Customer" ? (
               <span className="mt-1 block text-[11px] leading-snug text-base-content/55">
-                Sends to management for invoice approval
+                Sends to Work &amp; Billing for manager approval before invoicing
               </span>
             ) : null}
           </label>
