@@ -98,6 +98,10 @@ export default function ServiceTicketsPage() {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [assignTechId, setAssignTechId] = useState("");
+  /** Per-ticket technician pick from the unassigned backlog card. */
+  const [backlogTechByTicketId, setBacklogTechByTicketId] = useState<
+    Record<string, string>
+  >({});
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignPriority, setAssignPriority] = useState("");
   const [assignMaxHours, setAssignMaxHours] = useState("1");
@@ -472,11 +476,18 @@ export default function ServiceTicketsPage() {
     );
   }
 
-  function openAssignModal() {
-    if (!assignTechId || selectedIds.length === 0) return;
+  function openAssignModal(techId = assignTechId, ticketIds = selectedIds) {
+    if (!techId || ticketIds.length === 0) return;
+    if (techId !== assignTechId) setAssignTechId(techId);
+    if (
+      ticketIds.length !== selectedIds.length ||
+      ticketIds.some((id, i) => id !== selectedIds[i])
+    ) {
+      setSelectedIds(ticketIds);
+    }
     const ticket =
-      selectedIds.length === 1
-        ? tickets.find((t) => t.id === selectedIds[0])
+      ticketIds.length === 1
+        ? tickets.find((t) => t.id === ticketIds[0])
         : null;
     const current = ticket?.is_asap
       ? "Critical"
@@ -489,6 +500,56 @@ export default function ServiceTicketsPage() {
     setAssignModalOpen(true);
   }
 
+  function openBacklogAssign(ticketId: string) {
+    const techId = backlogTechByTicketId[ticketId] ?? "";
+    if (!techId) {
+      showToast("Select a technician for this ticket first.", "error");
+      return;
+    }
+    setSelectedTicketId(ticketId);
+    openAssignModal(techId, [ticketId]);
+  }
+
+  function rankTechsForTicket(ticket: ServiceTicket) {
+    const category =
+      parseCategoryLabel(ticket.category).category ||
+      ticket.category ||
+      "";
+    const skillMatches = new Set(
+      technicians
+        .filter((tech) => isSkillMatch(tech, category))
+        .map((tech) => tech.id),
+    );
+    const durationHours = (() => {
+      const max = Number(ticket.max_hours);
+      return Number.isInteger(max) && max >= 1 && max <= 9 ? max : 1;
+    })();
+
+    if (!ticket.is_asap && ticket.locked_service_date) {
+      return rankTechniciansByDayAvailability(
+        technicians,
+        tickets,
+        String(ticket.locked_service_date).slice(0, 10),
+        { durationHours, skillMatchIds: skillMatches },
+      ).map((row) => ({
+        technician: row.technician,
+        nextLabel: row.nextLabel,
+        hasOpeningOnDay: row.hasOpeningOnDay,
+        category,
+      }));
+    }
+
+    return rankTechniciansByNextAvailable(technicians, tickets, {
+      durationHours,
+      skillMatchIds: skillMatches,
+    }).map((row) => ({
+      technician: row.technician,
+      nextLabel: row.nextLabel,
+      hasOpeningOnDay: true as boolean | undefined,
+      category,
+    }));
+  }
+
   function handleBulkAssign() {
     if (!assignPriority) {
       setAssignError("Select a severity for this assignment.");
@@ -497,6 +558,10 @@ export default function ServiceTicketsPage() {
     const maxHours = Number(assignMaxHours);
     if (!Number.isInteger(maxHours) || maxHours < 1 || maxHours > 9) {
       setAssignError("Set a maximum of 1–9 hours before sending to the technician.");
+      return;
+    }
+    if (!assignTechId || selectedIds.length === 0) {
+      setAssignError("Select a technician and at least one ticket.");
       return;
     }
 
@@ -509,6 +574,12 @@ export default function ServiceTicketsPage() {
       if (result.success) {
         showToast(result.message);
         setAssignTechId("");
+        setBacklogTechByTicketId((prev) => {
+          const next = { ...prev };
+          for (const id of selectedIds) delete next[id];
+          return next;
+        });
+        setSelectedIds([]);
         setAssignModalOpen(false);
         setAssignPriority("");
         setAssignMaxHours("1");
@@ -663,8 +734,8 @@ export default function ServiceTicketsPage() {
               <div>
                 <h2 className="card-title text-base">Unassigned backlog</h2>
                 <p className="text-sm text-base-content/70">
-                  Open tickets waiting for a technician. Assign from here or the
-                  queue below.
+                  Open tickets waiting for a technician. Pick a tech and assign
+                  here, or use the queue below for bulk assign.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -689,11 +760,16 @@ export default function ServiceTicketsPage() {
                     <th>Requested day</th>
                     <th>Priority</th>
                     <th>Opened</th>
+                    <th>Technician</th>
                     <th className="text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {unassignedBacklog.slice(0, 8).map((ticket) => (
+                  {unassignedBacklog.slice(0, 8).map((ticket) => {
+                    const ranked = rankTechsForTicket(ticket);
+                    const selectedTech =
+                      backlogTechByTicketId[ticket.id] ?? "";
+                    return (
                     <tr key={ticket.id}>
                       <td>
                         <div className="font-mono text-xs">
@@ -725,23 +801,60 @@ export default function ServiceTicketsPage() {
                       <td className="text-sm text-base-content/60">
                         {formatDateTime(ticket.opened_at)}
                       </td>
+                      <td className="min-w-[14rem]">
+                        <select
+                          className="select select-bordered select-sm w-full max-w-xs"
+                          value={selectedTech}
+                          onChange={(e) =>
+                            setBacklogTechByTicketId((prev) => ({
+                              ...prev,
+                              [ticket.id]: e.target.value,
+                            }))
+                          }
+                          aria-label={`Assign technician for ${ticket.ticket_number}`}
+                        >
+                          <option value="">Select technician</option>
+                          {ranked.map(
+                            (
+                              { technician: t, nextLabel, hasOpeningOnDay },
+                              index,
+                            ) => (
+                              <option key={t.id} value={t.id}>
+                                {index === 0 ? "★ " : ""}
+                                {t.technician_name}
+                                {t.specialty ? ` · ${t.specialty}` : ""}
+                                {` · ${nextLabel}`}
+                                {hasOpeningOnDay === false
+                                  ? " · no opening that day"
+                                  : ""}
+                                {isSkillMatch(
+                                  t,
+                                  parseCategoryLabel(ticket.category).category ||
+                                    ticket.category ||
+                                    "",
+                                )
+                                  ? " · skill match"
+                                  : ""}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                      </td>
                       <td>
                         <div className="flex justify-end">
                           <button
                             type="button"
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => {
-                              setSelectedTicketId(ticket.id);
-                              setSelectedIds([ticket.id]);
-                              setQueueFilter("unassigned");
-                            }}
+                            className="btn btn-primary btn-sm"
+                            disabled={!selectedTech || isPending}
+                            onClick={() => openBacklogAssign(ticket.id)}
                           >
-                            Select to assign
+                            Assign
                           </button>
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -971,7 +1084,7 @@ export default function ServiceTicketsPage() {
             type="button"
             className="btn btn-primary btn-sm"
             disabled={!assignTechId || isPending}
-            onClick={openAssignModal}
+            onClick={() => openAssignModal()}
           >
             {isPending ? (
               <span className="loading loading-spinner loading-sm" />

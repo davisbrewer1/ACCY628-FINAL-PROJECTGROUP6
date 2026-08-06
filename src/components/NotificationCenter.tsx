@@ -139,7 +139,7 @@ const TYPE_META: Record<
     label: "Customer reschedule",
     Icon: CalendarClock,
     className: "text-warning",
-    href: "/technician",
+    href: "/technician?needsScheduling=1",
   },
 };
 

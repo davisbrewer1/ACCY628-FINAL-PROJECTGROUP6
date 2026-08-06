@@ -149,6 +149,8 @@ interface TechnicianScheduleCalendarProps {
   }) => void;
   /** Assigned technician id — used to enforce customer locked-day rules. */
   technicianId?: string | null;
+  /** Called when a drop is rejected (wrong day, collision, past end of day). */
+  onRejectMove?: (message: string) => void;
 }
 
 export function TechnicianScheduleCalendar({
@@ -166,6 +168,7 @@ export function TechnicianScheduleCalendar({
   pendingHourExtensionTicketIds = new Set(),
   onRequestHourExtension,
   technicianId = null,
+  onRejectMove,
 }: TechnicianScheduleCalendarProps) {
   const days = mode === "week" ? getWorkWeekDays(anchor) : getMonthGridDays(anchor);
   const schedule = useMemo(
@@ -176,11 +179,15 @@ export function TechnicianScheduleCalendar({
     () =>
       tickets
         .filter((ticket) => isOpenTicket(ticket.status) && !ticket.scheduled_start)
-        .sort(
-          (a, b) =>
+        .sort((a, b) => {
+          const aReschedule = a.customer_rescheduled ? 0 : 1;
+          const bReschedule = b.customer_rescheduled ? 0 : 1;
+          if (aReschedule !== bReschedule) return aReschedule - bReschedule;
+          return (
             priorityRank(a.priority) - priorityRank(b.priority) ||
-            String(a.ticket_number).localeCompare(String(b.ticket_number)),
-        ),
+            String(a.ticket_number).localeCompare(String(b.ticket_number))
+          );
+        }),
     [tickets],
   );
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -237,6 +244,11 @@ export function TechnicianScheduleCalendar({
       windowId: UNSCHEDULED_ORIGIN,
       durationHours,
     };
+  }
+
+  function rejectMove(message: string) {
+    onRejectMove?.(message);
+    clearDragState();
   }
 
   function handleDrop(day: Date, windowId: string) {
@@ -298,8 +310,9 @@ export function TechnicianScheduleCalendar({
 
     const destSpan = getSpanWindows(window, durationHours);
     if (destSpan.length < durationHours) {
-      // Would run past end of day.
-      clearDragState();
+      rejectMove(
+        "That window is too short for the hours selected. Pick an earlier start time.",
+      );
       return;
     }
 
@@ -318,7 +331,12 @@ export function TechnicianScheduleCalendar({
           (allowedDay) => dayKey(allowedDay) === destKey,
         );
         if (!ok) {
-          clearDragState();
+          const lockedLabel = formatLockedServiceDateLabel(
+            ticket.locked_service_date,
+          );
+          rejectMove(
+            `Place ${ticket.ticket_number} on ${lockedLabel} (or the next open business day if that day is full).`,
+          );
           return;
         }
       }
@@ -338,7 +356,9 @@ export function TechnicianScheduleCalendar({
     // Initial placement from the tray requires an open span (no swap).
     if (fromTray) {
       if (uniqueBlockers.length > 0) {
-        clearDragState();
+        rejectMove(
+          "That slot is already taken. Choose an open hour on the customer’s day.",
+        );
         return;
       }
       applyMove({
@@ -358,7 +378,9 @@ export function TechnicianScheduleCalendar({
         : null;
 
     if (uniqueBlockers.length > 0 && !occupant) {
-      clearDragState();
+      rejectMove(
+        "Cannot place over that span. Choose an open window or swap with a matching-length ticket.",
+      );
       return;
     }
 
@@ -673,7 +695,7 @@ function UnscheduledTray({
           </h4>
           <p className="mt-1 text-xs text-slate-400">
             {weekMode
-              ? "Pick hours (up to the manager max), then drag onto the customer’s locked day (or the next business day if that day is full for you). Rescheduled tickets are marked."
+              ? "Pick hours (up to the manager max), then drag onto the customer’s locked day (or the next business day if that day is full for you). Customer-rescheduled tickets sit at the front of this queue."
               : "Manager assignments waiting for a time slot. Switch to Week view to place them."}
           </p>
         </div>
@@ -790,6 +812,17 @@ function UnscheduledTray({
                           {ticket.customer_rescheduled ? (
                             <span className="badge badge-xs badge-warning">
                               Rescheduled
+                            </span>
+                          ) : null}
+                          {ticket.customer_rescheduled &&
+                          ticket.locked_service_date &&
+                          !ticket.is_asap ? (
+                            <span className="block w-full text-[11px] font-medium text-amber-200">
+                              Place on{" "}
+                              {formatLockedServiceDateLabel(
+                                ticket.locked_service_date,
+                              )}{" "}
+                              — pick a new time
                             </span>
                           ) : null}
                           {pendingExtend ? (

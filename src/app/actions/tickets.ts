@@ -15,6 +15,7 @@ import {
   computeSlaTargets,
   normalizePriority,
 } from "@/lib/ticket-ops";
+import { allocateNextTicketNumber } from "@/lib/ticket-numbers";
 import type { Contract } from "@/lib/types";
 
 async function loadActiveContractsForCustomer(
@@ -55,7 +56,7 @@ export async function createServiceTicket(
     data: { user },
   } = await supabase.auth.getUser();
 
-  const ticketNumber = `TKT-${Date.now().toString().slice(-8)}`;
+  const ticketNumber = await allocateNextTicketNumber(supabase);
   const priority = normalizePriority(String(formData.get("priority") ?? "Medium"));
   const contractId = String(formData.get("contract_id") ?? "").trim() || null;
   const ticketType = String(formData.get("ticket_type") ?? "").trim();
@@ -203,7 +204,7 @@ export async function createPortalTicket(
         ? "Cybersecurity"
         : null);
 
-  const ticketNumber = `TKT-${Date.now().toString().slice(-8)}`;
+  const ticketNumber = await allocateNextTicketNumber(supabase);
 
   const {
     data: { user },

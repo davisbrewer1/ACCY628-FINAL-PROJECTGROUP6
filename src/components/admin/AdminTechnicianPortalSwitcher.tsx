@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import {
   ADMIN_VIEW_TECH_EVENT,
+  canViewTechnicianPortalAs,
   readAdminViewTechnicianId,
   writeAdminViewTechnicianId,
 } from "@/lib/admin-technician-view";
@@ -25,11 +26,12 @@ export function AdminTechnicianPortalSwitcher({
   const { realRole } = useDemoRole();
   const pathname = usePathname();
   const router = useRouter();
+  const canViewAs = canViewTechnicianPortalAs(realRole);
   const [options, setOptions] = useState<Technician[]>([]);
   const [selectedId, setSelectedId] = useState("");
 
   useEffect(() => {
-    if (realRole !== "administrator") return;
+    if (!canViewAs) return;
 
     let cancelled = false;
     async function load() {
@@ -59,7 +61,7 @@ export function AdminTechnicianPortalSwitcher({
     return () => {
       cancelled = true;
     };
-  }, [realRole]);
+  }, [canViewAs]);
 
   useEffect(() => {
     function onExternal(event: Event) {
@@ -72,7 +74,7 @@ export function AdminTechnicianPortalSwitcher({
     return () => window.removeEventListener(ADMIN_VIEW_TECH_EVENT, onExternal);
   }, []);
 
-  if (realRole !== "administrator") {
+  if (!canViewAs) {
     return null;
   }
 
@@ -89,16 +91,16 @@ export function AdminTechnicianPortalSwitcher({
       <div className="flex flex-col gap-3 rounded-box border border-primary/30 bg-base-100 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-            Technician portals
+            Viewing as technician
           </p>
           <p className="mt-1 text-sm text-base-content/70">
-            Open any technician&apos;s My Work dashboard without signing in as
-            that tech.
+            Switch My Work boards from this menu — no need to sign out and log
+            in as each technician.
           </p>
         </div>
         <label className="flex min-w-[16rem] flex-col gap-1 sm:items-end">
           <span className="text-xs font-medium text-base-content/60">
-            View portal as
+            Technician
           </span>
           <select
             className="select select-bordered w-full"

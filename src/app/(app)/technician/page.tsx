@@ -28,10 +28,12 @@ import {
 import { useToast } from "@/components/Toast";
 import {
   ADMIN_VIEW_TECH_EVENT,
+  canViewTechnicianPortalAs,
   readAdminViewTechnicianId,
   writeAdminViewTechnicianId,
 } from "@/lib/admin-technician-view";
 import { formatDate, formatHours } from "@/lib/format";
+import { AdminTechnicianPortalSwitcher } from "@/components/admin/AdminTechnicianPortalSwitcher";
 import {
   DEFAULT_ANNUAL_PTO_HOURS,
   DEFAULT_TECH_HOURLY_RATE,
@@ -40,6 +42,7 @@ import {
   sumHoursInRange,
 } from "@/lib/technician-payroll";
 import {
+  formatLockedServiceDateLabel,
   getWorkWeekDays,
   parseScheduledSlot,
 } from "@/lib/technician-schedule";
@@ -64,7 +67,8 @@ import {
   startOfYear,
 } from "date-fns";
 import { ClipboardPlus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 function TechStat({
   title,
@@ -104,7 +108,11 @@ function nowTimeValue(): string {
 export default function TechnicianWorkspacePage() {
   const { activeRole, realRole } = useDemoRole();
   const { showToast } = useToast();
-  const isAdminViewer = realRole === "administrator";
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const isPortalViewer = canViewTechnicianPortalAs(realRole);
+  const needsSchedulingFocus = searchParams.get("needsScheduling") === "1";
+  const didFocusNeedsScheduling = useRef(false);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [technician, setTechnician] = useState<Technician | null>(null);
@@ -151,7 +159,7 @@ export default function TechnicianWorkspacePage() {
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (!isAdminViewer) {
+    if (!isPortalViewer) {
       setTechnicianOptions([]);
       setViewAsTechnicianId("");
       return;
@@ -188,7 +196,7 @@ export default function TechnicianWorkspacePage() {
     return () => {
       cancelled = true;
     };
-  }, [isAdminViewer]);
+  }, [isPortalViewer]);
 
   const applyAdminTechnicianId = useCallback((nextId: string) => {
     setViewAsTechnicianId(nextId);
@@ -207,10 +215,11 @@ export default function TechnicianWorkspacePage() {
     setError(null);
     setPtoError(null);
     setLoading(true);
+    didFocusNeedsScheduling.current = false;
   }, []);
 
   useEffect(() => {
-    if (!isAdminViewer) return;
+    if (!isPortalViewer) return;
 
     function onExternal(event: Event) {
       const detail = (event as CustomEvent<{ technicianId: string }>).detail;
@@ -220,7 +229,7 @@ export default function TechnicianWorkspacePage() {
 
     window.addEventListener(ADMIN_VIEW_TECH_EVENT, onExternal);
     return () => window.removeEventListener(ADMIN_VIEW_TECH_EVENT, onExternal);
-  }, [applyAdminTechnicianId, isAdminViewer]);
+  }, [applyAdminTechnicianId, isPortalViewer]);
 
   const loadData = useCallback(async () => {
     try {
@@ -248,7 +257,7 @@ export default function TechnicianWorkspacePage() {
       setProfile(profileData);
 
       let techData: Technician | null = null;
-      if (isAdminViewer) {
+      if (isPortalViewer) {
         // Wait until the admin picker has a selection before loading a board.
         if (!viewAsTechnicianId) {
           return;
@@ -317,15 +326,64 @@ export default function TechnicianWorkspacePage() {
       setError("Could not load technician workspace. Refresh and try again.");
     } finally {
       // Keep spinner up for admins until a technician is selected.
-      if (!isAdminViewer || viewAsTechnicianId) {
+      if (!isPortalViewer || viewAsTechnicianId) {
         setLoading(false);
       }
     }
-  }, [isAdminViewer, viewAsTechnicianId]);
+  }, [isPortalViewer, viewAsTechnicianId]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // After a customer reschedule (or ?needsScheduling=1), jump the week calendar
+  // to the locked day and highlight the ticket in Needs scheduling.
+  useEffect(() => {
+    if (loading || !technician) return;
+
+    const unscheduled = tickets.filter(
+      (ticket) => isOpenTicket(ticket.status) && !ticket.scheduled_start,
+    );
+    const focusTicket =
+      unscheduled.find((ticket) => Boolean(ticket.customer_rescheduled)) ??
+      (needsSchedulingFocus ? unscheduled[0] : undefined);
+
+    if (!focusTicket) return;
+
+    const shouldAutoFocus =
+      needsSchedulingFocus || Boolean(focusTicket.customer_rescheduled);
+    if (!shouldAutoFocus) return;
+    if (didFocusNeedsScheduling.current && !needsSchedulingFocus) return;
+
+    didFocusNeedsScheduling.current = true;
+    setCalendarMode("week");
+    if (focusTicket.locked_service_date) {
+      try {
+        setCalendarAnchor(parseISO(String(focusTicket.locked_service_date).slice(0, 10)));
+      } catch {
+        setCalendarAnchor(new Date());
+      }
+    }
+    setSelectedTicketId(focusTicket.id);
+
+    const dayLabel = focusTicket.locked_service_date
+      ? formatLockedServiceDateLabel(focusTicket.locked_service_date)
+      : "an open day";
+    showToast(
+      `${focusTicket.ticket_number} is in Needs scheduling — place it on ${dayLabel} with a new time.`,
+    );
+
+    if (needsSchedulingFocus) {
+      router.replace("/technician", { scroll: false });
+    }
+  }, [
+    loading,
+    technician,
+    tickets,
+    needsSchedulingFocus,
+    router,
+    showToast,
+  ]);
 
   // Keep top stats / calendar in sync as tickets are assigned or completed.
   useEffect(() => {
@@ -847,9 +905,12 @@ export default function TechnicianWorkspacePage() {
   }
 
   if (!technician) {
-    if (isAdminViewer) {
+    if (isPortalViewer) {
       return (
         <div className="space-y-6 text-slate-100">
+          <div className="rounded-xl border border-cyan-500/30 bg-slate-950/80 p-1 shadow-sm [&_.select]:border-cyan-500/40 [&_.select]:bg-slate-900 [&_.select]:text-slate-100 [&_p]:text-slate-300 [&_span]:text-cyan-200/80">
+            <AdminTechnicianPortalSwitcher variant="panel" />
+          </div>
           <div className="rounded-xl border border-cyan-500/20 bg-slate-900/80 p-8 text-center text-slate-200">
             <h3 className="text-lg font-semibold text-white">
               {technicianOptions.length === 0
@@ -859,7 +920,7 @@ export default function TechnicianWorkspacePage() {
             <p className="mt-2 text-sm text-slate-400">
               {technicianOptions.length === 0
                 ? "Add technicians on the Technicians page to preview their My Work dashboards."
-                : "Use the View as dropdown in the header to choose a technician."}
+                : "Choose a technician from the Viewing as technician menu above."}
             </p>
           </div>
         </div>
@@ -877,21 +938,26 @@ export default function TechnicianWorkspacePage() {
     );
   }
 
-  const welcomeName = isAdminViewer
+  const welcomeName = isPortalViewer
     ? technician.technician_name
     : (profile?.full_name ?? technician.technician_name);
 
   return (
     <div className="space-y-6 text-slate-100">
+      {isPortalViewer ? (
+        <div className="rounded-xl border border-cyan-500/30 bg-slate-950/80 p-1 shadow-sm [&_.select]:border-cyan-500/40 [&_.select]:bg-slate-900 [&_.select]:text-slate-100 [&_p]:text-slate-300 [&_span]:text-cyan-200/80">
+          <AdminTechnicianPortalSwitcher variant="panel" />
+        </div>
+      ) : null}
       <PageHeader
         title={
-          isAdminViewer
+          isPortalViewer
             ? `${welcomeName}'s My Work`
             : `Welcome, ${welcomeName}`
         }
         description={
-          isAdminViewer
-            ? `Viewing schedule, PTO, and work log for ${technician.technician_name}. Use View as in the header to switch technicians.`
+          isPortalViewer
+            ? `Viewing schedule, PTO, and work log for ${technician.technician_name}. Use the technician menu to switch boards.`
             : "Schedule tickets, request PTO, log work, and track pay-period hours."
         }
         action={
@@ -1098,6 +1164,7 @@ export default function TechnicianWorkspacePage() {
           pendingHourExtensionTicketIds={pendingHourExtensionTicketIds}
           onRequestHourExtension={handleRequestHourExtension}
           technicianId={technician?.id ?? null}
+          onRejectMove={(message) => showToast(message, "error")}
         />
       </div>
 
