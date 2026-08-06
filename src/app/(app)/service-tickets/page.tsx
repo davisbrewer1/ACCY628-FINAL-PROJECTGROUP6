@@ -121,10 +121,21 @@ export default function ServiceTicketsPage() {
   const [isPending, startTransition] = useTransition();
 
   const canManage = MANAGER_ROLES.has(activeRole);
+  const focusTicketId = searchParams.get("ticket")?.trim() ?? "";
 
   useEffect(() => {
     setQueueFilter(urlFilter);
   }, [urlFilter]);
+
+  useEffect(() => {
+    if (!focusTicketId) return;
+    setSelectedTicketId(focusTicketId);
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`ticket-row-${focusTicketId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [focusTicketId]);
 
   async function loadData() {
     const supabase = createClient();
@@ -1226,7 +1237,8 @@ export default function ServiceTicketsPage() {
                       return (
                         <tr
                           key={row.id}
-                          className={`cursor-pointer hover:bg-base-200/60 ${tone} ${selected ? "bg-primary/5" : ""}`}
+                          id={`ticket-row-${row.id}`}
+                          className={`cursor-pointer hover:bg-base-200/60 ${tone} ${selected ? "bg-primary/5" : ""} ${focusTicketId === row.id ? "outline outline-2 outline-primary/40" : ""}`}
                           onClick={() => setSelectedTicketId(row.id)}
                         >
                           <td onClick={(e) => e.stopPropagation()}>

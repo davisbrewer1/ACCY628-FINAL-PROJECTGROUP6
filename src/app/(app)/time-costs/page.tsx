@@ -64,6 +64,8 @@ export default function WorkBillingPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialFilter = searchParams.get("filter");
+  const focusExpenseId = searchParams.get("expense")?.trim() ?? "";
+  const focusEntryId = searchParams.get("entry")?.trim() ?? "";
   const { activeRole } = useDemoRole();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -72,9 +74,11 @@ export default function WorkBillingPage() {
       ? "ready"
       : initialFilter === "returned"
         ? "returned"
-        : initialFilter === "expenses"
-          ? "expenses"
-          : "expenses",
+        : initialFilter === "queue"
+          ? "queue"
+          : focusExpenseId
+            ? "expenses"
+            : "expenses",
   );
   const [entries, setEntries] = useState<WorkEntry[]>([]);
   const [ticketExpenses, setTicketExpenses] = useState<TicketExpense[]>([]);
@@ -162,7 +166,42 @@ export default function WorkBillingPage() {
     if (initialFilter === "returned") setView("returned");
     if (initialFilter === "queue") setView("queue");
     if (initialFilter === "expenses") setView("expenses");
-  }, [initialFilter]);
+    if (focusExpenseId) setView("expenses");
+  }, [initialFilter, focusExpenseId]);
+
+  useEffect(() => {
+    if (!focusEntryId || entries.length === 0) return;
+    const entry = entries.find((row) => row.id === focusEntryId);
+    if (!entry) return;
+    if (entry.approval_status === "Pending" || !entry.approval_status) {
+      setView("queue");
+    } else if (entry.approval_status === "Denied") {
+      setView("returned");
+    } else if (
+      entry.approval_status === "Approved" &&
+      entry.billing_status !== "Billed"
+    ) {
+      setView("ready");
+    } else {
+      setView("history");
+    }
+    setExpandedId(focusEntryId);
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`work-entry-${focusEntryId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [focusEntryId, entries]);
+
+  useEffect(() => {
+    if (!focusExpenseId || ticketExpenses.length === 0) return;
+    setView("expenses");
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`ticket-expense-${focusExpenseId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [focusExpenseId, ticketExpenses]);
 
   const rows: WorkEntryRow[] = useMemo(() => {
     const techMap = new Map(technicians.map((t) => [t.id, t.technician_name]));
@@ -716,6 +755,53 @@ export default function WorkBillingPage() {
         </Link>
       </div>
 
+      {focusExpenseId || focusEntryId ? (
+        <div className="alert alert-info text-sm py-3">
+          <span>
+            {focusExpenseId
+              ? (() => {
+                  const expense = ticketExpenses.find(
+                    (row) => row.id === focusExpenseId,
+                  );
+                  if (!expense) {
+                    return "Focused expense from Revenue & Expenses was not found.";
+                  }
+                  const ticket = tickets.find((t) => t.id === expense.ticket_id);
+                  return (
+                    <>
+                      Focused expense {expense.type} on{" "}
+                      <span className="font-mono font-semibold">
+                        {ticket?.ticket_number ?? "ticket"}
+                      </span>
+                      {" — "}
+                      {formatCurrency(expense.amount)} ({expense.expense_tag})
+                    </>
+                  );
+                })()
+              : (() => {
+                  const entry = entries.find((row) => row.id === focusEntryId);
+                  if (!entry) {
+                    return "Focused work entry from Revenue & Expenses was not found.";
+                  }
+                  const ticket = tickets.find((t) => t.id === entry.ticket_id);
+                  return (
+                    <>
+                      Focused work entry on{" "}
+                      <span className="font-mono font-semibold">
+                        {ticket?.ticket_number ?? "ticket"}
+                      </span>
+                      {" — "}
+                      {formatCurrency(entry.total_direct_cost)} direct cost
+                    </>
+                  );
+                })()}
+          </span>
+          <Link href="/time-costs" className="link">
+            Clear focus
+          </Link>
+        </div>
+      ) : null}
+
       {view === "expenses" ? (
         <div className="space-y-4">
           <div className="rounded-box border border-base-300 bg-base-200/40 px-4 py-3 text-sm text-base-content/70">
@@ -769,7 +855,15 @@ export default function WorkBillingPage() {
                           (t) => t.id === expense.ticket_id,
                         );
                         return (
-                          <tr key={expense.id}>
+                          <tr
+                            key={expense.id}
+                            id={`ticket-expense-${expense.id}`}
+                            className={
+                              focusExpenseId === expense.id
+                                ? "bg-info/15 outline outline-2 outline-info/40"
+                                : undefined
+                            }
+                          >
                             <td>{formatDate(expense.date)}</td>
                             <td className="font-mono text-xs">
                               {ticket?.ticket_number ?? "—"}
@@ -874,7 +968,12 @@ export default function WorkBillingPage() {
             return (
               <article
                 key={row.id}
-                className="rounded-box border border-base-300 bg-base-100 p-4 shadow-sm"
+                id={`work-entry-${row.id}`}
+                className={`rounded-box border bg-base-100 p-4 shadow-sm ${
+                  focusEntryId === row.id
+                    ? "border-info bg-info/10 outline outline-2 outline-info/40"
+                    : "border-base-300"
+                }`}
               >
                 <div className="flex flex-wrap items-start gap-3">
                   {selectable ? (
