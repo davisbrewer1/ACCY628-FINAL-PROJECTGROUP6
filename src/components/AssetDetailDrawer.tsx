@@ -273,9 +273,9 @@ export function AssetDetailDrawer({
         tickets: (tickets.data ?? []) as ServiceTicket[],
       };
       setDetail(data);
-      setStatusValue(data.asset.device_status || "Active");
-      setAssignUser(data.asset.assigned_employee ?? "");
-      setAssignLocation(data.asset.location ?? "");
+      setStatusValue(resolvedAsset.device_status || "Active");
+      setAssignUser(resolvedAsset.assigned_employee ?? "");
+      setAssignLocation(resolvedAsset.location ?? "");
     } catch (err) {
       // Keep the seeded asset visible even if related queries fail.
       if (!(seedAsset && seedAsset.id === id)) {
