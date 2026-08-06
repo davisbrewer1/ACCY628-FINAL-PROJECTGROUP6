@@ -13,16 +13,14 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate, formatDateTime, formatHours } from "@/lib/format";
 import {
   buildAccountHealthRows,
+  buildClientHealthInsights,
+  buildProfitLeakageSignals,
   computeContractHoursBurns,
   computeTechnicianLoads,
-  getAwaitingSendInvoices,
-  getDisputedWorkEntries,
   getLateTickets,
   getOpenArInvoices,
   getOpenTickets,
-  getPastDueInvoices,
   getPendingApprovalEntries,
-  getReadyToInvoiceEntries,
   getRenewalsInDays,
   getSlaAtRiskTickets,
   getUnassignedTickets,
@@ -100,41 +98,7 @@ export default function OperationsPage() {
     () => getPendingApprovalEntries(workEntries),
     [workEntries],
   );
-  const disputedWork = useMemo(
-    () => getDisputedWorkEntries(workEntries),
-    [workEntries],
-  );
-  const readyToInvoice = useMemo(
-    () => getReadyToInvoiceEntries(workEntries),
-    [workEntries],
-  );
-  const readyToInvoiceAmount = useMemo(
-    () =>
-      readyToInvoice.reduce((sum, e) => {
-        const contract = e.contract_id ? contractMap.get(e.contract_id) : null;
-        const hours = e.included_in_contract ? 0 : (e.hours_worked ?? 0);
-        return (
-          sum +
-          hours * (contract?.additional_hourly_rate ?? 0) +
-          (e.parts_cost ?? 0) +
-          (e.software_cost ?? 0) +
-          (e.equipment_cost ?? 0) +
-          (e.travel_cost ?? 0) +
-          (e.other_cost ?? 0)
-        );
-      }, 0),
-    [readyToInvoice, contractMap],
-  );
-  const pastDue = useMemo(() => getPastDueInvoices(invoices), [invoices]);
   const openAr = useMemo(() => getOpenArInvoices(invoices), [invoices]);
-  const awaitingSend = useMemo(
-    () => getAwaitingSendInvoices(invoices),
-    [invoices],
-  );
-  const pastDueTotal = useMemo(
-    () => pastDue.reduce((sum, i) => sum + (i.remaining_balance ?? 0), 0),
-    [pastDue],
-  );
   const openArTotal = useMemo(
     () => openAr.reduce((sum, i) => sum + (i.remaining_balance ?? 0), 0),
     [openAr],
@@ -172,14 +136,41 @@ export default function OperationsPage() {
     () => accountHealth.filter((row) => row.riskFlags.length > 0).slice(0, 8),
     [accountHealth],
   );
+  const clientHealthInsights = useMemo(
+    () =>
+      buildClientHealthInsights(
+        customers,
+        contracts,
+        tickets,
+        workEntries,
+        invoices,
+      ),
+    [customers, contracts, tickets, workEntries, invoices],
+  );
+  const profitLeaks = useMemo(
+    () =>
+      buildProfitLeakageSignals(customers, contracts, workEntries, invoices),
+    [customers, contracts, workEntries, invoices],
+  );
+  const watchlistAccounts = useMemo(
+    () => clientHealthInsights.filter((row) => row.score < 85).slice(0, 6),
+    [clientHealthInsights],
+  );
+  const avgHealthScore = useMemo(() => {
+    if (clientHealthInsights.length === 0) return null;
+    const total = clientHealthInsights.reduce((sum, row) => sum + row.score, 0);
+    return total / clientHealthInsights.length;
+  }, [clientHealthInsights]);
+  const leakageTotal = useMemo(
+    () => profitLeaks.reduce((sum, row) => sum + row.amountAtRisk, 0),
+    [profitLeaks],
+  );
 
   const actNowCount =
     unassigned.length +
     slaAtRisk.length +
     criticalOpen.length +
     pendingApprovals.length;
-  const moneyRiskCount =
-    readyToInvoice.length + disputedWork.length + pastDue.length + awaitingSend.length;
   const deliveryCount =
     lateTickets.length + overHours.length + overloadedTechs.length;
 
@@ -217,7 +208,10 @@ export default function OperationsPage() {
           <strong className="text-base-content">{actNowCount}</strong> need action now
         </span>
         <span>
-          <strong className="text-base-content">{moneyRiskCount}</strong> money signals
+          <strong className="text-base-content">{watchlistAccounts.length}</strong> accounts on watchlist
+        </span>
+        <span>
+          <strong className="text-base-content">{formatCurrency(leakageTotal)}</strong> profit leakage
         </span>
         <span>
           <strong className="text-base-content">{deliveryCount}</strong> delivery watches
@@ -295,87 +289,176 @@ export default function OperationsPage() {
         </div>
       </CommandZone>
 
-      {/* ---------- Money at risk ---------- */}
-      <CommandZone
-        id="money-at-risk"
-        eyebrow="Zone 2"
-        title="Money at risk"
-        summary="Billing leakage and collections. Push approved overages to invoice, resolve disputes, and chase past-due balances."
-      >
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            title="Ready to invoice"
-            value={readyToInvoice.length}
-            hint={formatCurrency(readyToInvoiceAmount)}
-            tone={readyToInvoice.length > 0 ? "info" : "success"}
-            href="/time-costs?filter=ready"
-          />
-          <StatCard
-            title="Disputed charges"
-            value={disputedWork.length}
-            hint="Returned time needing correction"
-            tone={toneForCount(disputedWork.length, "danger")}
-            href="/time-costs?filter=returned"
-          />
-          <StatCard
-            title="Past-due invoices"
-            value={formatCurrency(pastDueTotal)}
-            hint={`${pastDue.length} invoice${pastDue.length === 1 ? "" : "s"}`}
-            tone={pastDueTotal > 0 ? "danger" : "success"}
-            href="/billing?filter=past-due"
-          />
-          <StatCard
-            title="Drafts awaiting send"
-            value={awaitingSend.length}
-            hint={`${formatCurrency(openArTotal)} open AR total`}
-            tone={awaitingSend.length > 0 ? "warning" : "default"}
-            href="/billing?filter=action"
-          />
-        </div>
+      {/* ---------- Client health + profit leakage ---------- */}
+      <div className="grid gap-8 xl:grid-cols-2">
+        <CommandZone
+          id="client-health"
+          eyebrow="Zone 2"
+          title="Client health score"
+          summary="One score per account from SLA, AR, hour burn, criticals, and renewals — with the next best manager action."
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatCard
+              title="Portfolio average"
+              value={avgHealthScore == null ? "—" : Math.round(avgHealthScore)}
+              hint="Across scored active accounts"
+              tone={
+                avgHealthScore == null
+                  ? "default"
+                  : avgHealthScore >= 80
+                    ? "success"
+                    : avgHealthScore >= 65
+                      ? "warning"
+                      : "danger"
+              }
+            />
+            <StatCard
+              title="Watchlist"
+              value={watchlistAccounts.length}
+              hint="Accounts scoring under 85"
+              tone={toneForCount(watchlistAccounts.length, "warning")}
+              href="/customers"
+            />
+            <StatCard
+              title="Needs action now"
+              value={clientHealthInsights.filter((r) => r.score < 70).length}
+              hint="Score under 70"
+              tone={toneForCount(
+                clientHealthInsights.filter((r) => r.score < 70).length,
+                "danger",
+              )}
+              href="/service-tickets?filter=sla"
+            />
+          </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
-          <TraceQueue
-            title="Bill this work"
-            href="/time-costs?filter=ready"
-            emptyTitle="No unbilled approved work"
-            emptyDescription="Approved billable entries will appear here."
-            items={readyToInvoice.slice(0, 5).map((entry) => {
-              const contract = entry.contract_id
-                ? contractMap.get(entry.contract_id)
-                : null;
-              return {
-                id: entry.id,
-                href: "/time-costs?filter=ready",
-                primary: entry.work_performed || "Approved work entry",
-                secondary: `${customerMap.get(entry.customer_id) ?? "Customer"} · ${formatHours(entry.hours_worked)} · ${contract?.contract_name ?? "No contract"}`,
-                meta: <StatusBadge status={entry.billing_status ?? "Ready to Invoice"} />,
-              };
-            })}
-          />
-          <TraceQueue
-            title="Collect past-due invoices"
-            href="/billing?filter=past-due"
-            emptyTitle="No past-due invoices"
-            emptyDescription="Open AR that is past due will show here."
-            items={pastDue.slice(0, 5).map((invoice) => ({
-              id: invoice.id,
-              href: "/billing?filter=past-due",
-              primary: invoice.invoice_number,
-              secondary: `${customerMap.get(invoice.customer_id) ?? "Customer"} · due ${formatDate(invoice.due_date)}`,
-              meta: (
-                <span className="text-sm font-semibold text-error">
-                  {formatCurrency(invoice.remaining_balance ?? invoice.total_amount)}
-                </span>
-              ),
-            }))}
-          />
-        </div>
-      </CommandZone>
+          <div className="mt-4 space-y-3">
+            {watchlistAccounts.length === 0 ? (
+              <EmptyState
+                title="Portfolio healthy"
+                description="No accounts currently score under 85."
+              />
+            ) : (
+              watchlistAccounts.map((row) => (
+                <article
+                  key={row.customerId}
+                  className="rounded-box border border-base-300 bg-base-100 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-base-content">
+                        {row.customerName}
+                      </h3>
+                      <p className="mt-0.5 text-xs text-base-content/60">
+                        {formatCurrency(row.mrr)} MRR · {row.openTickets} open ·{" "}
+                        {formatCurrency(row.arBalance)} AR
+                      </p>
+                    </div>
+                    <HealthScorePill score={row.score} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {row.drivers.slice(0, 4).map((driver) => (
+                      <span key={driver} className="badge badge-ghost badge-sm">
+                        {driver}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-base-300 pt-3">
+                    <p className="text-sm text-base-content/80">
+                      <span className="font-medium text-base-content">Recommended: </span>
+                      {row.recommendedAction}
+                    </p>
+                    <Link
+                      href={row.actionHref}
+                      className="btn btn-primary btn-sm shrink-0"
+                    >
+                      Take action
+                    </Link>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </CommandZone>
+
+        <CommandZone
+          id="profit-leakage"
+          eyebrow="Zone 3"
+          title="Profit-leakage radar"
+          summary="Where money is escaping: unbilled work, overage not invoiced, contracts below MRR, and slow collections."
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatCard
+              title="At-risk total"
+              value={formatCurrency(leakageTotal)}
+              hint="Sum of leakage signals"
+              tone={leakageTotal > 0 ? "danger" : "success"}
+              href="/time-costs?filter=ready"
+            />
+            <StatCard
+              title="Leak signals"
+              value={profitLeaks.length}
+              hint="Distinct money leaks found"
+              tone={toneForCount(profitLeaks.length, "warning")}
+            />
+            <StatCard
+              title="Largest leak"
+              value={
+                profitLeaks[0]
+                  ? formatCurrency(profitLeaks[0].amountAtRisk)
+                  : formatCurrency(0)
+              }
+              hint={profitLeaks[0]?.title ?? "No leaks detected"}
+              tone={profitLeaks[0] ? "danger" : "success"}
+              href={profitLeaks[0]?.href}
+            />
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {profitLeaks.length === 0 ? (
+              <EmptyState
+                title="No leakage detected"
+                description="Approved work is billed and contracts are holding margin this month."
+              />
+            ) : (
+              profitLeaks.slice(0, 6).map((leak) => (
+                <article
+                  key={leak.id}
+                  className="rounded-box border border-base-300 bg-base-100 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="badge badge-outline badge-sm">
+                          {leakLabel(leak.kind)}
+                        </span>
+                        <h3 className="font-semibold text-base-content">{leak.title}</h3>
+                      </div>
+                      <p className="mt-1 text-xs text-base-content/60">{leak.detail}</p>
+                    </div>
+                    <p className="text-lg font-semibold text-error">
+                      {formatCurrency(leak.amountAtRisk)}
+                    </p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-base-300 pt-3">
+                    <p className="text-sm text-base-content/80">
+                      <span className="font-medium text-base-content">Recommended: </span>
+                      {leak.recommendedAction}
+                    </p>
+                    <Link href={leak.href} className="btn btn-outline btn-sm shrink-0">
+                      Fix leak
+                    </Link>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </CommandZone>
+      </div>
 
       {/* ---------- Delivery health ---------- */}
       <CommandZone
         id="delivery-health"
-        eyebrow="Zone 3"
+        eyebrow="Zone 4"
         title="Delivery health"
         summary="Capacity and overrun signals. Catch late tickets, contracts burning past included hours, and overloaded technicians."
       >
@@ -458,7 +541,7 @@ export default function OperationsPage() {
       {/* ---------- Portfolio watch ---------- */}
       <CommandZone
         id="portfolio-watch"
-        eyebrow="Zone 4"
+        eyebrow="Zone 5"
         title="Portfolio watch"
         summary="Account and contract outlook. Renewals, margin pressure, and customers carrying risk flags."
       >
@@ -587,6 +670,38 @@ function isCurrentMonth(value: string | null | undefined): boolean {
 
 function toneForCount(count: number, alertTone: Tone): Tone {
   return count > 0 ? alertTone : "success";
+}
+
+function HealthScorePill({ score }: { score: number }) {
+  const tone =
+    score >= 85 ? "badge-success" : score >= 70 ? "badge-warning" : "badge-error";
+  return (
+    <div className="text-right">
+      <span className={`badge ${tone} badge-lg font-semibold tabular-nums`}>
+        {score}
+      </span>
+      <p className="mt-1 text-[11px] uppercase tracking-wide text-base-content/50">
+        health
+      </p>
+    </div>
+  );
+}
+
+function leakLabel(kind: string): string {
+  switch (kind) {
+    case "unbilled_work":
+      return "Unbilled work";
+    case "unbilled_overage":
+      return "Overage";
+    case "margin_shortfall":
+      return "Margin";
+    case "past_due_ar":
+      return "Collections";
+    case "awaiting_send":
+      return "Draft invoices";
+    default:
+      return "Leak";
+  }
 }
 
 function CommandZone({
