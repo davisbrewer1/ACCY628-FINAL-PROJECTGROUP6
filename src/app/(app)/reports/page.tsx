@@ -29,9 +29,11 @@ import type {
   AiPlatform,
   AiRisk,
   AiUserCompliance,
+  AssetRepair,
   Contract,
   Customer,
   HardwareAsset,
+  InventoryPart,
   Invoice,
   Payment,
   Recommendation,
@@ -52,6 +54,8 @@ function emptyDataset(): ReportDataset {
     invoices: [],
     payments: [],
     hardware: [],
+    inventoryParts: [],
+    assetRepairs: [],
     securityScores: [],
     securityAlerts: [],
     aiPlatforms: [],
@@ -72,7 +76,9 @@ export default function ReportsPage() {
   const [resolutionMonth, setResolutionMonth] = useState<Date | null>(null);
 
   useEffect(() => {
-    async function load() {
+    let cancelled = false;
+
+    async function loadData() {
       const supabase = createClient();
       const results = await Promise.all([
         supabase.from("contracts").select("*"),
@@ -94,7 +100,11 @@ export default function ReportsPage() {
         supabase.from("ai_user_compliance").select("*"),
         supabase.from("recommendations").select("*"),
         supabase.from("service_catalog_items").select("*"),
+        supabase.from("inventory_parts").select("*"),
+        supabase.from("asset_repairs").select("*"),
       ]);
+
+      if (cancelled) return;
 
       setDataset({
         contracts: (results[0].data ?? []) as Contract[],
@@ -112,10 +122,30 @@ export default function ReportsPage() {
         aiCompliance: (results[12].data ?? []) as AiUserCompliance[],
         recommendations: (results[13].data ?? []) as Recommendation[],
         catalogItems: (results[14].data ?? []) as ServiceCatalogItem[],
+        inventoryParts: (results[15].data ?? []) as InventoryPart[],
+        assetRepairs: (results[16].data ?? []) as AssetRepair[],
       });
       setLoading(false);
     }
-    load();
+
+    void loadData();
+
+    function onVisible() {
+      if (document.visibilityState === "visible") {
+        void loadData();
+      }
+    }
+    function onFocus() {
+      void loadData();
+    }
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   const {

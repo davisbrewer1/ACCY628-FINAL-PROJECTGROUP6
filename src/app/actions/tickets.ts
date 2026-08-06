@@ -29,6 +29,16 @@ async function loadActiveContractsForCustomer(
   return (data as Contract[]) ?? [];
 }
 
+function revalidateTicketPaths(...extra: string[]) {
+  revalidatePath("/service-tickets");
+  revalidatePath("/technician");
+  revalidatePath("/operations");
+  revalidatePath("/reports");
+  for (const path of extra) {
+    revalidatePath(path);
+  }
+}
+
 export async function createServiceTicket(
   formData: FormData,
 ): Promise<ActionResult> {
@@ -143,12 +153,7 @@ export async function createServiceTicket(
     }
   }
 
-  revalidatePath("/service-tickets");
-  revalidatePath("/technician");
-  revalidatePath("/portal");
-  revalidatePath("/end-user");
-  revalidatePath("/operations");
-  revalidatePath("/recommendations");
+  revalidateTicketPaths("/portal", "/end-user", "/recommendations");
   return {
     success: true,
     message: `Ticket ${ticketNumber} created · ${priority} priority · SLA applied from contract.`,
@@ -217,8 +222,7 @@ export async function createPortalTicket(
     return { success: false, message: error.message };
   }
 
-  revalidatePath("/portal");
-  revalidatePath("/end-user");
+  revalidateTicketPaths("/portal", "/end-user");
   return { success: true, message: "Support request submitted." };
 }
 
@@ -242,9 +246,7 @@ export async function updateTicketStatus(
     return { success: false, message: error.message };
   }
 
-  revalidatePath("/technician");
-  revalidatePath("/service-tickets");
-  revalidatePath("/operations");
+  revalidateTicketPaths();
   return { success: true, message: "Ticket status updated." };
 }
 
@@ -272,9 +274,7 @@ export async function assignTickets(
     return { success: false, message: error.message };
   }
 
-  revalidatePath("/service-tickets");
-  revalidatePath("/technician");
-  revalidatePath("/operations");
+  revalidateTicketPaths();
   return {
     success: true,
     message: `Assigned ${ticketIds.length} ticket${ticketIds.length === 1 ? "" : "s"}.`,
@@ -334,9 +334,7 @@ export async function updateTicketPriority(
     return { success: false, message: error.message };
   }
 
-  revalidatePath("/service-tickets");
-  revalidatePath("/operations");
-  revalidatePath("/technician");
+  revalidateTicketPaths();
   return {
     success: true,
     message: `Priority set to ${normalized}${options?.refreshSla === false ? "" : " · SLA updated"}.`,
@@ -365,9 +363,7 @@ export async function updateTicketBillingFlags(
     return { success: false, message: error.message };
   }
 
-  revalidatePath("/service-tickets");
-  revalidatePath("/time-costs");
-  revalidatePath("/operations");
+  revalidateTicketPaths("/time-costs");
   return { success: true, message: "Billing status updated." };
 }
 
@@ -446,9 +442,7 @@ export async function updateTicketSchedule(input: {
       }
     }
 
-    revalidatePath("/technician");
-    revalidatePath("/operations");
-    revalidatePath("/service-tickets");
+    revalidateTicketPaths();
     return { success: true, message: "Schedule updated." };
   } catch (error) {
     const message =

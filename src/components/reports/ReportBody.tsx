@@ -26,9 +26,11 @@ import type {
   AiPlatform,
   AiRisk,
   AiUserCompliance,
+  AssetRepair,
   Contract,
   Customer,
   HardwareAsset,
+  InventoryPart,
   Invoice,
   Payment,
   Recommendation,
@@ -48,6 +50,8 @@ export interface ReportDataset {
   invoices: Invoice[];
   payments: Payment[];
   hardware: HardwareAsset[];
+  inventoryParts: InventoryPart[];
+  assetRepairs: AssetRepair[];
   securityScores: SecurityScore[];
   securityAlerts: SecurityAlert[];
   aiPlatforms: AiPlatform[];
@@ -441,9 +445,20 @@ function TicketTrendReport({ dataset }: { dataset: ReportDataset }) {
 }
 
 function HardwareLifecycleReport({ dataset }: { dataset: ReportDataset }) {
-  const { hardware, customers } = dataset;
+  const { hardware, customers, assetRepairs } = dataset;
   const customerName = (id: string) =>
     customers.find((c) => c.id === id)?.customer_name ?? "—";
+
+  const repairsByAsset = new Map<string, number>();
+  for (const repair of assetRepairs) {
+    repairsByAsset.set(
+      repair.asset_id,
+      (repairsByAsset.get(repair.asset_id) ?? 0) + 1,
+    );
+  }
+  const repeatedRepairAssets = [...repairsByAsset.values()].filter(
+    (n) => n >= 2,
+  ).length;
 
   const rows = hardware.map((a) => {
     const ageYears =
@@ -451,6 +466,7 @@ function HardwareLifecycleReport({ dataset }: { dataset: ReportDataset }) {
         ? differenceInYears(new Date(), parseISO(a.purchase_date))
         : null;
     return {
+      id: a.id,
       asset: a.asset_number || a.asset_tag || a.id.slice(0, 8),
       customer: a.customer_id ? customerName(a.customer_id) : "Inventory",
       model: [a.manufacturer, a.model].filter(Boolean).join(" ") || "—",
@@ -461,6 +477,7 @@ function HardwareLifecycleReport({ dataset }: { dataset: ReportDataset }) {
       unsupported: a.unsupported_os || a.nearing_eol,
       needsReplacement: a.needs_replacement,
       failures: a.health_score != null && a.health_score < 50,
+      repairs: repairsByAsset.get(a.id) ?? 0,
     };
   });
 
@@ -486,7 +503,11 @@ function HardwareLifecycleReport({ dataset }: { dataset: ReportDataset }) {
             sum(hardware.map((a) => a.current_value ?? 0)),
           )}
         />
-        <MetricTile label="Repair history detail" value={NA} hint="Use asset drawer for repair notes" />
+        <MetricTile
+          label="Repair records"
+          value={assetRepairs.length}
+          hint={`${repeatedRepairAssets} assets with 2+ repairs`}
+        />
       </MetricGrid>
 
       <ReportTable
@@ -498,11 +519,12 @@ function HardwareLifecycleReport({ dataset }: { dataset: ReportDataset }) {
           "Warranty",
           "Replacement",
           "Value",
+          "Repairs",
           "Flags",
         ]}
       >
         {rows.map((row) => (
-          <tr key={row.asset}>
+          <tr key={row.id}>
             <td className="font-mono text-xs">{row.asset}</td>
             <td>{row.customer}</td>
             <td>{row.model}</td>
@@ -512,6 +534,7 @@ function HardwareLifecycleReport({ dataset }: { dataset: ReportDataset }) {
             <td>
               {row.value != null ? formatCurrency(row.value) : "—"}
             </td>
+            <td>{row.repairs}</td>
             <td className="text-xs">
               {[
                 row.unsupported ? "Unsupported" : null,
@@ -529,7 +552,7 @@ function HardwareLifecycleReport({ dataset }: { dataset: ReportDataset }) {
 }
 
 function AssetUtilizationReport({ dataset }: { dataset: ReportDataset }) {
-  const { hardware, customers } = dataset;
+  const { hardware, customers, inventoryParts } = dataset;
   const assigned = hardware.filter(
     (a) => a.assigned_employee || a.device_status === "Assigned",
   );
@@ -551,6 +574,17 @@ function AssetUtilizationReport({ dataset }: { dataset: ReportDataset }) {
       a.device_status === "Lost" ||
       (a.notes ?? "").toLowerCase().includes("lost"),
   );
+
+  const online = hardware.filter(
+    (a) => (a.online_status ?? "").toLowerCase() === "online",
+  ).length;
+  const withTelemetry = hardware.filter(
+    (a) =>
+      a.last_check_in != null ||
+      a.cpu_pct != null ||
+      a.ram_pct != null ||
+      a.disk_pct != null,
+  ).length;
 
   const bySku = new Map<
     string,
@@ -574,6 +608,15 @@ function AssetUtilizationReport({ dataset }: { dataset: ReportDataset }) {
   const customerName = (id: string) =>
     customers.find((c) => c.id === id)?.customer_name ?? id;
 
+  const activeParts = inventoryParts.filter((p) => p.active !== false);
+  const lowStock = activeParts.filter(
+    (p) => p.quantity <= (p.low_stock_threshold ?? 0),
+  );
+  const partsQty = sum(activeParts.map((p) => p.quantity ?? 0));
+  const partsValue = sum(
+    activeParts.map((p) => (p.quantity ?? 0) * (p.unit_cost ?? 0)),
+  );
+
   return (
     <div className="space-y-4">
       <MetricGrid>
@@ -581,7 +624,11 @@ function AssetUtilizationReport({ dataset }: { dataset: ReportDataset }) {
         <MetricTile label="Unassigned inventory" value={unassigned.length} />
         <MetricTile label="Idle / offline equipment" value={idle.length} />
         <MetricTile label="Lost devices" value={lost.length} />
-        <MetricTile label="Device usage telemetry" value={NA} />
+        <MetricTile
+          label="Device usage telemetry"
+          value={`${withTelemetry} / ${hardware.length}`}
+          hint={`${online} reporting online; last check-in / CPU / RAM / disk where present`}
+        />
       </MetricGrid>
 
       <h3 className="font-semibold">
@@ -603,6 +650,55 @@ function AssetUtilizationReport({ dataset }: { dataset: ReportDataset }) {
             </tr>
           ))}
       </ReportTable>
+
+      <h3 className="font-semibold">Technician parts inventory</h3>
+      <MetricGrid>
+        <MetricTile label="Active SKUs" value={activeParts.length} />
+        <MetricTile label="Total quantity on hand" value={partsQty} />
+        <MetricTile label="Low-stock SKUs" value={lowStock.length} />
+        <MetricTile
+          label="Inventory value"
+          value={formatCurrency(partsValue)}
+        />
+      </MetricGrid>
+      {activeParts.length === 0 ? (
+        <EmptyState
+          title="No parts inventory"
+          description="Parts stocked in the Hardware technician inventory will appear here."
+        />
+      ) : (
+        <ReportTable
+          headers={[
+            "SKU",
+            "Part",
+            "Category",
+            "Qty",
+            "Threshold",
+            "Unit cost",
+            "Status",
+          ]}
+        >
+          {[...activeParts]
+            .sort((a, b) => a.sku.localeCompare(b.sku))
+            .map((part) => {
+              const isLow =
+                part.quantity <= (part.low_stock_threshold ?? 0);
+              return (
+                <tr key={part.id}>
+                  <td className="font-mono text-xs">{part.sku}</td>
+                  <td>{part.part_name}</td>
+                  <td>{part.category || "—"}</td>
+                  <td>{part.quantity}</td>
+                  <td>{part.low_stock_threshold}</td>
+                  <td>{formatCurrency(part.unit_cost ?? 0)}</td>
+                  <td className={isLow ? "font-medium text-warning" : ""}>
+                    {isLow ? "Low" : "OK"}
+                  </td>
+                </tr>
+              );
+            })}
+        </ReportTable>
+      )}
     </div>
   );
 }
@@ -890,12 +986,27 @@ function ContractPerformanceReport({
   );
 
   const rows = filtered.map((contract) => {
-    const costs = workEntries
-      .filter((e) => e.contract_id === contract.id)
-      .reduce((sum, e) => sum + (e.total_direct_cost ?? 0), 0);
-    const labor = workEntries
-      .filter((e) => e.contract_id === contract.id)
-      .reduce((sum, e) => sum + (e.labor_cost ?? e.total_direct_cost ?? 0), 0);
+    const entries = workEntries.filter((e) => e.contract_id === contract.id);
+    const costs = entries.reduce(
+      (acc, e) => acc + (e.total_direct_cost ?? 0),
+      0,
+    );
+    const labor = entries.reduce(
+      (acc, e) => acc + (e.labor_cost ?? 0),
+      0,
+    );
+    const billable = entries
+      .filter((e) => !e.included_in_contract)
+      .reduce((acc, e) => acc + (e.total_direct_cost ?? 0), 0);
+    const hardwareCost = entries.reduce(
+      (acc, e) =>
+        acc + (e.equipment_cost ?? 0) + (e.parts_cost ?? 0),
+      0,
+    );
+    const softwareCost = entries.reduce(
+      (acc, e) => acc + (e.software_cost ?? 0),
+      0,
+    );
     const revenue = contract.monthly_recurring_fee ?? 0;
     const profit = calcContractProfit(revenue, costs);
     const margin = calcProfitMargin(revenue, costs);
@@ -907,10 +1018,10 @@ function ContractPerformanceReport({
         "—",
       tier: simulateContractTier(contract.monthly_recurring_fee),
       mrr: revenue,
-      billable: NA,
+      billable,
       labor,
-      hardware: NA,
-      software: NA,
+      hardware: hardwareCost,
+      software: softwareCost,
       profit,
       margin,
       csat: NA,
@@ -956,10 +1067,10 @@ function ContractPerformanceReport({
             <td>{row.customer}</td>
             <td>{row.tier}</td>
             <td>{formatCurrency(row.mrr)}</td>
-            <td>{row.billable}</td>
+            <td>{formatCurrency(row.billable)}</td>
             <td>{formatCurrency(row.labor)}</td>
-            <td>{row.hardware}</td>
-            <td>{row.software}</td>
+            <td>{formatCurrency(row.hardware)}</td>
+            <td>{formatCurrency(row.software)}</td>
             <td>{formatCurrency(row.profit)}</td>
             <td>{row.margin != null ? formatPercent(row.margin) : "—"}</td>
             <td>{row.csat}</td>

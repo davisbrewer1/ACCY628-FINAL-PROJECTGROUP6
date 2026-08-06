@@ -10,6 +10,7 @@ function revalidateTicketPaths() {
   revalidatePath("/service-tickets");
   revalidatePath("/operations");
   revalidatePath("/time-costs");
+  revalidatePath("/reports");
 }
 
 export async function updateInlineTicketStatus(
