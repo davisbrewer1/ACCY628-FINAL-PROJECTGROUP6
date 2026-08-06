@@ -11,6 +11,7 @@ import {
 } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/server";
 import type { NotificationType } from "@/lib/types";
+import { isWorkOutstandingPastDue } from "@/lib/calculations";
 
 async function notifyQuietly(input: {
   technicianId: string;
@@ -117,7 +118,7 @@ export async function refreshTechnicianAlerts(
   const { data: tickets, error } = await supabase
     .from("service_tickets")
     .select(
-      "id, ticket_number, title, priority, status, target_resolution_at, assigned_technician_id",
+      "id, ticket_number, title, priority, status, target_resolution_at, assigned_technician_id, opened_at, created_at",
     )
     .eq("assigned_technician_id", technicianId)
     .not("status", "in", '("Completed","Closed","Canceled")');
@@ -137,6 +138,29 @@ export async function refreshTechnicianAlerts(
 
   for (const ticket of tickets ?? []) {
     const label = `${ticket.ticket_number}: ${ticket.title}`;
+
+    if (
+      isWorkOutstandingPastDue({
+        status: ticket.status,
+        priority: ticket.priority,
+        openedAt: ticket.opened_at,
+        createdAt: ticket.created_at,
+        now: new Date(now),
+      })
+    ) {
+      const message = `Work outstanding past due — ${label}`;
+      if (!recentMessages.has(message)) {
+        const ok = await notifyQuietly({
+          technicianId,
+          type: "work_past_due",
+          message,
+        });
+        if (ok) {
+          created += 1;
+          recentMessages.add(message);
+        }
+      }
+    }
 
     if (ticket.priority === "Critical") {
       const message = `Critical ticket needs attention — ${label}`;

@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
-import { createPortalTicket } from "@/app/actions/tickets";
+import {
+  createPortalTicket,
+  rescheduleCustomerTicket,
+} from "@/app/actions/tickets";
 import { isOpenTicket } from "@/lib/dashboard-stats";
 import { AlertBanner } from "@/components/AlertBanner";
 import { EmptyState } from "@/components/EmptyState";
@@ -11,14 +14,19 @@ import { PageHeader } from "@/components/PageHeader";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ServiceDatePicker } from "@/components/tickets/ServiceDatePicker";
 import { useToast } from "@/components/Toast";
 import { formatDate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import {
+  ARRIVAL_EARLY_BUFFER_MINUTES,
+  ARRIVAL_LATE_BUFFER_MINUTES,
   buildTicketLiveSteps,
   formatLiveStepTime,
   getActiveLiveSummary,
+  getScheduledVisitExpectation,
 } from "@/lib/ticket-live-status";
+import { formatLockedServiceDateLabel } from "@/lib/technician-schedule";
 import {
   SUPPORT_ISSUE_CATEGORIES,
   SUPPORT_ISSUE_SUBCATEGORIES,
@@ -27,7 +35,6 @@ import {
   type ServiceTicket,
   type SupportIssueCategory,
   type Technician,
-  type TicketPriority,
   type WorkEntry,
 } from "@/lib/types";
 
@@ -37,13 +44,6 @@ const PRIORITY_RANK: Record<string, number> = {
   Medium: 2,
   Low: 3,
 };
-
-const URGENCY_OPTIONS: { value: TicketPriority; label: string }[] = [
-  { value: "Critical", label: "Critical — cannot work at all" },
-  { value: "High", label: "High — major impact on work" },
-  { value: "Medium", label: "Medium — partial impact" },
-  { value: "Low", label: "Low — minor inconvenience" },
-];
 
 function deviceLabel(asset: HardwareAsset): string {
   const parts = [
@@ -75,6 +75,7 @@ export default function EndUserSupportPage() {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [issueCategory, setIssueCategory] = useState<SupportIssueCategory | "">("");
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -212,6 +213,14 @@ export default function EndUserSupportPage() {
     [liveSteps],
   );
 
+  const visitExpectation = useMemo(() => {
+    if (!selectedTicket) return null;
+    return getScheduledVisitExpectation(
+      selectedTicket,
+      selectedTech?.technician_name ?? null,
+    );
+  }, [selectedTicket, selectedTech]);
+
   function openTicketDetails(ticketId: string) {
     setSelectedTicketId(ticketId);
     if (profile?.customer_id) {
@@ -341,6 +350,35 @@ export default function EndUserSupportPage() {
     });
   }
 
+  function handleReschedule(formData: FormData) {
+    if (!profile?.customer_id || !selectedTicket) return;
+    const isAsap = String(formData.get("is_asap") ?? "") === "true";
+    if (isAsap) {
+      setError("Pick a specific available day to reschedule (ASAP is only for new emergencies).");
+      return;
+    }
+    const nextDate = String(formData.get("locked_service_date") ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+      setError("Choose an available service day to reschedule.");
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const result = await rescheduleCustomerTicket(
+        selectedTicket.id,
+        nextDate,
+        profile.customer_id!,
+      );
+      if (result.success) {
+        showToast(result.message);
+        setRescheduleOpen(false);
+        await loadData(profile.customer_id!);
+      } else {
+        setError(result.message);
+      }
+    });
+  }
+
   if (activeRole !== "client_user" && activeRole !== "administrator") {
     return (
       <AlertBanner
@@ -456,6 +494,120 @@ export default function EndUserSupportPage() {
                     ? ` · Last updated ${lastRefreshedAt.toLocaleTimeString()}`
                     : ""}
                 </p>
+
+                {visitExpectation ? (
+                  <div className="mt-3 rounded-box border border-cyan-500/30 bg-cyan-500/10 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-cyan-800 dark:text-cyan-200">
+                      When to expect your technician
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-base-content">
+                      {visitExpectation.rangeLabel}
+                    </p>
+                    <p className="mt-1 text-sm text-base-content/75">
+                      Includes a {ARRIVAL_EARLY_BUFFER_MINUTES}-minute early
+                      window and {ARRIVAL_LATE_BUFFER_MINUTES}-minute delay
+                      buffer after the scheduled start
+                      {visitExpectation.durationHours > 1
+                        ? ` (${visitExpectation.durationHours}h job)`
+                        : ""}
+                      .
+                    </p>
+                    {selectedTicket.scheduled_off_requested_day &&
+                    selectedTicket.locked_service_date ? (
+                      <p className="mt-2 rounded-lg border border-warning/40 bg-warning/10 px-2 py-1.5 text-sm text-warning-content">
+                        Your visit was placed on a different day than requested
+                        ({formatLockedServiceDateLabel(
+                          selectedTicket.locked_service_date,
+                        )}
+                        ). The scheduled window above is the confirmed time.
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline mt-3"
+                      onClick={() => {
+                        setError(null);
+                        setRescheduleOpen((open) => !open);
+                      }}
+                    >
+                      {rescheduleOpen ? "Cancel reschedule" : "Reschedule"}
+                    </button>
+                    {rescheduleOpen ? (
+                      <form action={handleReschedule} className="mt-3 space-y-3">
+                        <p className="text-sm text-base-content/70">
+                          Pick a new available day. Your visit comes off the
+                          technician&apos;s calendar until they place it again.
+                        </p>
+                        <ServiceDatePicker allowAsap={false} />
+                        <button
+                          type="submit"
+                          className="btn btn-primary btn-sm"
+                          disabled={isPending}
+                        >
+                          {isPending ? (
+                            <span className="loading loading-spinner loading-sm" />
+                          ) : (
+                            "Confirm new day"
+                          )}
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
+                ) : selectedTicket.assigned_technician_id ? (
+                  <div className="mt-3 rounded-box border border-base-300 bg-base-100/70 px-3 py-2 text-sm text-base-content/70">
+                    {selectedTicket.is_asap ? (
+                      <p>
+                        <span className="font-semibold text-error">
+                          ASAP — Emergency
+                        </span>
+                        . A technician is assigned and will place the soonest
+                        available visit window.
+                      </p>
+                    ) : selectedTicket.locked_service_date ? (
+                      <p>
+                        Requested service day:{" "}
+                        <span className="font-semibold">
+                          {formatLockedServiceDateLabel(
+                            selectedTicket.locked_service_date,
+                          )}
+                        </span>
+                        . An arrival window appears once your technician places
+                        this visit
+                        {selectedTicket.customer_rescheduled
+                          ? " (reschedule received — awaiting new placement)"
+                          : ""}
+                        .
+                      </p>
+                    ) : (
+                      <p>
+                        A technician is assigned. An expected arrival window will
+                        appear here once they place this visit on their schedule.
+                      </p>
+                    )}
+                  </div>
+                ) : selectedTicket.is_asap ||
+                  selectedTicket.locked_service_date ? (
+                  <div className="mt-3 rounded-box border border-base-300 bg-base-100/70 px-3 py-2 text-sm text-base-content/70">
+                    {selectedTicket.is_asap ? (
+                      <p>
+                        <span className="font-semibold text-error">
+                          ASAP — Emergency
+                        </span>{" "}
+                        requested. Waiting for manager assignment.
+                      </p>
+                    ) : (
+                      <p>
+                        Requested service day:{" "}
+                        <span className="font-semibold">
+                          {formatLockedServiceDateLabel(
+                            selectedTicket.locked_service_date,
+                          )}
+                        </span>
+                        . Waiting for manager assignment.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
 
                 <ol className="mt-4 space-y-3">
                   {liveSteps.map((step) => {
@@ -644,7 +796,9 @@ export default function EndUserSupportPage() {
         <div className="modal-box max-w-xl">
           <h3 className="text-lg font-bold">Submit Support Ticket</h3>
           <p className="mt-1 text-sm text-base-content/60">
-            Rank how urgent the problem is. The system sets ticket priority from that urgency ranking.
+            Choose when you need service. ASAP-Emergency is Critical and goes to
+            the next available technician. Other days must have an open slot on
+            at least one technician&apos;s schedule.
           </p>
           {error ? (
             <div className="alert alert-error mt-4 text-sm">
@@ -769,21 +923,8 @@ export default function EndUserSupportPage() {
               </select>
             </FormField>
 
-            <FormField label="Urgency ranking" htmlFor="urgency" required>
-              <select
-                id="urgency"
-                name="urgency"
-                className="select select-bordered w-full"
-                defaultValue={issueCategory === "Security Concern" ? "High" : "Medium"}
-                key={`urgency-${issueCategory || "none"}`}
-                required
-              >
-                {URGENCY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+            <FormField label="When do you need service?" required>
+              <ServiceDatePicker />
             </FormField>
 
             <FormField label="Describe the issue" htmlFor="description" required>

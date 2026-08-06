@@ -38,8 +38,14 @@ import {
   resetNotificationsAvailability,
   subscribeToNotifications,
 } from "@/lib/notifications";
+import { buildPastDueTicketAlerts } from "@/lib/past-due-alerts";
 import { createClient } from "@/lib/supabase/client";
-import type { AppNotification, NotificationType, Technician } from "@/lib/types";
+import type {
+  AppNotification,
+  NotificationType,
+  ServiceTicket,
+  Technician,
+} from "@/lib/types";
 
 const TYPE_META: Record<
   NotificationType,
@@ -111,6 +117,30 @@ const TYPE_META: Record<
     className: "text-info",
     href: "/technician",
   },
+  work_past_due: {
+    label: "Past due",
+    Icon: AlertTriangle,
+    className: "text-error",
+    href: "/service-tickets",
+  },
+  schedule_priority_override: {
+    label: "Schedule override",
+    Icon: CalendarClock,
+    className: "text-warning",
+    href: "/service-tickets",
+  },
+  ticket_unassigned: {
+    label: "Unassigned",
+    Icon: Ticket,
+    className: "text-error",
+    href: "/service-tickets?filter=unassigned",
+  },
+  customer_reschedule: {
+    label: "Customer reschedule",
+    Icon: CalendarClock,
+    className: "text-warning",
+    href: "/technician",
+  },
 };
 
 function getTypeMeta(type: string) {
@@ -155,6 +185,10 @@ export function NotificationCenter() {
   const [messageTechId, setMessageTechId] = useState("");
   const [managerNote, setManagerNote] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [teamAlerts, setTeamAlerts] = useState<AppNotification[]>([]);
+  const [dismissedTeamAlertIds, setDismissedTeamAlertIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const panelRef = useRef<HTMLDivElement>(null);
   const alertsBootstrapped = useRef(false);
 
@@ -163,15 +197,102 @@ export function NotificationCenter() {
     activeRole === "service_manager" ||
     activeRole === "account_manager";
 
+  const visibleNotifications = useMemo(() => {
+    const liveTeam = teamAlerts.filter(
+      (item) => !dismissedTeamAlertIds.has(item.id),
+    );
+    if (liveTeam.length === 0) return notifications;
+    const storedIds = new Set(notifications.map((item) => item.id));
+    return [
+      ...liveTeam.filter((item) => !storedIds.has(item.id)),
+      ...notifications,
+    ];
+  }, [notifications, teamAlerts, dismissedTeamAlertIds]);
+
   const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.read).length,
-    [notifications],
+    () => visibleNotifications.filter((n) => !n.read).length,
+    [visibleNotifications],
   );
 
   const selected = useMemo(
-    () => notifications.find((item) => item.id === selectedId) ?? null,
-    [notifications, selectedId],
+    () => visibleNotifications.find((item) => item.id === selectedId) ?? null,
+    [visibleNotifications, selectedId],
   );
+
+  const loadTeamManagerAlerts = useCallback(async () => {
+    if (!canSendManagerMessage) {
+      setTeamAlerts([]);
+      return;
+    }
+
+    const supabase = createClient();
+    const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const [{ data: tickets }, { data: techList }, { data: overrideRows }] =
+      await Promise.all([
+        supabase
+          .from("service_tickets")
+          .select("*")
+          .not("status", "in", '("Completed","Closed","Canceled")')
+          .order("opened_at", { ascending: false })
+          .limit(200),
+        supabase.from("technicians").select("id, technician_name"),
+        supabase
+          .from("notifications")
+          .select("id, technician_id, type, message, created_at, read")
+          .eq("type", "schedule_priority_override")
+          .gte("created_at", since)
+          .order("created_at", { ascending: false })
+          .limit(40),
+      ]);
+
+    const openTickets = (tickets ?? []) as ServiceTicket[];
+    const nameById = new Map(
+      ((techList ?? []) as Technician[]).map((tech) => [
+        tech.id,
+        tech.technician_name,
+      ]),
+    );
+
+    const pastDue = buildPastDueTicketAlerts(
+      openTickets.filter((ticket) => Boolean(ticket.assigned_technician_id)),
+      { technicianNameById: nameById },
+    ).map((alert) => ({
+      id: `past-due-${alert.ticketId}`,
+      technician_id: alert.technicianId ?? "",
+      type: "work_past_due",
+      message: alert.managerBody,
+      created_at: alert.dueAt,
+      read: false,
+    }));
+
+    const unassigned = openTickets
+      .filter((ticket) => !ticket.assigned_technician_id)
+      .map((ticket) => {
+        const priority = ticket.priority ?? "Medium";
+        const opened = ticket.opened_at ?? ticket.created_at ?? new Date().toISOString();
+        return {
+          id: `unassigned-${ticket.id}`,
+          technician_id: "",
+          type: "ticket_unassigned",
+          message: `Unassigned ticket needs a technician — ${ticket.ticket_number}: ${ticket.title} (${priority})`,
+          created_at: opened,
+          read: false,
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+
+    const overrides = ((overrideRows ?? []) as AppNotification[]).map(
+      (row) => ({
+        ...row,
+        read: Boolean(row.read),
+      }),
+    );
+
+    setTeamAlerts([...unassigned, ...pastDue, ...overrides]);
+  }, [canSendManagerMessage]);
 
   const loadForTechnician = useCallback(async (techId: string) => {
     resetNotificationsAvailability();
@@ -224,6 +345,10 @@ export function NotificationCenter() {
       if (techList?.length) {
         setTechnicians(techList as Technician[]);
         setMessageTechId((current) => current || techList[0]?.id || "");
+      }
+
+      if (canSendManagerMessage) {
+        await loadTeamManagerAlerts();
       }
 
       if (!tech?.id) {
@@ -316,7 +441,23 @@ export function NotificationCenter() {
       }
       unsubscribe?.();
     };
-  }, [canSendManagerMessage, loadForTechnician]);
+  }, [canSendManagerMessage, loadForTechnician, loadTeamManagerAlerts]);
+
+  useEffect(() => {
+    if (!canSendManagerMessage) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadTeamManagerAlerts();
+    }, 15000);
+    const onFocus = () => {
+      void loadTeamManagerAlerts();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [canSendManagerMessage, loadTeamManagerAlerts]);
 
   useEffect(() => {
     if (!open) return;
@@ -348,9 +489,22 @@ export function NotificationCenter() {
 
   async function handleOpenNotification(notification: AppNotification) {
     setSelectedId(notification.id);
+    if (notification.id.startsWith("past-due-") || notification.id.startsWith("unassigned-")) {
+      setTeamAlerts((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, read: true } : item,
+        ),
+      );
+      return;
+    }
     if (notification.read) return;
 
     setNotifications((current) =>
+      current.map((item) =>
+        item.id === notification.id ? { ...item, read: true } : item,
+      ),
+    );
+    setTeamAlerts((current) =>
       current.map((item) =>
         item.id === notification.id ? { ...item, read: true } : item,
       ),
@@ -359,6 +513,11 @@ export function NotificationCenter() {
     const result = await markNotificationAsRead(notification.id);
     if (!result.success) {
       setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, read: false } : item,
+        ),
+      );
+      setTeamAlerts((current) =>
         current.map((item) =>
           item.id === notification.id ? { ...item, read: false } : item,
         ),
@@ -373,8 +532,30 @@ export function NotificationCenter() {
     event?.stopPropagation();
     event?.preventDefault();
 
-    const previous = notifications;
+    if (
+      notificationId.startsWith("past-due-") ||
+      notificationId.startsWith("unassigned-")
+    ) {
+      setDismissedTeamAlertIds((current) => {
+        const next = new Set(current);
+        next.add(notificationId);
+        return next;
+      });
+      setTeamAlerts((current) =>
+        current.filter((item) => item.id !== notificationId),
+      );
+      if (selectedId === notificationId) {
+        setSelectedId(null);
+      }
+      return;
+    }
+
+    const previousNotifications = notifications;
+    const previousTeam = teamAlerts;
     setNotifications((current) =>
+      current.filter((item) => item.id !== notificationId),
+    );
+    setTeamAlerts((current) =>
       current.filter((item) => item.id !== notificationId),
     );
     if (selectedId === notificationId) {
@@ -383,7 +564,8 @@ export function NotificationCenter() {
 
     const result = await dismissNotification(notificationId);
     if (!result.success) {
-      setNotifications(previous);
+      setNotifications(previousNotifications);
+      setTeamAlerts(previousTeam);
       showToast(result.message, "error");
     }
   }
@@ -422,18 +604,27 @@ export function NotificationCenter() {
   }
 
   async function handleRefreshAlerts() {
-    if (!technicianId) return;
     setBusy(true);
-    const result = await refreshTechnicianAlerts(technicianId);
-    showToast(result.message, result.success ? "success" : "error");
-    if (result.success) {
-      await loadForTechnician(technicianId);
+    if (canSendManagerMessage) {
+      await loadTeamManagerAlerts();
+    }
+    if (technicianId) {
+      const result = await refreshTechnicianAlerts(technicianId);
+      showToast(result.message, result.success ? "success" : "error");
+      if (result.success) {
+        await loadForTechnician(technicianId);
+      }
+    } else if (canSendManagerMessage) {
+      showToast("Team alerts refreshed.", "success");
     }
     setBusy(false);
   }
 
   function handleGoToRelated(notification: AppNotification) {
-    const href = getTypeMeta(notification.type).href;
+    const href =
+      notification.type === "ticket_unassigned"
+        ? "/service-tickets?filter=unassigned"
+        : getTypeMeta(notification.type).href;
     setOpen(false);
     setSelectedId(null);
     router.push(href);
@@ -474,7 +665,9 @@ export function NotificationCenter() {
                 {selected
                   ? getTypeMeta(selected.type).label
                   : unreadCount === 0
-                    ? "Important changes, tasks, and manager messages"
+                    ? canSendManagerMessage
+                      ? "Unassigned tickets, past-due work, schedule overrides, and messages"
+                      : "Important changes, tasks, and manager messages"
                     : `${unreadCount} unread`}
               </p>
             </div>
@@ -490,7 +683,7 @@ export function NotificationCenter() {
                 </button>
               ) : (
                 <>
-                  {technicianId ? (
+                  {technicianId || canSendManagerMessage ? (
                     <button
                       type="button"
                       className="btn btn-ghost btn-xs"
@@ -660,14 +853,15 @@ export function NotificationCenter() {
                   <div className="px-4 py-8 text-center text-sm text-black/60">
                     Link a technician profile to receive alerts.
                   </div>
-                ) : notifications.length === 0 ? (
+                ) : visibleNotifications.length === 0 ? (
                   <div className="px-4 py-8 text-center text-sm text-black/60">
-                    No notifications yet. Alerts for ticket changes, SLA risk,
-                    upcoming tasks, and manager messages will appear here.
+                    No notifications yet. Alerts for unassigned tickets, past-due
+                    work, SLA risk, schedule overrides, and manager messages will
+                    appear here.
                   </div>
                 ) : (
                   <ul className="divide-y divide-base-300">
-                    {notifications.map((notification) => {
+                    {visibleNotifications.map((notification) => {
                       const meta = getTypeMeta(notification.type);
                       const Icon = meta.Icon;
                       return (

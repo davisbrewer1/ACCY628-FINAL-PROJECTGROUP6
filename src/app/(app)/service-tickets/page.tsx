@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, Search, X } from "lucide-react";
+import { Check, Plus, Search, X } from "lucide-react";
+import { reviewTicketHourExtension } from "@/app/actions/hour-extensions";
 import {
   assignTickets,
   createServiceTicket,
@@ -21,7 +22,7 @@ import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import {
   FLEXIBLE_TICKET_CATEGORIES,
   TICKET_TYPES,
@@ -35,8 +36,16 @@ import {
   resolutionHoursForPriority,
   responseHoursForPriority,
 } from "@/lib/ticket-ops";
+import { rankTechniciansByNextAvailable, rankTechniciansByDayAvailability, formatLockedServiceDateLabel } from "@/lib/technician-schedule";
 import { createClient } from "@/lib/supabase/client";
-import type { Contract, Customer, ServiceTicket, Technician, WorkEntry } from "@/lib/types";
+import type {
+  Contract,
+  Customer,
+  ServiceTicket,
+  Technician,
+  TicketHourExtensionRequest,
+  WorkEntry,
+} from "@/lib/types";
 import { TICKET_STATUSES } from "@/lib/types";
 
 type SortMode = "priority" | "sla" | "newest";
@@ -51,6 +60,12 @@ interface TicketRow extends ServiceTicket {
   billable: string;
   typeLabel: string;
   categoryLabel: string;
+}
+
+interface HourExtensionRow extends TicketHourExtensionRequest {
+  technicianName: string;
+  ticketNumber: string;
+  ticketTitle: string;
 }
 
 const MANAGER_ROLES = new Set([
@@ -72,6 +87,9 @@ export default function ServiceTicketsPage() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
+  const [hourExtensionRequests, setHourExtensionRequests] = useState<
+    TicketHourExtensionRequest[]
+  >([]);
 
   const [queueFilter, setQueueFilter] = useState(urlFilter);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
@@ -80,6 +98,11 @@ export default function ServiceTicketsPage() {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [assignTechId, setAssignTechId] = useState("");
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignPriority, setAssignPriority] = useState("");
+  const [assignMaxHours, setAssignMaxHours] = useState("1");
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [createAssignTechId, setCreateAssignTechId] = useState("");
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
 
   const [selectedCustomer, setSelectedCustomer] = useState("");
@@ -98,18 +121,25 @@ export default function ServiceTicketsPage() {
 
   async function loadData() {
     const supabase = createClient();
-    const [c, co, tech, t, w] = await Promise.all([
+    const [c, co, tech, t, w, hourExt] = await Promise.all([
       supabase.from("customers").select("*").order("customer_name"),
       supabase.from("contracts").select("*"),
       supabase.from("technicians").select("*").eq("active", true),
       supabase.from("service_tickets").select("*").order("opened_at", { ascending: false }),
       supabase.from("work_entries").select("*"),
+      supabase
+        .from("ticket_hour_extension_requests")
+        .select("*")
+        .order("created_at", { ascending: false }),
     ]);
     setCustomers(c.data ?? []);
     setContracts(co.data ?? []);
     setTechnicians(tech.data ?? []);
     setTickets(t.data ?? []);
     setWorkEntries(w.data ?? []);
+    setHourExtensionRequests(
+      (hourExt.data ?? []) as TicketHourExtensionRequest[],
+    );
     setSelectedIds([]);
     setLoading(false);
   }
@@ -152,6 +182,94 @@ export default function ServiceTicketsPage() {
     () => rankTechniciansForTicket(technicians, selectedCategory),
     [technicians, selectedCategory],
   );
+
+  const assignCategory = useMemo(() => {
+    if (selectedIds.length === 1) {
+      const ticket = tickets.find((item) => item.id === selectedIds[0]);
+      return parseCategoryLabel(ticket?.category).category || ticket?.category || selectedCategory;
+    }
+    return selectedCategory;
+  }, [selectedIds, tickets, selectedCategory]);
+
+  const assignDurationHours = useMemo(() => {
+    const fromModal = Number(assignMaxHours);
+    if (Number.isInteger(fromModal) && fromModal >= 1 && fromModal <= 9) {
+      return fromModal;
+    }
+    if (selectedIds.length === 1) {
+      const ticket = tickets.find((item) => item.id === selectedIds[0]);
+      const max = Number(ticket?.max_hours);
+      if (Number.isInteger(max) && max >= 1) return max;
+    }
+    return 1;
+  }, [assignMaxHours, selectedIds, tickets]);
+
+  const techsByAvailability = useMemo(() => {
+    const skillMatches = new Set(
+      technicians
+        .filter((tech) => isSkillMatch(tech, assignCategory))
+        .map((tech) => tech.id),
+    );
+
+    const selectedTickets = tickets.filter((ticket) =>
+      selectedIds.includes(ticket.id),
+    );
+    const lockedDates = [
+      ...new Set(
+        selectedTickets
+          .filter((ticket) => !ticket.is_asap && ticket.locked_service_date)
+          .map((ticket) => String(ticket.locked_service_date).slice(0, 10)),
+      ),
+    ];
+    const allAsap =
+      selectedTickets.length > 0 &&
+      selectedTickets.every((ticket) => Boolean(ticket.is_asap));
+
+    // Customer-locked day: order by openings on that day. ASAP / mixed /
+    // internal tickets: keep next-available ranking.
+    if (lockedDates.length === 1 && !allAsap) {
+      return rankTechniciansByDayAvailability(
+        technicians,
+        tickets,
+        lockedDates[0],
+        {
+          durationHours: assignDurationHours,
+          skillMatchIds: skillMatches,
+        },
+      ).map((row) => ({
+        technician: row.technician,
+        nextLabel: row.nextLabel,
+        hasOpeningOnDay: row.hasOpeningOnDay,
+      }));
+    }
+
+    return rankTechniciansByNextAvailable(technicians, tickets, {
+      durationHours: assignDurationHours,
+      skillMatchIds: skillMatches,
+    }).map((row) => ({
+      technician: row.technician,
+      nextLabel: row.nextLabel,
+      hasOpeningOnDay: true,
+    }));
+  }, [
+    technicians,
+    tickets,
+    assignCategory,
+    assignDurationHours,
+    selectedIds,
+  ]);
+
+  const createTechsByAvailability = useMemo(() => {
+    const skillMatches = new Set(
+      rankedTechs
+        .filter((tech) => isSkillMatch(tech, selectedCategory))
+        .map((tech) => tech.id),
+    );
+    return rankTechniciansByNextAvailable(technicians, tickets, {
+      durationHours: 1,
+      skillMatchIds: skillMatches,
+    });
+  }, [technicians, tickets, rankedTechs, selectedCategory]);
 
   const rows: TicketRow[] = useMemo(() => {
     const customerMap = new Map(customers.map((c) => [c.id, c.customer_name]));
@@ -204,6 +322,50 @@ export default function ServiceTicketsPage() {
       ).length,
     };
   }, [rows]);
+
+  const unassignedBacklog = useMemo(
+    () =>
+      rows
+        .filter((r) => isOpenTicket(r.status) && !r.assigned_technician_id)
+        .sort(
+          (a, b) =>
+            priorityRank(a.priority) - priorityRank(b.priority) ||
+            a.slaSort - b.slaSort,
+        ),
+    [rows],
+  );
+
+  const hourExtensionRows: HourExtensionRow[] = useMemo(() => {
+    const techNameById = new Map(
+      technicians.map((tech) => [tech.id, tech.technician_name]),
+    );
+    return hourExtensionRequests.map((request) => {
+      const ticket = tickets.find((item) => item.id === request.ticket_id);
+      return {
+        ...request,
+        technicianName:
+          techNameById.get(request.technician_id) ?? "Unknown technician",
+        ticketNumber: ticket?.ticket_number ?? "—",
+        ticketTitle: ticket?.title ?? "Ticket",
+      };
+    });
+  }, [hourExtensionRequests, technicians, tickets]);
+
+  const pendingHourExtensions = useMemo(
+    () => hourExtensionRows.filter((request) => request.status === "Pending"),
+    [hourExtensionRows],
+  );
+
+  const recentHourExtensionDecisions = useMemo(
+    () =>
+      hourExtensionRows
+        .filter(
+          (request) =>
+            request.status === "Approved" || request.status === "Denied",
+        )
+        .slice(0, 8),
+    [hourExtensionRows],
+  );
 
   const filteredRows = useMemo(() => {
     let list = [...rows];
@@ -310,14 +472,49 @@ export default function ServiceTicketsPage() {
     );
   }
 
+  function openAssignModal() {
+    if (!assignTechId || selectedIds.length === 0) return;
+    const ticket =
+      selectedIds.length === 1
+        ? tickets.find((t) => t.id === selectedIds[0])
+        : null;
+    const current = ticket?.is_asap
+      ? "Critical"
+      : ticket?.severity || ticket?.priority || "";
+    setAssignPriority(String(current));
+    setAssignMaxHours(
+      ticket?.max_hours != null ? String(ticket.max_hours) : "1",
+    );
+    setAssignError(null);
+    setAssignModalOpen(true);
+  }
+
   function handleBulkAssign() {
+    if (!assignPriority) {
+      setAssignError("Select a severity for this assignment.");
+      return;
+    }
+    const maxHours = Number(assignMaxHours);
+    if (!Number.isInteger(maxHours) || maxHours < 1 || maxHours > 9) {
+      setAssignError("Set a maximum of 1–9 hours before sending to the technician.");
+      return;
+    }
+
+    setAssignError(null);
     startTransition(async () => {
-      const result = await assignTickets(selectedIds, assignTechId);
+      const result = await assignTickets(selectedIds, assignTechId, {
+        priority: assignPriority,
+        maxHours,
+      });
       if (result.success) {
         showToast(result.message);
         setAssignTechId("");
+        setAssignModalOpen(false);
+        setAssignPriority("");
+        setAssignMaxHours("1");
         await loadData();
       } else {
+        setAssignError(result.message);
         showToast(result.message, "error");
       }
     });
@@ -340,6 +537,21 @@ export default function ServiceTicketsPage() {
   function handlePriorityChange(ticketId: string, priority: string) {
     startTransition(async () => {
       const result = await updateTicketPriority(ticketId, priority);
+      if (result.success) {
+        showToast(result.message);
+        await loadData();
+      } else {
+        showToast(result.message, "error");
+      }
+    });
+  }
+
+  function handleHourExtensionReview(
+    request: HourExtensionRow,
+    decision: "Approved" | "Denied",
+  ) {
+    startTransition(async () => {
+      const result = await reviewTicketHourExtension(request.id, decision);
       if (result.success) {
         showToast(result.message);
         await loadData();
@@ -444,6 +656,226 @@ export default function ServiceTicketsPage() {
         />
       </section>
 
+      {unassignedBacklog.length > 0 ? (
+        <section className="card border border-warning/40 bg-base-100 shadow-sm">
+          <div className="card-body gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="card-title text-base">Unassigned backlog</h2>
+                <p className="text-sm text-base-content/70">
+                  Open tickets waiting for a technician. Assign from here or the
+                  queue below.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="badge badge-warning badge-outline gap-1">
+                  {unassignedBacklog.length} open
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-warning btn-sm"
+                  onClick={() => setQueueFilter("unassigned")}
+                >
+                  Show in queue
+                </button>
+              </div>
+            </div>
+            <div className="overflow-x-auto rounded-box border border-base-300">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Ticket</th>
+                    <th>Customer</th>
+                    <th>Requested day</th>
+                    <th>Priority</th>
+                    <th>Opened</th>
+                    <th className="text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unassignedBacklog.slice(0, 8).map((ticket) => (
+                    <tr key={ticket.id}>
+                      <td>
+                        <div className="font-mono text-xs">
+                          {ticket.ticket_number}
+                        </div>
+                        <div className="max-w-xs truncate text-sm font-medium">
+                          {ticket.title}
+                        </div>
+                      </td>
+                      <td className="text-sm">{ticket.customerName}</td>
+                      <td className="text-sm">
+                        {ticket.is_asap ? (
+                          <span className="badge badge-error badge-sm">
+                            ASAP — Emergency
+                          </span>
+                        ) : ticket.locked_service_date ? (
+                          formatLockedServiceDateLabel(
+                            ticket.locked_service_date,
+                          )
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>
+                        <PriorityBadge
+                          priority={normalizePriority(ticket.priority)}
+                        />
+                      </td>
+                      <td className="text-sm text-base-content/60">
+                        {formatDateTime(ticket.opened_at)}
+                      </td>
+                      <td>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => {
+                              setSelectedTicketId(ticket.id);
+                              setSelectedIds([ticket.id]);
+                              setQueueFilter("unassigned");
+                            }}
+                          >
+                            Select to assign
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {unassignedBacklog.length > 8 ? (
+              <p className="text-xs text-base-content/60">
+                Showing 8 of {unassignedBacklog.length}. Use the Unassigned queue
+                filter for the full list.
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="card border border-amber-300/40 bg-base-100 shadow-sm">
+        <div className="card-body gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="card-title text-base">Hour extension requests</h2>
+              <p className="text-sm text-base-content/70">
+                Technicians ask to raise the max hours you set at assignment.
+                Approve to update the ticket cap.
+              </p>
+            </div>
+            <div className="badge badge-outline gap-1">
+              {pendingHourExtensions.length} pending
+            </div>
+          </div>
+
+          {pendingHourExtensions.length === 0 ? (
+            <p className="rounded-box border border-dashed border-base-300 bg-base-200/40 px-4 py-6 text-center text-sm text-base-content/60">
+              No pending hour-extension requests right now.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-box border border-base-300">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Technician</th>
+                    <th>Ticket</th>
+                    <th>Hours</th>
+                    <th>Reason</th>
+                    <th>Submitted</th>
+                    <th className="text-right">Decision</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingHourExtensions.map((request) => (
+                    <tr key={request.id}>
+                      <td className="font-medium">{request.technicianName}</td>
+                      <td>
+                        <div className="font-mono text-xs">
+                          {request.ticketNumber}
+                        </div>
+                        <div className="max-w-xs truncate text-sm text-base-content/70">
+                          {request.ticketTitle}
+                        </div>
+                      </td>
+                      <td>
+                        {request.current_max_hours}h →{" "}
+                        <span className="font-semibold">
+                          {request.requested_hours}h
+                        </span>
+                      </td>
+                      <td className="max-w-xs">
+                        <span className="line-clamp-2 text-sm text-base-content/70">
+                          {request.reason?.trim() || "—"}
+                        </span>
+                      </td>
+                      <td className="text-sm text-base-content/60">
+                        {formatDate(request.created_at)}
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-success btn-sm"
+                            disabled={isPending}
+                            onClick={() =>
+                              handleHourExtensionReview(request, "Approved")
+                            }
+                          >
+                            <Check className="size-4" />
+                            Accept
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-error btn-outline btn-sm"
+                            disabled={isPending}
+                            onClick={() =>
+                              handleHourExtensionReview(request, "Denied")
+                            }
+                          >
+                            <X className="size-4" />
+                            Deny
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {recentHourExtensionDecisions.length > 0 ? (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-base-content/80">
+                Recent decisions
+              </h3>
+              <ul className="space-y-2">
+                {recentHourExtensionDecisions.map((request) => (
+                  <li
+                    key={request.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-box border border-base-300 bg-base-200/40 px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">
+                        {request.technicianName}
+                      </span>
+                      <span className="text-base-content/60">
+                        {" "}
+                        · {request.ticketNumber} · {request.current_max_hours}h →{" "}
+                        {request.requested_hours}h
+                      </span>
+                    </span>
+                    <StatusBadge status={request.status} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
       <div className="flex flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-2">
           {[
@@ -511,27 +943,35 @@ export default function ServiceTicketsPage() {
       {selectedIds.length > 0 ? (
         <div className="flex flex-wrap items-end gap-3 rounded-box border border-primary/30 bg-primary/5 p-3">
           <p className="text-sm font-medium">{selectedIds.length} selected</p>
-          <label className="form-control w-full max-w-xs">
-            <span className="label-text text-xs">Assign to technician</span>
+          <label className="form-control w-full max-w-md">
+            <span className="label-text text-xs">
+              Assign to technician (customer day / ASAP availability first)
+            </span>
             <select
               className="select select-bordered select-sm"
               value={assignTechId}
               onChange={(e) => setAssignTechId(e.target.value)}
             >
               <option value="">Select technician</option>
-              {technicians.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.technician_name}
-                  {t.specialty ? ` · ${t.specialty}` : ""}
-                </option>
-              ))}
+              {techsByAvailability.map(
+                ({ technician: t, nextLabel, hasOpeningOnDay }, index) => (
+                  <option key={t.id} value={t.id}>
+                    {index === 0 ? "★ " : ""}
+                    {t.technician_name}
+                    {t.specialty ? ` · ${t.specialty}` : ""}
+                    {` · ${nextLabel}`}
+                    {hasOpeningOnDay === false ? " · no opening that day" : ""}
+                    {isSkillMatch(t, assignCategory) ? " · skill match" : ""}
+                  </option>
+                ),
+              )}
             </select>
           </label>
           <button
             type="button"
             className="btn btn-primary btn-sm"
             disabled={!assignTechId || isPending}
-            onClick={handleBulkAssign}
+            onClick={openAssignModal}
           >
             {isPending ? (
               <span className="loading loading-spinner loading-sm" />
@@ -964,23 +1404,54 @@ export default function ServiceTicketsPage() {
               </select>
             </FormField>
 
-            <FormField label="Assign technician (skill-ranked)" htmlFor="assigned_technician_id">
+            <FormField
+              label="Assign technician (soonest available)"
+              htmlFor="assigned_technician_id"
+              hint="Sorted by next free schedule slot. Skill matches win ties within the same hour."
+            >
               <select
                 id="assigned_technician_id"
                 name="assigned_technician_id"
                 className="select select-bordered w-full"
-                defaultValue=""
+                value={createAssignTechId}
+                onChange={(e) => setCreateAssignTechId(e.target.value)}
               >
                 <option value="">Unassigned — triage later</option>
-                {rankedTechs.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.technician_name}
-                    {t.specialty ? ` · ${t.specialty}` : ""}
-                    {isSkillMatch(t, selectedCategory) ? " · best match" : ""}
-                  </option>
-                ))}
+                {createTechsByAvailability.map(
+                  ({ technician: t, nextLabel }, index) => (
+                    <option key={t.id} value={t.id}>
+                      {index === 0 ? "★ " : ""}
+                      {t.technician_name}
+                      {t.specialty ? ` · ${t.specialty}` : ""}
+                      {` · next ${nextLabel}`}
+                      {isSkillMatch(t, selectedCategory) ? " · skill match" : ""}
+                    </option>
+                  ),
+                )}
               </select>
             </FormField>
+
+            {createAssignTechId ? (
+              <FormField
+                label="Maximum hours (required when assigning)"
+                htmlFor="max_hours"
+                hint="Technician cannot schedule more than this without an approved hour-extension request."
+              >
+                <select
+                  id="max_hours"
+                  name="max_hours"
+                  className="select select-bordered w-full"
+                  required
+                  defaultValue="1"
+                >
+                  {Array.from({ length: 9 }, (_, i) => i + 1).map((hours) => (
+                    <option key={hours} value={hours}>
+                      {hours} hour{hours === 1 ? "" : "s"}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            ) : null}
 
             <FormField label="Requester" htmlFor="requester_name">
               <input
@@ -1056,6 +1527,149 @@ export default function ServiceTicketsPage() {
           <button type="submit">close</button>
         </form>
       </dialog>
+
+      {assignModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-base-content/40"
+            aria-label="Close assign dialog"
+            onClick={() => {
+              if (!isPending) setAssignModalOpen(false);
+            }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="assign-confirm-title"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-base-300 bg-base-100 p-5 shadow-2xl"
+          >
+            <h3 id="assign-confirm-title" className="text-lg font-semibold">
+              Confirm assignment
+            </h3>
+            <p className="mt-1 text-sm opacity-70">
+              Set severity and the maximum hours the technician may schedule
+              before sending{" "}
+              {selectedIds.length === 1
+                ? "this ticket"
+                : `${selectedIds.length} tickets`}{" "}
+              to{" "}
+              {technicians.find((t) => t.id === assignTechId)?.technician_name ??
+                "the technician"}
+              . Choose max hours first — availability ranking already reflects
+              that duration.
+            </p>
+
+            {selectedIds.length === 1 ? (
+              <div className="mt-3 space-y-2 rounded-lg bg-base-200 px-3 py-2 text-sm">
+                {(() => {
+                  const ticket = tickets.find((t) => t.id === selectedIds[0]);
+                  if (!ticket) return null;
+                  return (
+                    <>
+                      <p>
+                        Customer requested:{" "}
+                        <span className="font-medium">
+                          {ticket.is_asap
+                            ? "ASAP — Emergency (Critical)"
+                            : ticket.locked_service_date
+                              ? formatLockedServiceDateLabel(
+                                  ticket.locked_service_date,
+                                )
+                              : "No day selected"}
+                        </span>
+                      </p>
+                      <p>
+                        Current severity:{" "}
+                        <span className="font-medium">
+                          {ticket.severity ?? ticket.priority ?? "Medium"}
+                        </span>
+                        . Max hours currently:{" "}
+                        <span className="font-medium">
+                          {ticket.max_hours ?? "not set"}
+                        </span>
+                        .
+                      </p>
+                    </>
+                  );
+                })()}
+              </div>
+            ) : null}
+
+            {assignError ? (
+              <div className="alert alert-error mt-3 py-2 text-sm">
+                <span>{assignError}</span>
+              </div>
+            ) : null}
+
+            <label className="form-control mt-4 w-full">
+              <span className="label-text text-sm font-medium">
+                Severity (required)
+              </span>
+              <select
+                className="select select-bordered w-full"
+                value={assignPriority}
+                onChange={(e) => setAssignPriority(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select severity
+                </option>
+                <option value="Critical">Critical</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+              <span className="label-text-alt mt-1 opacity-60">
+                Updates ticket priority and severity for SLA and dispatch.
+              </span>
+            </label>
+
+            <label className="form-control mt-3 w-full">
+              <span className="label-text text-sm font-medium">
+                Maximum hours (required)
+              </span>
+              <select
+                className="select select-bordered w-full"
+                value={assignMaxHours}
+                onChange={(e) => setAssignMaxHours(e.target.value)}
+              >
+                {Array.from({ length: 9 }, (_, i) => i + 1).map((hours) => (
+                  <option key={hours} value={hours}>
+                    {hours} hour{hours === 1 ? "" : "s"}
+                  </option>
+                ))}
+              </select>
+              <span className="label-text-alt mt-1 opacity-60">
+                Technician cannot schedule more than this without an approved
+                extension request.
+              </span>
+            </label>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={isPending}
+                onClick={() => setAssignModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={isPending || !assignPriority}
+                onClick={handleBulkAssign}
+              >
+                {isPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Send to technician"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

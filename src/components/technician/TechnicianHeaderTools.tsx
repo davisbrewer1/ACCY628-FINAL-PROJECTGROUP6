@@ -13,12 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import {
-  daysOpen,
-  getWorkOutstandingDueDays,
-  isWorkOutstandingPastDue,
-} from "@/lib/calculations";
-import { isOpenTicket } from "@/lib/dashboard-stats";
+import { buildPastDueTicketAlerts } from "@/lib/past-due-alerts";
 import type { ServiceTicket } from "@/lib/types";
 import { formatDistanceToNow } from "date-fns";
 
@@ -166,31 +161,6 @@ interface TechnicianHeaderToolsProps {
   technicianId?: string | null;
 }
 
-function buildOverdueBody(ticket: ServiceTicket): string {
-  const opened = ticket.opened_at ?? ticket.created_at;
-  const openDays = daysOpen(opened) ?? 0;
-  const dueDays = getWorkOutstandingDueDays(ticket.priority);
-  const parts = [
-    `${ticket.ticket_number} — ${ticket.title}`,
-    `${ticket.priority ?? "Medium"} priority · ${ticket.status ?? "Open"}`,
-    dueDays === 0
-      ? `Due immediately · open ${openDays === 0 ? "today" : `${openDays} day${openDays === 1 ? "" : "s"}`}`
-      : `Due within ${dueDays} day${dueDays === 1 ? "" : "s"} · open ${openDays} day${openDays === 1 ? "" : "s"}`,
-  ];
-
-  if (ticket.requester_name) {
-    parts.push(`Requester: ${ticket.requester_name}`);
-  }
-  if (ticket.location) {
-    parts.push(`Location: ${ticket.location}`);
-  }
-  if (ticket.cybersecurity_incident) {
-    parts.push("Security incident");
-  }
-
-  return parts.join(" · ");
-}
-
 export function TechnicianHeaderTools({
   technicianId,
 }: TechnicianHeaderToolsProps) {
@@ -226,62 +196,16 @@ export function TechnicianHeaderTools({
   }, [technicianId]);
 
   const overdueNotifications = useMemo((): NotificationItem[] => {
-    const now = Date.now();
-    return assignedTickets
-      .filter((ticket) => isOpenTicket(ticket.status))
-      .filter((ticket) =>
-        isWorkOutstandingPastDue({
-          status: ticket.status,
-          priority: ticket.priority,
-          openedAt: ticket.opened_at,
-          createdAt: ticket.created_at,
-        }),
-      )
-      .map((ticket) => {
-        const opened = ticket.opened_at ?? ticket.created_at;
-        const dueDays = getWorkOutstandingDueDays(ticket.priority);
-        const dueAt = new Date(
-          new Date(opened).getTime() + dueDays * 24 * 60 * 60 * 1000,
-        );
-        const overdueHours = Math.max(
-          0,
-          (now - dueAt.getTime()) / (1000 * 60 * 60),
-        );
-        return {
-          id: `overdue-${ticket.id}`,
-          title: "Work Outstanding Past Due",
-          body: buildOverdueBody(ticket),
-          createdAt: dueAt.toISOString(),
-          security: Boolean(ticket.cybersecurity_incident),
-          source: "overdue" as const,
-          priority: ticket.priority ?? "Medium",
-          overdueHours,
-        };
-      });
-  }, [assignedTickets]);
-
-  const assignmentNotifications = useMemo((): NotificationItem[] => {
-    return assignedTickets
-      .filter((ticket) => isOpenTicket(ticket.status))
-      .filter(
-        (ticket) =>
-          ticket.status === "New" ||
-          ticket.status === "Assigned" ||
-          Boolean(ticket.cybersecurity_incident),
-      )
-      .slice(0, 8)
-      .map((ticket) => ({
-        id: `assign-${ticket.id}`,
-        title: ticket.cybersecurity_incident
-          ? `Security work assigned: ${ticket.title}`
-          : `New assignment: ${ticket.title}`,
-        body: `${ticket.ticket_number} · ${ticket.priority ?? "Medium"} priority · ${ticket.status}`,
-        createdAt: ticket.opened_at ?? ticket.created_at,
-        security: Boolean(ticket.cybersecurity_incident),
-        source: "assignment" as const,
-        priority: ticket.priority ?? "Medium",
-        overdueHours: 0,
-      }));
+    return buildPastDueTicketAlerts(assignedTickets).map((alert) => ({
+      id: `overdue-${alert.ticketId}`,
+      title: "Work Outstanding Past Due",
+      body: alert.technicianBody,
+      createdAt: alert.dueAt,
+      security: alert.security,
+      source: "overdue" as const,
+      priority: alert.priority,
+      overdueHours: alert.overdueHours,
+    }));
   }, [assignedTickets]);
 
   const notifications = useMemo((): NotificationItem[] => {
@@ -294,9 +218,8 @@ export function TechnicianHeaderTools({
         overdueHours: 0,
       })),
       ...overdueNotifications,
-      ...assignmentNotifications,
     ].sort(compareNotifications);
-  }, [assignmentNotifications, overdueNotifications]);
+  }, [overdueNotifications]);
 
   const unreadCount = notifications.length;
 

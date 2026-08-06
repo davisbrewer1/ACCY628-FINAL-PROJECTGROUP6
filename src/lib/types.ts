@@ -248,6 +248,30 @@ export interface ServiceTicket {
   invoice_status: string | null;
   scheduled_start: string | null;
   scheduled_window: string | null;
+  /** Manager-set max hours the tech may place on the schedule (1–9). */
+  max_hours?: number | null;
+  /** Customer selected ASAP-Emergency (Critical + next-available assign). */
+  is_asap?: boolean | null;
+  /** Locked service day from the customer (null when ASAP). */
+  locked_service_date?: string | null;
+  /** Original customer-requested day (kept across reschedules). */
+  original_requested_date?: string | null;
+  /** Tech placed the visit on the day after the locked service date. */
+  scheduled_off_requested_day?: boolean | null;
+  /** Customer rescheduled; ticket returned to Needs scheduling. */
+  customer_rescheduled?: boolean | null;
+}
+
+export interface TicketHourExtensionRequest {
+  id: string;
+  ticket_id: string;
+  technician_id: string;
+  current_max_hours: number;
+  requested_hours: number;
+  reason: string | null;
+  status: "Pending" | "Approved" | "Denied" | "Cancelled" | string;
+  created_at: string;
+  reviewed_at: string | null;
 }
 
 export interface WorkEntry {
@@ -323,7 +347,11 @@ export type NotificationType =
   | "customer_reply"
   | "work_approval"
   | "manager_message"
-  | "upcoming_task";
+  | "upcoming_task"
+  | "work_past_due"
+  | "schedule_priority_override"
+  | "ticket_unassigned"
+  | "customer_reschedule";
 
 export interface AppNotification {
   id: string;
