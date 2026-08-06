@@ -62,12 +62,6 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "service_manager", "billing"],
   },
   {
-    href: "/time-costs",
-    label: "Expense Tracker",
-    icon: "Receipt",
-    roles: ["technician"],
-  },
-  {
     href: "/billing",
     label: "Billing",
     icon: "Receipt",
@@ -93,10 +87,22 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["administrator", "billing", "client_admin"],
   },
   {
+    href: "/technician",
+    label: "My Work",
+    icon: "Wrench",
+    roles: ["technician"],
+  },
+  {
     href: "/hardware",
     label: "Hardware Assets",
     icon: "Monitor",
     roles: ["administrator", "technician", "client_admin"],
+  },
+  {
+    href: "/time-costs",
+    label: "Expense Tracker",
+    icon: "Receipt",
+    roles: ["technician"],
   },
   {
     href: "/cybersecurity",
@@ -109,12 +115,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "AI Governance",
     icon: "Brain",
     roles: ["administrator", "executive", "client_admin"],
-  },
-  {
-    href: "/technician",
-    label: "My Work",
-    icon: "Wrench",
-    roles: ["technician"],
   },
   {
     href: "/portal",

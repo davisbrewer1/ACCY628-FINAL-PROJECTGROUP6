@@ -28,11 +28,15 @@ const MANAGER_MESSAGES = [
   },
 ] as const;
 
+const DISMISSED_MANAGER_KEY = "nexus-dismissed-manager-messages";
+
 type NotificationItem = {
   id: string;
   title: string;
   body: string;
   createdAt: string;
+  /** Milliseconds since epoch used for assignment age sorting. */
+  receivedAtMs: number;
   security: boolean;
   source: "manager" | "assignment" | "overdue";
   priority: string;
@@ -55,33 +59,58 @@ function priorityRank(priority: string | null | undefined): number {
   }
 }
 
-/** Higher score = more important / time-sensitive; shown first. */
-function notificationImportance(item: NotificationItem): number {
-  let score = priorityRank(item.priority) * 100;
-
-  if (item.security) score += 1000;
-  if (item.source === "overdue") {
-    score += 700 + Math.min(item.overdueHours, 24 * 14);
-  } else if (item.source === "assignment") {
-    score += 200;
-  } else if (item.source === "manager") {
-    score += 120;
-  }
-
-  return score;
+function toTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
 }
 
-function compareNotifications(a: NotificationItem, b: NotificationItem): number {
-  const importanceDiff =
-    notificationImportance(b) - notificationImportance(a);
-  if (importanceDiff !== 0) return importanceDiff;
+/** When the tech received / was given the assignment (earliest reliable timestamp). */
+function ticketReceivedAtMs(ticket: ServiceTicket): number {
+  const created = toTimestamp(ticket.created_at);
+  const opened = toTimestamp(ticket.opened_at);
+  if (created != null && opened != null) return Math.min(created, opened);
+  return created ?? opened ?? 0;
+}
 
-  if (a.source === "overdue" && b.source === "overdue") {
-    const overdueDiff = b.overdueHours - a.overdueHours;
-    if (overdueDiff !== 0) return overdueDiff;
+function isCompletedTicket(status: string | null | undefined): boolean {
+  const value = (status ?? "").trim().toLowerCase();
+  return value === "completed" || value === "closed" || value === "cancelled";
+}
+
+/** Past-due items: most overdue first, then higher priority. */
+function comparePastDue(a: NotificationItem, b: NotificationItem): number {
+  const overdueDiff = b.overdueHours - a.overdueHours;
+  if (overdueDiff !== 0) return overdueDiff;
+
+  const priorityDiff = priorityRank(b.priority) - priorityRank(a.priority);
+  if (priorityDiff !== 0) return priorityDiff;
+
+  return a.receivedAtMs - b.receivedAtMs;
+}
+
+function ticketIdFromNotification(item: NotificationItem): string | null {
+  if (item.id.startsWith("overdue-")) return item.id.slice("overdue-".length);
+  if (item.id.startsWith("assign-")) return item.id.slice("assign-".length);
+  return null;
+}
+
+function readDismissedManagerIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(DISMISSED_MANAGER_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((id): id is string => typeof id === "string"));
+  } catch {
+    return new Set();
   }
+}
 
-  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+function writeDismissedManagerIds(ids: Set<string>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(DISMISSED_MANAGER_KEY, JSON.stringify([...ids]));
 }
 
 interface TechnicianHeaderToolsProps {
@@ -118,6 +147,13 @@ export function TechnicianHeaderTools({
 }: TechnicianHeaderToolsProps) {
   const [panelOpen, setPanelOpen] = useState(false);
   const [assignedTickets, setAssignedTickets] = useState<ServiceTicket[]>([]);
+  const [dismissedManagerIds, setDismissedManagerIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  useEffect(() => {
+    setDismissedManagerIds(readDismissedManagerIds());
+  }, []);
 
   useEffect(() => {
     if (!technicianId) return;
@@ -128,7 +164,7 @@ export function TechnicianHeaderTools({
         .from("service_tickets")
         .select("*")
         .eq("assigned_technician_id", technicianId)
-        .order("opened_at", { ascending: false })
+        .order("created_at", { ascending: true })
         .limit(100);
       setAssignedTickets(data ?? []);
     }
@@ -147,10 +183,27 @@ export function TechnicianHeaderTools({
     };
   }, [technicianId]);
 
+  function dismissManagerMessage(id: string) {
+    setDismissedManagerIds((current) => {
+      const next = new Set(current);
+      next.add(id);
+      writeDismissedManagerIds(next);
+      return next;
+    });
+  }
+
+  const openTickets = useMemo(
+    () =>
+      assignedTickets.filter(
+        (ticket) =>
+          isOpenTicket(ticket.status) && !isCompletedTicket(ticket.status),
+      ),
+    [assignedTickets],
+  );
+
   const overdueNotifications = useMemo((): NotificationItem[] => {
     const now = Date.now();
-    return assignedTickets
-      .filter((ticket) => isOpenTicket(ticket.status))
+    return openTickets
       .filter((ticket) =>
         isWorkOutstandingPastDue({
           status: ticket.status,
@@ -160,6 +213,7 @@ export function TechnicianHeaderTools({
         }),
       )
       .map((ticket) => {
+        const receivedAtMs = ticketReceivedAtMs(ticket);
         const opened = ticket.opened_at ?? ticket.created_at;
         const dueDays = getWorkOutstandingDueDays(ticket.priority);
         const dueAt = new Date(
@@ -173,52 +227,75 @@ export function TechnicianHeaderTools({
           id: `overdue-${ticket.id}`,
           title: "Work Outstanding Past Due",
           body: buildOverdueBody(ticket),
-          createdAt: dueAt.toISOString(),
+          createdAt: new Date(receivedAtMs).toISOString(),
+          receivedAtMs,
           security: Boolean(ticket.cybersecurity_incident),
           source: "overdue" as const,
           priority: ticket.priority ?? "Medium",
           overdueHours,
         };
       });
-  }, [assignedTickets]);
+  }, [openTickets]);
 
   const assignmentNotifications = useMemo((): NotificationItem[] => {
-    return assignedTickets
-      .filter((ticket) => isOpenTicket(ticket.status))
+    return openTickets
       .filter(
         (ticket) =>
-          ticket.status === "New" ||
-          ticket.status === "Assigned" ||
-          Boolean(ticket.cybersecurity_incident),
+          ticket.status === "New" || ticket.status === "Assigned",
       )
-      .slice(0, 8)
-      .map((ticket) => ({
-        id: `assign-${ticket.id}`,
-        title: ticket.cybersecurity_incident
-          ? `Security work assigned: ${ticket.title}`
-          : `New assignment: ${ticket.title}`,
-        body: `${ticket.ticket_number} · ${ticket.priority ?? "Medium"} priority · ${ticket.status}`,
-        createdAt: ticket.opened_at ?? ticket.created_at,
-        security: Boolean(ticket.cybersecurity_incident),
-        source: "assignment" as const,
-        priority: ticket.priority ?? "Medium",
-        overdueHours: 0,
-      }));
-  }, [assignedTickets]);
+      .map((ticket) => {
+        const receivedAtMs = ticketReceivedAtMs(ticket);
+        return {
+          id: `assign-${ticket.id}`,
+          title: ticket.cybersecurity_incident
+            ? `Security work assigned: ${ticket.title}`
+            : `New assignment: ${ticket.title}`,
+          body: `${ticket.ticket_number} · ${ticket.priority ?? "Medium"} priority · ${ticket.status}`,
+          createdAt: new Date(receivedAtMs).toISOString(),
+          receivedAtMs,
+          security: Boolean(ticket.cybersecurity_incident),
+          source: "assignment" as const,
+          priority: ticket.priority ?? "Medium",
+          overdueHours: 0,
+        };
+      });
+  }, [openTickets]);
 
   const notifications = useMemo((): NotificationItem[] => {
-    return [
-      ...MANAGER_MESSAGES.map((message) => ({
-        ...message,
-        security: false,
-        source: "manager" as const,
-        priority: "Medium",
-        overdueHours: 0,
-      })),
-      ...overdueNotifications,
-      ...assignmentNotifications,
-    ].sort(compareNotifications);
-  }, [assignmentNotifications, overdueNotifications]);
+    const pastDueTicketIds = new Set(
+      overdueNotifications
+        .map((item) => ticketIdFromNotification(item))
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    const pastDue = [...overdueNotifications].sort(comparePastDue);
+
+    const managerMessages = MANAGER_MESSAGES.filter(
+      (message) => !dismissedManagerIds.has(message.id),
+    )
+      .map((message) => {
+        const receivedAtMs = toTimestamp(message.createdAt) ?? 0;
+        return {
+          ...message,
+          receivedAtMs,
+          security: false,
+          source: "manager" as const,
+          priority: "Medium",
+          overdueHours: 0,
+        };
+      })
+      .sort((a, b) => b.receivedAtMs - a.receivedAtMs);
+
+    // Oldest received first → newest submissions at the bottom.
+    const regularAssignments = assignmentNotifications
+      .filter((item) => {
+        const ticketId = ticketIdFromNotification(item);
+        return !ticketId || !pastDueTicketIds.has(ticketId);
+      })
+      .sort((a, b) => a.receivedAtMs - b.receivedAtMs);
+
+    return [...pastDue, ...managerMessages, ...regularAssignments];
+  }, [assignmentNotifications, dismissedManagerIds, overdueNotifications]);
 
   const unreadCount = notifications.length;
 
@@ -254,7 +331,7 @@ export function TechnicianHeaderTools({
               <div>
                 <p className="text-sm font-semibold text-white">Notifications</p>
                 <p className="text-xs text-slate-400">
-                  Ranked by risk and time pressure — security and past-due first
+                  Past due, then manager messages, then oldest assignments
                 </p>
               </div>
               <button
@@ -288,26 +365,38 @@ export function TechnicianHeaderTools({
                       <h3 className="text-sm font-semibold text-white">
                         {item.title}
                       </h3>
-                      {item.source === "overdue" ? (
-                        <span className="badge badge-sm badge-warning shrink-0">
-                          Past due
-                        </span>
-                      ) : item.security ? (
-                        <span className="badge badge-sm badge-error gap-1 shrink-0">
-                          <Shield className="size-3" aria-hidden="true" />
-                          Security
-                        </span>
-                      ) : item.source === "manager" ? (
-                        <span className="badge badge-sm badge-info shrink-0">
-                          Manager
-                        </span>
-                      ) : (
-                        <span className="badge badge-sm shrink-0">Assignment</span>
-                      )}
+                      <div className="flex shrink-0 items-center gap-1">
+                        {item.source === "overdue" ? (
+                          <span className="badge badge-sm badge-warning">
+                            Past due
+                          </span>
+                        ) : item.security ? (
+                          <span className="badge badge-sm badge-error gap-1">
+                            <Shield className="size-3" aria-hidden="true" />
+                            Security
+                          </span>
+                        ) : item.source === "manager" ? (
+                          <span className="badge badge-sm badge-info">
+                            Manager
+                          </span>
+                        ) : (
+                          <span className="badge badge-sm">Assignment</span>
+                        )}
+                        {item.source === "manager" ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs btn-square text-slate-400 hover:text-white"
+                            aria-label="Dismiss manager message"
+                            onClick={() => dismissManagerMessage(item.id)}
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                     <p className="mt-1 text-xs text-slate-300">{item.body}</p>
                     <p className="mt-2 text-[11px] text-slate-500">
-                      {formatDistanceToNow(new Date(item.createdAt), {
+                      {formatDistanceToNow(new Date(item.receivedAtMs), {
                         addSuffix: true,
                       })}
                     </p>

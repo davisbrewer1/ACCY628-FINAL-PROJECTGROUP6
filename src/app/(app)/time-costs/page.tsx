@@ -7,6 +7,7 @@ import {
   updateWorkEntryApproval,
 } from "@/app/actions/work-entries";
 import { EmptyState } from "@/components/EmptyState";
+import { ApprovalManagerPanel } from "@/components/ApprovalManagerPanel";
 import { ExpenseTracker } from "@/components/ExpenseTracker";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
@@ -74,7 +75,7 @@ export default function TimeCostsPage() {
       supabase
         .from("service_tickets")
         .select("*")
-        .order("opened_at", { ascending: false }),
+        .order("created_at", { ascending: false }),
     ]);
     const techRows = tech.data ?? [];
     const ticketRows = t.data ?? [];
@@ -93,7 +94,7 @@ export default function TimeCostsPage() {
     }
 
     const open = ticketRows.filter((row) => isOpenTicket(row.status));
-    const first = open[0] ?? ticketRows[0];
+    const first = ticketRows[0] ?? open[0];
     setExpenseTicketId(first?.id ?? "");
     setLoading(false);
   }
@@ -168,9 +169,18 @@ export default function TimeCostsPage() {
   }, [view, rows, pending, ready]);
 
   const expenseTicketOptions = useMemo(() => {
-    const open = tickets.filter((ticket) => isOpenTicket(ticket.status));
-    const closed = tickets.filter((ticket) => !isOpenTicket(ticket.status));
-    return [...open, ...closed];
+    const receivedAt = (ticket: ServiceTicket) => {
+      const created = ticket.created_at
+        ? new Date(ticket.created_at).getTime()
+        : 0;
+      const opened = ticket.opened_at
+        ? new Date(ticket.opened_at).getTime()
+        : 0;
+      // Prefer created_at as received time; fall back to opened_at.
+      return created || opened || 0;
+    };
+
+    return [...tickets].sort((a, b) => receivedAt(b) - receivedAt(a));
   }, [tickets]);
 
   const selectedExpenseTicket = tickets.find(
@@ -455,6 +465,8 @@ export default function TimeCostsPage() {
           </div>
         </div>
       )}
+
+      <ApprovalManagerPanel tickets={tickets} technicians={technicians} />
 
       {expenseSection}
     </div>

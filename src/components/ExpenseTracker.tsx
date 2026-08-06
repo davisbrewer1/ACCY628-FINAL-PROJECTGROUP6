@@ -18,10 +18,14 @@ import {
   updateTicketExpense,
 } from "@/app/actions/ticket-expenses";
 import { useToast } from "@/components/Toast";
+import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { parseReceiptPaths } from "@/lib/ticket-expenses";
 import {
+  DEFAULT_EXPENSE_TAG,
+  EXPENSE_TAGS,
   EXPENSE_TYPES,
+  type ExpenseTag,
   type ExpenseType,
   type TicketExpense,
 } from "@/lib/types";
@@ -89,6 +93,8 @@ export function ExpenseTracker({
   const [busy, setBusy] = useState(false);
 
   const [type, setType] = useState<ExpenseType>("Travel");
+  const [expenseTag, setExpenseTag] =
+    useState<ExpenseTag>(DEFAULT_EXPENSE_TAG);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(todayIsoDate);
@@ -108,6 +114,8 @@ export function ExpenseTracker({
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editType, setEditType] = useState<ExpenseType>("Travel");
+  const [editExpenseTag, setEditExpenseTag] =
+    useState<ExpenseTag>(DEFAULT_EXPENSE_TAG);
   const [editAmount, setEditAmount] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editDate, setEditDate] = useState(todayIsoDate);
@@ -174,6 +182,7 @@ export function ExpenseTracker({
 
   function resetForm() {
     setType("Travel");
+    setExpenseTag(DEFAULT_EXPENSE_TAG);
     setAmount("");
     setDescription("");
     setDate(todayIsoDate());
@@ -210,6 +219,7 @@ export function ExpenseTracker({
       ticketId,
       technicianId,
       type,
+      expenseTag,
       amount: parsed,
       description,
       date,
@@ -234,6 +244,9 @@ export function ExpenseTracker({
   function startEdit(row: TicketExpense) {
     setEditingId(row.id);
     setEditType((row.type as ExpenseType) || "Miscellaneous");
+    setEditExpenseTag(
+      (row.expense_tag as ExpenseTag) || DEFAULT_EXPENSE_TAG,
+    );
     setEditAmount(String(row.amount));
     setEditDescription(row.description ?? "");
     setEditDate(row.date?.slice(0, 10) || todayIsoDate());
@@ -250,6 +263,7 @@ export function ExpenseTracker({
     const result = await updateTicketExpense({
       expenseId,
       type: editType,
+      expenseTag: editExpenseTag,
       amount: parsed,
       description: editDescription,
       date: editDate,
@@ -339,7 +353,7 @@ export function ExpenseTracker({
           </p>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
           <label className="form-control lg:col-span-1">
             <span className="label-text mb-1 text-xs">Type</span>
             <select
@@ -354,6 +368,27 @@ export function ExpenseTracker({
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="form-control lg:col-span-1">
+            <span className="label-text mb-1 text-xs">Billing</span>
+            <select
+              className="select select-bordered select-sm"
+              value={expenseTag}
+              disabled={busy}
+              onChange={(e) => setExpenseTag(e.target.value as ExpenseTag)}
+            >
+              {EXPENSE_TAGS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            {expenseTag === "Billable to Customer" ? (
+              <span className="mt-1 text-[11px] text-base-content/55">
+                Sends to management for invoice approval
+              </span>
+            ) : null}
           </label>
 
           <label className="form-control">
@@ -394,7 +429,7 @@ export function ExpenseTracker({
           </label>
         </div>
 
-        <div className="rounded-box border border-dashed border-base-300 bg-base-200/40 p-3">
+        <div className="expense-receipt-panel rounded-box border border-dashed border-base-300 bg-base-200/40 p-3">
           <div className="mb-2 flex items-center gap-2">
             <Camera className="size-4 text-base-content/60" aria-hidden="true" />
             <p className="text-sm font-medium">Receipt photos</p>
@@ -421,7 +456,7 @@ export function ExpenseTracker({
                 {receipts.map((item) => (
                   <div
                     key={item.id}
-                    className="relative w-28 overflow-hidden rounded-box border border-base-300 bg-base-100"
+                    className="expense-receipt-tile relative w-28 overflow-hidden rounded-box border border-base-300 bg-base-100"
                   >
                     {item.previewUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -474,7 +509,7 @@ export function ExpenseTracker({
           ) : (
             <button
               type="button"
-              className="flex w-full flex-col items-center justify-center gap-2 rounded-box border border-base-300 bg-base-100 px-4 py-6 text-center transition hover:border-primary/50 hover:bg-primary/5"
+              className="expense-receipt-dropzone flex w-full flex-col items-center justify-center gap-2 rounded-box border border-base-300 bg-base-100 px-4 py-6 text-center transition hover:border-primary/50 hover:bg-primary/5"
               disabled={busy}
               onClick={() => receiptRef.current?.click()}
             >
@@ -519,6 +554,8 @@ export function ExpenseTracker({
               <thead>
                 <tr>
                   <th>Type</th>
+                  <th>Billing</th>
+                  <th>Approval</th>
                   <th>Amount</th>
                   <th>Description</th>
                   <th>Date</th>
@@ -551,6 +588,28 @@ export function ExpenseTracker({
                               </option>
                             ))}
                           </select>
+                        </td>
+                        <td>
+                          <select
+                            className="select select-bordered select-xs min-w-[10rem]"
+                            value={editExpenseTag}
+                            onChange={(e) =>
+                              setEditExpenseTag(e.target.value as ExpenseTag)
+                            }
+                          >
+                            {EXPENSE_TAGS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          {row.approval_status ? (
+                            <StatusBadge status={row.approval_status} />
+                          ) : (
+                            <span className="text-base-content/40">—</span>
+                          )}
                         </td>
                         <td>
                           <input
@@ -621,6 +680,18 @@ export function ExpenseTracker({
                         <span className="whitespace-nowrap">
                           {icon} {row.type}
                         </span>
+                      </td>
+                      <td className="max-w-[12rem]">
+                        <span className="text-xs">
+                          {row.expense_tag || DEFAULT_EXPENSE_TAG}
+                        </span>
+                      </td>
+                      <td>
+                        {row.approval_status ? (
+                          <StatusBadge status={row.approval_status} />
+                        ) : (
+                          <span className="text-base-content/40">—</span>
+                        )}
                       </td>
                       <td className="font-medium">
                         {formatCurrency(row.amount)}
