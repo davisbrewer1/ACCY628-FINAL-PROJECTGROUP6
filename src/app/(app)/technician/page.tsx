@@ -1457,7 +1457,6 @@ export default function TechnicianWorkspacePage() {
             <p className="mt-1 text-3xl font-semibold text-white">
               {payPeriodHours.toFixed(1)}
             </p>
-            <p className="mt-1 text-xs text-slate-500">8h x each weekday</p>
           </div>
           <div className="rounded-xl border border-emerald-400/20 bg-slate-950/50 p-4">
             <p className="text-sm text-slate-300">Billable hours (clients)</p>
