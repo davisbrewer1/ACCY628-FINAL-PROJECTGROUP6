@@ -199,7 +199,6 @@ export default function AiGovernancePage() {
                     <th>Active</th>
                     <th>Utilization</th>
                     <th>Monthly cost</th>
-                    <th>Health</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -220,7 +219,6 @@ export default function AiGovernancePage() {
                           (p.monthly_subscription_cost ?? 0) + (p.monthly_api_cost ?? 0),
                         )}
                       </td>
-                      <td>{p.health_score ?? "—"}</td>
                       <td><StatusBadge status={p.status} /></td>
                     </tr>
                   ))}

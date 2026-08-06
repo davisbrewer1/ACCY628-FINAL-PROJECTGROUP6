@@ -5,10 +5,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -22,14 +18,6 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { formatDate, formatPercent } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import type { Customer, SecurityAlert, SecurityScore } from "@/lib/types";
-
-const CHART_COLORS = ["#2563eb", "#059669", "#d97706", "#dc2626", "#0891b2", "#64748b"];
-
-function scoreTone(score: number): "success" | "warning" | "danger" {
-  if (score >= 80) return "success";
-  if (score >= 60) return "warning";
-  return "danger";
-}
 
 export default function CybersecurityPage() {
   const [loading, setLoading] = useState(true);
@@ -57,13 +45,6 @@ export default function CybersecurityPage() {
     () => new Map(customers.map((c) => [c.id, c.customer_name])),
     [customers],
   );
-
-  const avgHealth = useMemo(() => {
-    if (scores.length === 0) return null;
-    return Math.round(
-      scores.reduce((sum, s) => sum + s.health_score, 0) / scores.length,
-    );
-  }, [scores]);
 
   const latestByCustomer = useMemo(() => {
     const map = new Map<string, SecurityScore>();
@@ -101,22 +82,6 @@ export default function CybersecurityPage() {
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
   }, [alerts]);
 
-  const healthDistribution = useMemo(() => {
-    const buckets = [
-      { name: "80–100", min: 80, max: 100, value: 0 },
-      { name: "60–79", min: 60, max: 79, value: 0 },
-      { name: "40–59", min: 40, max: 59, value: 0 },
-      { name: "Below 40", min: 0, max: 39, value: 0 },
-    ];
-    for (const score of latestByCustomer) {
-      const bucket = buckets.find(
-        (b) => score.health_score >= b.min && score.health_score <= b.max,
-      );
-      if (bucket) bucket.value += 1;
-    }
-    return buckets.filter((b) => b.value > 0);
-  }, [latestByCustomer]);
-
   const coverageChart = useMemo(() => {
     if (!metricAverages) return [];
     return [
@@ -140,15 +105,10 @@ export default function CybersecurityPage() {
     <div className="space-y-6">
       <PageHeader
         title="Cybersecurity monitoring"
-        description="Technology health scores, compliance metrics, and actionable security alerts."
+        description="Compliance metrics and actionable security alerts."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard
-          title="Avg. health score"
-          value={avgHealth ?? "—"}
-          tone={avgHealth != null ? scoreTone(avgHealth) : "default"}
-        />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Customers assessed" value={latestByCustomer.length} tone="info" />
         <StatCard title="Open alerts" value={alerts.length} tone={alerts.length > 0 ? "warning" : "success"} />
         <StatCard
@@ -173,24 +133,6 @@ export default function CybersecurityPage() {
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <ChartCard title="Health score distribution">
-          {healthDistribution.length === 0 ? (
-            <EmptyState title="No scores" description="Security assessments will appear once health scores are recorded." />
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie data={healthDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
-                  {healthDistribution.map((_, index) => (
-                    <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
-
         <ChartCard title="Coverage metrics (avg.)">
           {coverageChart.length === 0 || coverageChart.every((d) => d.value === 0) ? (
             <EmptyState title="No metrics" description="Endpoint, patch, and MFA coverage will display here." />
@@ -225,16 +167,15 @@ export default function CybersecurityPage() {
 
         <div className="card border bg-base-100 shadow-sm">
           <div className="card-body">
-            <h2 className="card-title text-base">Customer health scores</h2>
+            <h2 className="card-title text-base">Customer assessments</h2>
             {latestByCustomer.length === 0 ? (
-              <EmptyState title="No assessments" description="Per-customer security scores will display here." />
+              <EmptyState title="No assessments" description="Per-customer security assessments will display here." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="table table-sm">
                   <thead>
                     <tr>
                       <th>Customer</th>
-                      <th>Score</th>
                       <th>Firewall</th>
                       <th>Last assessed</th>
                     </tr>
@@ -243,11 +184,6 @@ export default function CybersecurityPage() {
                     {latestByCustomer.map((score) => (
                       <tr key={score.id}>
                         <td>{customerMap.get(score.customer_id) ?? "Unknown"}</td>
-                        <td>
-                          <span className={`font-semibold ${score.health_score >= 80 ? "text-success" : score.health_score >= 60 ? "text-warning" : "text-error"}`}>
-                            {score.health_score}
-                          </span>
-                        </td>
                         <td>{score.firewall_status ?? "—"}</td>
                         <td>{formatDate(score.last_assessed_at)}</td>
                       </tr>

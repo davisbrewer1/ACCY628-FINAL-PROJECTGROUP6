@@ -157,9 +157,6 @@ export default function PortalPage() {
     0,
   );
 
-  const healthScore =
-    securityScore?.health_score ?? customer?.technology_health_score ?? null;
-
   function handleSupportRequest(formData: FormData) {
     if (!profile?.customer_id) return;
     if (profile.full_name) {
@@ -209,7 +206,7 @@ export default function PortalPage() {
     <div className="space-y-6">
       <PageHeader
         title="Client admin portal"
-        description={`${customer?.customer_name ?? "Your organization"} — contracts, assets, security health, and support.`}
+        description={`${customer?.customer_name ?? "Your organization"} — contracts, assets, security, and support.`}
         action={
           <button
             type="button"
@@ -226,20 +223,7 @@ export default function PortalPage() {
 
       <PortalContractLockBanner locked={portalLocked} />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard
-          title="Technology health"
-          value={healthScore ?? "—"}
-          tone={
-            healthScore == null
-              ? "default"
-              : healthScore >= 80
-                ? "success"
-                : healthScore >= 60
-                  ? "warning"
-                  : "danger"
-          }
-        />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Active contracts" value={activeContracts.length} />
         <StatCard title="Hardware assets" value={assets.length} tone="info" />
         <StatCard title="Assets with alerts" value={assetsWithAlerts} tone={assetsWithAlerts > 0 ? "warning" : "success"} />
@@ -389,9 +373,8 @@ export default function PortalPage() {
       {securityScore ? (
         <div className="card border bg-base-100 shadow-sm">
           <div className="card-body">
-            <h2 className="card-title text-base">Security health details</h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-              <StatCard title="Health score" value={securityScore.health_score} />
+            <h2 className="card-title text-base">Security details</h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard title="Endpoint coverage" value={formatPercent(securityScore.endpoint_coverage_pct)} />
               <StatCard title="Patch compliance" value={formatPercent(securityScore.patch_compliance_pct)} />
               <StatCard title="Encryption" value={formatPercent(securityScore.encryption_coverage_pct)} />

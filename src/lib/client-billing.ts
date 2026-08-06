@@ -1,7 +1,12 @@
 import type { Invoice } from "@/lib/types";
 
 /** Client-facing invoice status labels from acceptance criteria. */
-export type ClientInvoiceStatus = "Paid" | "Unpaid" | "Partial" | "Disputed" | "Canceled";
+export type ClientInvoiceStatus =
+  | "Paid"
+  | "Unpaid"
+  | "Partial"
+  | "Disputed"
+  | "Canceled";
 
 export function toClientInvoiceStatus(
   status: string | null | undefined,
@@ -10,7 +15,10 @@ export function toClientInvoiceStatus(
 ): ClientInvoiceStatus {
   if (status === "Disputed") return "Disputed";
   if (status === "Canceled") return "Canceled";
-  if (status === "Paid" || ((remainingBalance ?? 0) <= 0 && (amountPaid ?? 0) > 0)) {
+  if (
+    status === "Paid" ||
+    ((remainingBalance ?? 0) <= 0 && (amountPaid ?? 0) > 0)
+  ) {
     return "Paid";
   }
   if (
@@ -20,6 +28,58 @@ export function toClientInvoiceStatus(
     return "Partial";
   }
   return "Unpaid";
+}
+
+/**
+ * Clear purpose label for payable invoices (plan vs overage vs expenses).
+ * Prefer invoice_source; fall back to charge columns for manual invoices.
+ */
+export function getInvoicePurpose(invoice: Invoice): string {
+  const source = (invoice.invoice_source ?? "").trim().toLowerCase();
+  switch (source) {
+    case "plan_recurring":
+      return "Plan subscription";
+    case "work_entries":
+      return "Hour overage / extra support";
+    case "asset_overage":
+      return "Hardware overbilling";
+    case "ticket_expenses":
+      return "Technician expenses";
+    default:
+      break;
+  }
+
+  const recurring = Number(invoice.recurring_service_fee ?? 0);
+  const overage = Number(invoice.additional_support_charges ?? 0);
+  const software = Number(invoice.software_charges ?? 0);
+  const equipment = Number(invoice.equipment_charges ?? 0);
+  const other = Number(invoice.other_charges ?? 0);
+  const buckets = [
+    recurring > 0,
+    overage > 0 || software > 0,
+    equipment > 0,
+    other > 0,
+  ].filter(Boolean).length;
+
+  if (buckets > 1) return "Mixed charges";
+  if (recurring > 0) return "Plan subscription";
+  if (overage > 0 || software > 0) return "Hour overage / extra support";
+  if (equipment > 0) return "Hardware overbilling";
+  if (other > 0) return "Technician expenses";
+  return "Invoice";
+}
+
+/** Single-line plain-ASCII option label for the pay dropdown. */
+export function formatPayableInvoiceOption(
+  invoice: Invoice,
+  dueDateFormatted: string,
+  balanceFormatted: string,
+): string {
+  const purpose = getInvoicePurpose(invoice);
+  const period = invoice.billing_period?.trim()
+    ? ` - Period ${invoice.billing_period.trim()}`
+    : "";
+  return `${invoice.invoice_number} - ${purpose}${period} - Due ${dueDateFormatted} - Balance ${balanceFormatted}`;
 }
 
 export interface InvoiceLineItem {

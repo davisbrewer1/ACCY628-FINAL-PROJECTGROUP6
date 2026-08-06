@@ -9,12 +9,17 @@ import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate, formatHours } from "@/lib/format";
-import { buildRevenueExpenseTotals } from "@/lib/revenue-expenses";
+import {
+  buildContractProfitabilityRows,
+  buildRevenueExpenseTotals,
+} from "@/lib/revenue-expenses";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  Contract,
   Customer,
   Invoice,
   ServiceTicket,
+  Technician,
   TicketExpense,
   WorkEntry,
 } from "@/lib/types";
@@ -25,16 +30,19 @@ export default function RevenueExpensesPage() {
   const { activeRole } = useDemoRole();
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [ticketExpenses, setTicketExpenses] = useState<TicketExpense[]>([]);
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
 
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const [c, i, w, e, t] = await Promise.all([
+      const [c, ct, i, w, e, t, tech] = await Promise.all([
         supabase.from("customers").select("*").order("customer_name"),
+        supabase.from("contracts").select("*").order("contract_name"),
         supabase
           .from("invoices")
           .select("*")
@@ -47,13 +55,18 @@ export default function RevenueExpensesPage() {
           .from("ticket_expenses")
           .select("*")
           .order("date", { ascending: false }),
-        supabase.from("service_tickets").select("id, ticket_number, title"),
+        supabase
+          .from("service_tickets")
+          .select("id, ticket_number, title, contract_id"),
+        supabase.from("technicians").select("*").eq("active", true),
       ]);
       setCustomers(c.data ?? []);
+      setContracts(ct.data ?? []);
       setInvoices(i.data ?? []);
       setWorkEntries(w.data ?? []);
       setTicketExpenses((e.data as TicketExpense[]) ?? []);
       setTickets((t.data as ServiceTicket[]) ?? []);
+      setTechnicians((tech.data as Technician[]) ?? []);
       setLoading(false);
     }
     void load();
@@ -67,11 +80,36 @@ export default function RevenueExpensesPage() {
     () => new Map(tickets.map((ticket) => [ticket.id, ticket])),
     [tickets],
   );
+  const ticketContractById = useMemo(
+    () =>
+      new Map(
+        tickets.map((ticket) => [ticket.id, ticket.contract_id] as const),
+      ),
+    [tickets],
+  );
 
   const totals = useMemo(
-    () => buildRevenueExpenseTotals(invoices, workEntries, ticketExpenses),
-    [invoices, workEntries, ticketExpenses],
+    () =>
+      buildRevenueExpenseTotals(invoices, workEntries, ticketExpenses, {
+        activeTechCount: technicians.length,
+      }),
+    [invoices, workEntries, ticketExpenses, technicians.length],
   );
+
+  const contractProfit = useMemo(
+    () =>
+      buildContractProfitabilityRows(
+        contracts,
+        invoices,
+        workEntries,
+        ticketExpenses,
+        ticketContractById,
+      ),
+    [contracts, invoices, workEntries, ticketExpenses, ticketContractById],
+  );
+
+  const payroll = totals.technicianPayroll;
+  const payPeriodLabel = `${formatDate(payroll.payPeriod.start.toISOString())} – ${formatDate(payroll.payPeriod.end.toISOString())}`;
 
   if (!MANAGER_ROLES.has(activeRole)) {
     return (
@@ -116,7 +154,7 @@ export default function RevenueExpensesPage() {
         <StatCard
           title="Operating expenses"
           value={formatCurrency(totals.operating)}
-          hint="Internal Company Expense tracker (accepted)"
+          hint={`${formatCurrency(totals.operatingTracked)} internal + ${formatCurrency(payroll.payrollCost)} tech payroll`}
           tone={totals.operating > 0 ? "info" : "default"}
           href="/time-costs?filter=expenses"
         />
@@ -302,22 +340,137 @@ export default function RevenueExpensesPage() {
         <div className="border-b border-base-300 px-5 py-4">
           <h2 className="text-base font-semibold">Operating expenses</h2>
           <p className="mt-1 text-sm text-base-content/70">
-            Accepted Internal Company Expense tracker spend (not billed to customers).
+            Accepted Internal Company Expense tracker spend plus current-period
+            technician salaried payroll (same rules as My Work).
           </p>
         </div>
-        <div className="p-5">
-          {totals.operatingExpenses.length === 0 ? (
-            <EmptyState
-              title="No operating expenses yet"
-              description="Internal Company Expense rows from the expense tracker appear here once accepted."
-            />
-          ) : (
-            <ExpenseTable
-              expenses={totals.operatingExpenses}
-              ticketMap={ticketMap}
-            />
-          )}
+        <div className="space-y-5 p-5">
+          <div className="rounded-box border border-base-300 bg-base-200/30 px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">
+                  Technician paid hours (this pay period)
+                </p>
+                <p className="mt-1 text-xs text-base-content/60">
+                  {payroll.activeTechCount} active tech
+                  {payroll.activeTechCount === 1 ? "" : "s"} ×{" "}
+                  {payroll.paidHoursPerTech} paid hours ×{" "}
+                  {formatCurrency(payroll.hourlyRate)}/hr · Period {payPeriodLabel}
+                </p>
+              </div>
+              <p className="text-lg font-semibold">
+                {formatCurrency(payroll.payrollCost)}
+              </p>
+            </div>
+            <p className="mt-2 text-xs text-base-content/55">
+              <Link href="/my-work" className="link">
+                My Work
+              </Link>{" "}
+              pay uses 8 salaried hours per weekday; billable delivery costs stay
+              under fulfillment.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">
+              Internal company expenses ({formatCurrency(totals.operatingTracked)})
+            </h3>
+            {totals.operatingExpenses.length === 0 ? (
+              <EmptyState
+                title="No operating expenses yet"
+                description="Internal Company Expense rows from the expense tracker appear here once accepted."
+              />
+            ) : (
+              <ExpenseTable
+                expenses={totals.operatingExpenses}
+                ticketMap={ticketMap}
+              />
+            )}
+          </div>
         </div>
+      </section>
+
+      <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
+        <div className="border-b border-base-300 px-5 py-4">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-base font-semibold">Contract profitability</h2>
+              <p className="mt-1 text-sm text-base-content/70">
+                Recognized invoice revenue vs fulfillment costs attributed to each
+                open contract.
+              </p>
+            </div>
+            <Link href="/contracts" className="link text-sm">
+              Open Contracts
+            </Link>
+          </div>
+        </div>
+        {contractProfit.length === 0 ? (
+          <div className="p-5">
+            <EmptyState
+              title="No open contracts"
+              description="Active or pending contracts appear here with invoice revenue and fulfillment costs."
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Contract</th>
+                  <th>Customer</th>
+                  <th>Status</th>
+                  <th className="text-right">Revenue</th>
+                  <th className="text-right">Fulfillment</th>
+                  <th className="text-right">Margin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contractProfit.map((row) => (
+                  <tr key={row.contractId} className="hover">
+                    <td>
+                      <Link
+                        href={`/contracts?contract=${row.contractId}`}
+                        className="link link-hover font-medium"
+                      >
+                        {row.contractName}
+                      </Link>
+                      <div className="mt-0.5">
+                        <Link
+                          href={`/service-tickets?contract=${row.contractId}`}
+                          className="link link-hover text-xs text-base-content/60"
+                        >
+                          Related tickets
+                        </Link>
+                      </div>
+                    </td>
+                    <td>{customerMap.get(row.customerId) ?? "Unknown"}</td>
+                    <td>
+                      <StatusBadge status={row.status ?? "Active"} />
+                    </td>
+                    <td className="text-right font-medium">
+                      {formatCurrency(row.revenue)}
+                    </td>
+                    <td className="text-right">
+                      {formatCurrency(row.fulfillment)}
+                      <div className="text-xs text-base-content/55">
+                        {formatCurrency(row.fulfillmentWork)} work ·{" "}
+                        {formatCurrency(row.fulfillmentBillable)} expenses
+                      </div>
+                    </td>
+                    <td
+                      className={`text-right font-semibold ${
+                        row.margin >= 0 ? "text-success" : "text-error"
+                      }`}
+                    >
+                      {formatCurrency(row.margin)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <div className="rounded-box border border-base-300 bg-base-200/40 px-5 py-4 text-sm text-base-content/75">
@@ -342,8 +495,9 @@ export default function RevenueExpensesPage() {
             .
           </li>
           <li>
-            Technician pay on My Work stays separate (salaried weekdays). Client
-            billable hours and expenses still drive contracts and invoices.
+            Operating expenses include current biweekly technician salaried payroll
+            plus accepted Internal Company Expense rows. Client billable hours and
+            expenses stay under fulfillment and invoices.
           </li>
         </ul>
       </div>

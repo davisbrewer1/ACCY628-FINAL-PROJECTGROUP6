@@ -151,12 +151,6 @@ export default function CustomersPage() {
       if (pastDueCustomers.has(customer.id)) riskFlags.push("Past due");
       if (renewingSoon.has(customer.id)) riskFlags.push("Renewing soon");
       if (included > 0 && used > included) riskFlags.push("Over hours");
-      if (
-        customer.technology_health_score != null &&
-        customer.technology_health_score < 70
-      ) {
-        riskFlags.push("Low health");
-      }
 
       return {
         ...customer,
@@ -293,7 +287,6 @@ export default function CustomersPage() {
                 <tr>
                   <th>Customer</th>
                   <th>Portal login</th>
-                  <th>Health</th>
                   <th>Account manager</th>
                   <th className="text-right">MRR</th>
                   <th>Next renewal</th>
@@ -320,23 +313,6 @@ export default function CustomersPage() {
                     </td>
                     <td className="font-mono text-xs">
                       {row.portalEmail ?? "—"}
-                    </td>
-                    <td>
-                      {row.technology_health_score != null ? (
-                        <span
-                          className={`font-semibold ${
-                            row.technology_health_score < 70
-                              ? "text-error"
-                              : row.technology_health_score < 85
-                                ? "text-warning"
-                                : "text-success"
-                          }`}
-                        >
-                          {row.technology_health_score}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
                     </td>
                     <td>{row.accountManagerName}</td>
                     <td className="text-right">{formatCurrency(row.mrr)}</td>

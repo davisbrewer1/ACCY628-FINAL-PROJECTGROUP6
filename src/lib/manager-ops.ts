@@ -46,7 +46,6 @@ export interface ContractAssetBurn {
 export interface AccountHealthRow {
   customerId: string;
   customerName: string;
-  healthScore: number | null;
   mrr: number;
   hoursUsed: number;
   includedHours: number;
@@ -542,17 +541,10 @@ export function buildAccountHealthRows(
       if (custBurns.some((b) => b.isOver)) riskFlags.push("Over hours");
       if (pastDue.has(customer.id)) riskFlags.push("Past due");
       if (renewals30.has(customer.id)) riskFlags.push("Renewing soon");
-      if (
-        customer.technology_health_score != null &&
-        customer.technology_health_score < 70
-      ) {
-        riskFlags.push("Low health");
-      }
 
       return {
         customerId: customer.id,
         customerName: customer.customer_name,
-        healthScore: customer.technology_health_score,
         mrr,
         hoursUsed,
         includedHours,
@@ -577,146 +569,6 @@ export function buildAccountHealthRows(
 export function nextInvoiceDateHint(contract: Contract): string | null {
   if (!contract.billing_frequency) return null;
   return `${contract.billing_frequency} billing`;
-}
-
-/** Composite account score for manager preview — not a persisted field. */
-export interface ClientHealthInsight {
-  customerId: string;
-  customerName: string;
-  score: number;
-  drivers: string[];
-  recommendedAction: string;
-  actionHref: string;
-  mrr: number;
-  arBalance: number;
-  openTickets: number;
-}
-
-/**
- * Score each active customer from SLA, AR, hour burn, criticals, and renewal pressure.
- * Returns weakest accounts first for the Command Center preview.
- */
-export function buildClientHealthInsights(
-  customers: Customer[],
-  contracts: Contract[],
-  tickets: ServiceTicket[],
-  workEntries: WorkEntry[],
-  invoices: Invoice[],
-): ClientHealthInsight[] {
-  const burns = computeContractHoursBurns(contracts, workEntries);
-  const openTickets = getOpenTickets(tickets);
-  const pastDueByCustomer = new Map<string, number>();
-  for (const inv of getPastDueInvoices(invoices)) {
-    pastDueByCustomer.set(
-      inv.customer_id,
-      (pastDueByCustomer.get(inv.customer_id) ?? 0) +
-        (inv.remaining_balance ?? 0),
-    );
-  }
-  const renewals30 = new Set(
-    getRenewalsInDays(contracts, 30).map((c) => c.customer_id),
-  );
-  const slaCustomers = new Set(
-    getSlaAtRiskTickets(tickets).map((t) => t.customer_id),
-  );
-
-  return customers
-    .filter((c) => c.status === "Active")
-    .map((customer) => {
-      const custContracts = contracts.filter(
-        (c) => c.customer_id === customer.id && c.contract_status === "Active",
-      );
-      const mrr = custContracts.reduce(
-        (sum, c) => sum + (c.monthly_recurring_fee ?? 0),
-        0,
-      );
-      const custBurns = burns.filter((b) => b.customerId === customer.id);
-      const hoursUsed = custBurns.reduce((sum, b) => sum + b.hoursUsed, 0);
-      const includedHours = custBurns.reduce(
-        (sum, b) => sum + b.includedHours,
-        0,
-      );
-      const overHours = custBurns.some((b) => b.isOver);
-      const arPastDue = pastDueByCustomer.get(customer.id) ?? 0;
-      const custOpen = openTickets.filter((t) => t.customer_id === customer.id);
-      const criticalOpen = custOpen.filter((t) => t.priority === "Critical").length;
-      const renewingSoon = renewals30.has(customer.id);
-      const slaRisk = slaCustomers.has(customer.id);
-
-      let score = 100;
-      const drivers: string[] = [];
-      let recommendedAction = "Keep routine check-ins — account looks stable.";
-      let actionHref = "/customers";
-
-      if (slaRisk) {
-        score -= 18;
-        drivers.push("SLA pressure on open tickets");
-        recommendedAction = "Stabilize SLA — assign owner and set recovery ETA.";
-        actionHref = "/service-tickets?filter=sla";
-      }
-      if (arPastDue > 0) {
-        score -= Math.min(22, 10 + Math.floor(arPastDue / 2500));
-        drivers.push("Past-due AR balance");
-        if (arPastDue >= 500 || !slaRisk) {
-          recommendedAction = "Collections call — clear past-due before more work accumulates.";
-          actionHref = "/billing?filter=past-due";
-        }
-      }
-      if (overHours) {
-        score -= 12;
-        drivers.push("Burned past included hours");
-        if (!slaRisk && arPastDue === 0) {
-          recommendedAction = "Invoice overage or propose a plan upgrade.";
-          actionHref = "/contracts?filter=over-hours";
-        }
-      }
-      if (criticalOpen > 0) {
-        score -= Math.min(15, criticalOpen * 5);
-        drivers.push(`${criticalOpen} critical open ticket${criticalOpen === 1 ? "" : "s"}`);
-        if (!slaRisk && arPastDue === 0 && !overHours) {
-          recommendedAction = "Escalate critical work — daily update until closed.";
-          actionHref = "/service-tickets?filter=critical";
-        }
-      }
-      if (renewingSoon) {
-        score -= 6;
-        drivers.push("Renewal within 30 days");
-        if (drivers.length === 1) {
-          recommendedAction = "Book renewal review with health score and hour burn ready.";
-          actionHref = "/contracts?filter=renewals";
-        }
-      }
-      if (
-        customer.technology_health_score != null &&
-        customer.technology_health_score < 70
-      ) {
-        score -= 10;
-        drivers.push("Low technology health score");
-      }
-      if (includedHours > 0 && hoursUsed / includedHours >= 0.85 && !overHours) {
-        score -= 5;
-        drivers.push("Approaching hour allotment");
-      }
-
-      score = Math.max(0, Math.min(100, Math.round(score)));
-      if (drivers.length === 0) drivers.push("No active risk drivers");
-
-      return {
-        customerId: customer.id,
-        customerName: customer.customer_name,
-        score,
-        drivers,
-        recommendedAction,
-        actionHref,
-        mrr,
-        arBalance: invoices
-          .filter((i) => i.customer_id === customer.id)
-          .reduce((sum, i) => sum + (i.remaining_balance ?? 0), 0),
-        openTickets: custOpen.length,
-      };
-    })
-    .sort((a, b) => a.score - b.score || b.mrr - a.mrr)
-    .slice(0, 8);
 }
 
 export type ProfitLeakKind =
