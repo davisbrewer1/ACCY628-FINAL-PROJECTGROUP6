@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bell, Shield, X } from "lucide-react";
+import { Bell, MessageSquare, Shield, X } from "lucide-react";
 import { KnowledgeBasePanel } from "@/components/KnowledgeBasePanel";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -78,8 +78,25 @@ function isCompletedTicket(status: string | null | undefined): boolean {
   return value === "completed" || value === "closed" || value === "cancelled";
 }
 
-/** Past-due items: most overdue first, then higher priority. */
-function comparePastDue(a: NotificationItem, b: NotificationItem): number {
+/**
+ * Notifications tab order:
+ * 1) Past due (highest urgency first)
+ * 2) Security risk (non–past-due)
+ * 3) Remaining assignments by priority
+ */
+function compareWorkNotifications(
+  a: NotificationItem,
+  b: NotificationItem,
+): number {
+  const groupRank = (item: NotificationItem) => {
+    if (item.source === "overdue" || item.overdueHours > 0) return 3;
+    if (item.security) return 2;
+    return 1;
+  };
+
+  const groupDiff = groupRank(b) - groupRank(a);
+  if (groupDiff !== 0) return groupDiff;
+
   const overdueDiff = b.overdueHours - a.overdueHours;
   if (overdueDiff !== 0) return overdueDiff;
 
@@ -146,6 +163,9 @@ export function TechnicianHeaderTools({
   technicianId,
 }: TechnicianHeaderToolsProps) {
   const [panelOpen, setPanelOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"notifications" | "messages">(
+    "notifications",
+  );
   const [assignedTickets, setAssignedTickets] = useState<ServiceTicket[]>([]);
   const [dismissedManagerIds, setDismissedManagerIds] = useState<Set<string>>(
     () => new Set(),
@@ -261,16 +281,25 @@ export function TechnicianHeaderTools({
       });
   }, [openTickets]);
 
-  const notifications = useMemo((): NotificationItem[] => {
+  const workNotifications = useMemo((): NotificationItem[] => {
     const pastDueTicketIds = new Set(
       overdueNotifications
         .map((item) => ticketIdFromNotification(item))
         .filter((id): id is string => Boolean(id)),
     );
 
-    const pastDue = [...overdueNotifications].sort(comparePastDue);
+    const regularAssignments = assignmentNotifications.filter((item) => {
+      const ticketId = ticketIdFromNotification(item);
+      return !ticketId || !pastDueTicketIds.has(ticketId);
+    });
 
-    const managerMessages = MANAGER_MESSAGES.filter(
+    return [...overdueNotifications, ...regularAssignments].sort(
+      compareWorkNotifications,
+    );
+  }, [assignmentNotifications, overdueNotifications]);
+
+  const managerMessages = useMemo((): NotificationItem[] => {
+    return MANAGER_MESSAGES.filter(
       (message) => !dismissedManagerIds.has(message.id),
     )
       .map((message) => {
@@ -285,19 +314,11 @@ export function TechnicianHeaderTools({
         };
       })
       .sort((a, b) => b.receivedAtMs - a.receivedAtMs);
+  }, [dismissedManagerIds]);
 
-    // Oldest received first → newest submissions at the bottom.
-    const regularAssignments = assignmentNotifications
-      .filter((item) => {
-        const ticketId = ticketIdFromNotification(item);
-        return !ticketId || !pastDueTicketIds.has(ticketId);
-      })
-      .sort((a, b) => a.receivedAtMs - b.receivedAtMs);
-
-    return [...pastDue, ...managerMessages, ...regularAssignments];
-  }, [assignmentNotifications, dismissedManagerIds, overdueNotifications]);
-
-  const unreadCount = notifications.length;
+  const activeItems =
+    activeTab === "messages" ? managerMessages : workNotifications;
+  const unreadCount = workNotifications.length + managerMessages.length;
 
   return (
     <div className="relative flex items-center gap-2">
@@ -329,9 +350,11 @@ export function TechnicianHeaderTools({
           <div className="absolute right-0 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-cyan-500/25 bg-slate-950 shadow-2xl shadow-cyan-950/40">
             <div className="flex items-center justify-between border-b border-cyan-500/15 px-4 py-3">
               <div>
-                <p className="text-sm font-semibold text-white">Notifications</p>
+                <p className="text-sm font-semibold text-white">Inbox</p>
                 <p className="text-xs text-slate-400">
-                  Past due, then manager messages, then oldest assignments
+                  {activeTab === "messages"
+                    ? "Messages from your manager"
+                    : "Past due first, then security risk"}
                 </p>
               </div>
               <button
@@ -344,13 +367,60 @@ export function TechnicianHeaderTools({
               </button>
             </div>
 
+            <div
+              className="grid grid-cols-2 gap-1 border-b border-cyan-500/15 p-2"
+              role="tablist"
+              aria-label="Inbox sections"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "notifications"}
+                className={`btn btn-sm gap-1 ${
+                  activeTab === "notifications"
+                    ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-100"
+                    : "btn-ghost text-slate-300"
+                }`}
+                onClick={() => setActiveTab("notifications")}
+              >
+                <Bell className="size-3.5" aria-hidden="true" />
+                Notifications
+                {workNotifications.length > 0 ? (
+                  <span className="badge badge-sm border-0 bg-cyan-500/80 text-slate-950">
+                    {workNotifications.length}
+                  </span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "messages"}
+                className={`btn btn-sm gap-1 ${
+                  activeTab === "messages"
+                    ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-100"
+                    : "btn-ghost text-slate-300"
+                }`}
+                onClick={() => setActiveTab("messages")}
+              >
+                <MessageSquare className="size-3.5" aria-hidden="true" />
+                Messages
+                {managerMessages.length > 0 ? (
+                  <span className="badge badge-sm border-0 bg-sky-500/80 text-slate-950">
+                    {managerMessages.length}
+                  </span>
+                ) : null}
+              </button>
+            </div>
+
             <div className="max-h-[28rem] space-y-3 overflow-y-auto p-3">
-              {notifications.length === 0 ? (
+              {activeItems.length === 0 ? (
                 <p className="px-1 py-6 text-center text-sm text-slate-500">
-                  No notifications right now.
+                  {activeTab === "messages"
+                    ? "No manager messages right now."
+                    : "No notifications right now."}
                 </p>
               ) : (
-                notifications.map((item) => (
+                activeItems.map((item) => (
                   <article
                     key={item.id}
                     className={`rounded-xl border p-3 ${
@@ -358,7 +428,9 @@ export function TechnicianHeaderTools({
                         ? "border-amber-400/40 bg-amber-500/10"
                         : item.security
                           ? "border-rose-400/40 bg-rose-500/10"
-                          : "border-slate-700 bg-slate-900/80"
+                          : item.source === "manager"
+                            ? "border-sky-400/30 bg-sky-500/10"
+                            : "border-slate-700 bg-slate-900/80"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
