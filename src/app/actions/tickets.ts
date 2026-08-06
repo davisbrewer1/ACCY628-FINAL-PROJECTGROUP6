@@ -717,7 +717,7 @@ export async function rescheduleCustomerTicket(
       await insertNotification(supabase, {
         technicianId: String(ticket.assigned_technician_id),
         type: "customer_reschedule",
-        message: `Reschedule tag: ${ticket.ticket_number} → ${dateKey}. Place a new time in Needs scheduling: ${ticket.title}`,
+        message: `Reschedule: ${ticket.ticket_number} → ${dateKey}. Place a new time in Needs scheduling: ${ticket.title}`,
       });
     } catch (notifyError) {
       console.warn("customer reschedule notification skipped:", notifyError);

@@ -27,7 +27,7 @@ const PORTAL_ROLES = [
     href: "/technician",
   },
   {
-    label: "Client User",
+    label: "Client",
     description: "Submit tickets & concerns",
     email: "clientuser@nexus.demo",
     href: "/end-user",

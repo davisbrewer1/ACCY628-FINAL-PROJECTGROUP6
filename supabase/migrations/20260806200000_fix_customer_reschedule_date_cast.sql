@@ -1,7 +1,6 @@
--- Allow authenticated clients to reschedule their own placed tickets.
--- Clients are blocked by tickets_update RLS (tech/manager only), so this
--- SECURITY DEFINER RPC clears the calendar slot, tags the request, and
--- notifies the assigned technician.
+-- Fix customer reschedule RPC: locked_service_date is date, not text.
+-- Prior version raised 400: column "locked_service_date" is of type date
+-- but expression is of type text — so nothing was saved and techs never notified.
 
 CREATE OR REPLACE FUNCTION public.customer_reschedule_service_ticket(
   p_ticket_id uuid,

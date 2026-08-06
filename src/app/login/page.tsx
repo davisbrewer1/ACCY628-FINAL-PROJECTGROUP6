@@ -12,13 +12,8 @@ import { createClient } from "@/lib/supabase/client";
 const DEMO_PASSWORD = "DemoPass123!";
 
 const DEMO_ACCOUNTS = [
-  { role: "Administrator", email: "admin@nexus.demo" },
-  { role: "Executive", email: "executive@nexus.demo" },
-  { role: "Service Manager", email: "manager@nexus.demo" },
-  { role: "Account Manager", email: "account@nexus.demo" },
-  { role: "Billing", email: "billing@nexus.demo" },
-  { role: "Client Admin", email: "clientadmin@nexus.demo" },
-  { role: "Client User", email: "clientuser@nexus.demo" },
+  { role: "Manager", email: "manager@nexus.demo" },
+  { role: "Client", email: "clientuser@nexus.demo" },
 ] as const;
 
 /** Individual technician demo logins (switchable on this page). */

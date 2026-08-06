@@ -9,7 +9,14 @@ import {
   resubmitWorkEntry,
   updateWorkEntry,
 } from "@/app/actions/work-entries";
-import { updateTicketSchedule, updateTicketStatus } from "@/app/actions/tickets";
+import { updateTicketSchedule } from "@/app/actions/tickets";
+import {
+  clearLiveTimer,
+  markTicketEnRoute,
+  pauseLiveTimer,
+  resumeLiveTimer,
+  startLiveTimer,
+} from "@/app/actions/live-work-session";
 import { hoursBetween } from "@/lib/calculations";
 import { isOpenTicket } from "@/lib/dashboard-stats";
 import { AlertBanner } from "@/components/AlertBanner";
@@ -72,6 +79,25 @@ import {
 import { ClipboardPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+function isRemoteServiceMethod(method: string | null | undefined): boolean {
+  return (method ?? "").trim().toLowerCase() === "remote";
+}
+
+function ticketHasLiveWorkSession(ticket: ServiceTicket): boolean {
+  return (
+    Boolean(ticket.en_route) ||
+    Boolean(ticket.live_timer_paused) ||
+    Boolean(ticket.live_timer_segment_started_at) ||
+    (ticket.live_timer_banked_seconds ?? 0) > 0
+  );
+}
+
+function toSegmentEpochMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
 
 function TechStat({
   title,
@@ -417,6 +443,12 @@ export default function TechnicianWorkspacePage() {
     [tickets],
   );
 
+  // Keep calendar badge in sync with DB-backed en_route after reload.
+  useEffect(() => {
+    const fromDb = tickets.find((ticket) => ticket.en_route)?.id ?? null;
+    setEnRouteTicketId(fromDb);
+  }, [tickets]);
+
   /** Open work plus completed/closed items that still have a calendar slot. */
   const calendarTickets = useMemo(
     () =>
@@ -524,6 +556,39 @@ export default function TechnicianWorkspacePage() {
     setHoursLockedFromSession(false);
   }
 
+  function applyHydratedLiveSession(ticket: ServiceTicket) {
+    const banked = Math.max(0, Math.floor(ticket.live_timer_banked_seconds ?? 0));
+    const segmentMs = toSegmentEpochMs(ticket.live_timer_segment_started_at);
+    const paused = Boolean(ticket.live_timer_paused);
+    const enRoute = Boolean(ticket.en_route) && !segmentMs && banked === 0 && !paused;
+
+    setLiveSessionTicketId(ticket.id);
+    setEnRouteTicketId(enRoute ? ticket.id : null);
+    setSessionEnRoute(enRoute);
+    setSessionPaused(paused && !enRoute);
+    setBankedWorkedSeconds(banked);
+    setSegmentStartedAt(enRoute ? null : segmentMs);
+    setPauseCount(0);
+    setHoursLockedFromSession(false);
+    setEndTime("");
+    setHoursWorked("");
+    setWorkDate(format(new Date(), "yyyy-MM-dd"));
+
+    if (enRoute) {
+      setStartTime("");
+      setServiceMethod("On-site");
+    } else {
+      const clockSource = ticket.live_timer_segment_started_at
+        ? new Date(ticket.live_timer_segment_started_at)
+        : new Date();
+      setStartTime(format(clockSource, "HH:mm"));
+      setServiceMethod(
+        isRemoteServiceMethod(ticket.service_method) ? "Remote" : "On-site",
+      );
+    }
+    setTicketStatus("In Progress");
+  }
+
   function patchTicketLocal(
     ticketId: string,
     patch: Partial<ServiceTicket>,
@@ -591,12 +656,21 @@ export default function TechnicianWorkspacePage() {
     setEditingEntryId(null);
     setSelectedTicketId(ticketId);
     setWorkPerformed("");
-    setServiceMethod("On-site");
-    setTicketStatus("In Progress");
     setError(null);
     setWorkModalPhase("timer");
+    resetPartsSelection();
 
-    // Resume an in-progress on-site or en-route session for this ticket.
+    const remote = isRemoteServiceMethod(ticket.service_method);
+    setServiceMethod(remote ? "Remote" : "On-site");
+    setTicketStatus(ticket.status === "Completed" ? "In Progress" : ticket.status ?? "In Progress");
+
+    // Resume from DB-backed (or same-visit) live session.
+    if (ticketHasLiveWorkSession(ticket)) {
+      applyHydratedLiveSession(ticket);
+      setWorkModalOpen(true);
+      return;
+    }
+
     if (
       liveSessionTicketId === ticketId &&
       ((startTime && !endTime) || sessionEnRoute)
@@ -608,7 +682,6 @@ export default function TechnicianWorkspacePage() {
     if (enRouteTicketId === ticketId && !startTime) {
       setSessionEnRoute(true);
       setLiveSessionTicketId(ticketId);
-      resetPartsSelection();
       setWorkModalOpen(true);
       return;
     }
@@ -619,7 +692,6 @@ export default function TechnicianWorkspacePage() {
     setStartTime("");
     setEndTime("");
     setHoursWorked("");
-    resetPartsSelection();
     setWorkModalOpen(true);
   }
 
@@ -648,14 +720,23 @@ export default function TechnicianWorkspacePage() {
 
   function handleEnRoute() {
     if (!selectedTicketId || startTime) return;
+    const ticket = assignedOpen.find((item) => item.id === selectedTicketId);
+    if (ticket && isRemoteServiceMethod(ticket.service_method)) return;
+
     setSessionEnRoute(true);
     setEnRouteTicketId(selectedTicketId);
     setLiveSessionTicketId(selectedTicketId);
     setTicketStatus("In Progress");
     setServiceMethod("On-site");
-    patchTicketLocal(selectedTicketId, { status: "In Progress" });
+    patchTicketLocal(selectedTicketId, {
+      status: "In Progress",
+      en_route: true,
+      live_timer_paused: false,
+      live_timer_segment_started_at: null,
+      live_timer_banked_seconds: 0,
+    });
     startTransition(async () => {
-      const result = await updateTicketStatus(selectedTicketId, "In Progress");
+      const result = await markTicketEnRoute(selectedTicketId);
       if (!result.success) {
         showToast(result.message, "error");
       } else {
@@ -666,46 +747,87 @@ export default function TechnicianWorkspacePage() {
   }
 
   function handleStartOnSite() {
+    if (!selectedTicketId) return;
+    const ticket = assignedOpen.find((item) => item.id === selectedTicketId);
+    const remote = ticket ? isRemoteServiceMethod(ticket.service_method) : false;
     const startedAt = nowTimeValue();
+    const segmentNow = Date.now();
     setWorkDate(format(new Date(), "yyyy-MM-dd"));
     setStartTime(startedAt);
     setEndTime("");
     setHoursWorked("");
-    setServiceMethod("On-site");
+    setServiceMethod(remote ? "Remote" : "On-site");
     setTicketStatus("In Progress");
-    setLiveSessionTicketId(selectedTicketId || null);
+    setLiveSessionTicketId(selectedTicketId);
     setSessionEnRoute(false);
     setSessionPaused(false);
     setBankedWorkedSeconds(0);
-    setSegmentStartedAt(Date.now());
+    setSegmentStartedAt(segmentNow);
     setPauseCount(0);
     setHoursLockedFromSession(false);
-    if (selectedTicketId) {
-      patchTicketLocal(selectedTicketId, { status: "In Progress" });
-      if (enRouteTicketId === selectedTicketId) {
-        setEnRouteTicketId(null);
+    setEnRouteTicketId(null);
+    patchTicketLocal(selectedTicketId, {
+      status: "In Progress",
+      en_route: false,
+      live_timer_paused: false,
+      live_timer_banked_seconds: 0,
+      live_timer_segment_started_at: new Date(segmentNow).toISOString(),
+    });
+    startTransition(async () => {
+      const result = await startLiveTimer(selectedTicketId);
+      if (!result.success) {
+        showToast(result.message, "error");
+      } else {
+        await loadData();
       }
-    }
+    });
   }
 
   function handlePauseJob() {
-    if (!startTime || endTime || sessionPaused || segmentStartedAt == null) return;
+    if (!selectedTicketId || !startTime || endTime || sessionPaused || segmentStartedAt == null) {
+      return;
+    }
     const segmentSeconds = Math.max(
       0,
       Math.floor((Date.now() - segmentStartedAt) / 1000),
     );
-    setBankedWorkedSeconds((prev) => prev + segmentSeconds);
+    const nextBanked = bankedWorkedSeconds + segmentSeconds;
+    setBankedWorkedSeconds(nextBanked);
     setSegmentStartedAt(null);
     setSessionPaused(true);
     setPauseCount((prev) => prev + 1);
     setTicketStatus("In Progress");
+    patchTicketLocal(selectedTicketId, {
+      live_timer_paused: true,
+      live_timer_banked_seconds: nextBanked,
+      live_timer_segment_started_at: null,
+      en_route: false,
+    });
+    startTransition(async () => {
+      const result = await pauseLiveTimer(selectedTicketId, nextBanked);
+      if (!result.success) {
+        showToast(result.message, "error");
+      }
+    });
   }
 
   function handleResumeJob() {
-    if (!startTime || endTime || !sessionPaused) return;
+    if (!selectedTicketId || !startTime || endTime || !sessionPaused) return;
+    const segmentNow = Date.now();
     setSessionPaused(false);
-    setSegmentStartedAt(Date.now());
+    setSegmentStartedAt(segmentNow);
     setTicketStatus("In Progress");
+    patchTicketLocal(selectedTicketId, {
+      live_timer_paused: false,
+      live_timer_segment_started_at: new Date(segmentNow).toISOString(),
+      en_route: false,
+    });
+    startTransition(async () => {
+      const result = await resumeLiveTimer(selectedTicketId);
+      if (!result.success) {
+        showToast(result.message, "error");
+      }
+    });
   }
 
   function handleEndJob() {
@@ -724,15 +846,24 @@ export default function TechnicianWorkspacePage() {
     setLiveSessionTicketId(null);
     setEnRouteTicketId(null);
     if (selectedTicketId) {
-      // Update top stats immediately; save persists via work entry.
       patchTicketLocal(selectedTicketId, {
         status: "Completed",
         completed_at: new Date().toISOString(),
+        en_route: false,
+        live_timer_paused: false,
+        live_timer_banked_seconds: 0,
+        live_timer_segment_started_at: null,
+      });
+      startTransition(async () => {
+        const result = await clearLiveTimer(selectedTicketId);
+        if (!result.success) {
+          showToast(result.message, "error");
+        }
       });
     }
     if (pauseCount > 0) {
       setWorkPerformed((prev) => {
-        const note = `On-site visit included ${pauseCount} pause${pauseCount === 1 ? "" : "s"} (time away excluded from hours).`;
+        const note = `Visit included ${pauseCount} pause${pauseCount === 1 ? "" : "s"} (time away excluded from hours).`;
         if (!prev.trim()) return note;
         if (prev.includes("pause")) return prev;
         return `${prev.trim()}\n${note}`;
@@ -758,9 +889,13 @@ export default function TechnicianWorkspacePage() {
         : await createWorkEntry(formData);
       if (result.success) {
         showToast(result.message);
+        if (selectedTicketId) {
+          await clearLiveTimer(selectedTicketId);
+        }
         setWorkModalOpen(false);
         setEditingEntryId(null);
         setLiveSessionTicketId(null);
+        setEnRouteTicketId(null);
         resetSessionTimer();
         setWorkModalPhase("timer");
         setStartTime("");

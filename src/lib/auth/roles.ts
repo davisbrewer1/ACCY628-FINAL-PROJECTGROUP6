@@ -180,13 +180,8 @@ export function getDefaultDashboard(role: UserRole): string {
 }
 
 export const DEMO_ROLES: UserRole[] = [
-  "administrator",
-  "executive",
   "service_manager",
-  "account_manager",
   "technician",
-  "billing",
-  "client_admin",
   "client_user",
 ];
 

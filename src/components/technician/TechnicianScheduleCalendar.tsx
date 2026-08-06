@@ -811,16 +811,18 @@ function UnscheduledTray({
                             <span className="badge badge-xs badge-error">
                               ASAP
                             </span>
+                          ) : ticket.customer_rescheduled ? (
+                            <span className="badge badge-xs badge-warning">
+                              Rescheduled
+                              {ticket.locked_service_date
+                                ? ` · ${formatLockedServiceDateLabel(ticket.locked_service_date)}`
+                                : ""}
+                            </span>
                           ) : ticket.locked_service_date ? (
                             <span className="badge badge-xs badge-info">
                               {formatLockedServiceDateLabel(
                                 ticket.locked_service_date,
                               )}
-                            </span>
-                          ) : null}
-                          {ticket.customer_rescheduled ? (
-                            <span className="badge badge-xs badge-warning">
-                              Rescheduled
                             </span>
                           ) : null}
                           {pendingExtend ? (
@@ -837,15 +839,6 @@ function UnscheduledTray({
                         </span>
                       </span>
                     </button>
-                    {ticket.customer_rescheduled &&
-                    ticket.locked_service_date &&
-                    !ticket.is_asap ? (
-                      <div className="rounded-md border border-amber-400/40 bg-amber-500/15 px-2 py-1.5 text-[11px] font-semibold leading-snug text-amber-100">
-                        Reschedule tag · Place on{" "}
-                        {formatLockedServiceDateLabel(ticket.locked_service_date)}{" "}
-                        with a new time
-                      </div>
-                    ) : null}
                     <label className="flex shrink-0 flex-col gap-0.5">
                       <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
                         Hours
@@ -1068,8 +1061,9 @@ function WeekGrid({
               occupant?.ticket.status === "Closed";
             const isEnRoute = Boolean(
               occupant &&
-                enRouteTicketId &&
-                occupant.ticket.id === enRouteTicketId,
+                (Boolean(occupant.ticket.en_route) ||
+                  (enRouteTicketId != null &&
+                    occupant.ticket.id === enRouteTicketId)),
             );
 
             return (

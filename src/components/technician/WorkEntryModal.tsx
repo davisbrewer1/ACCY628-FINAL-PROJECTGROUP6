@@ -120,6 +120,9 @@ export function WorkEntryModal({
   const [partQty, setPartQty] = useState("1");
   const selectedTicket = tickets.find((ticket) => ticket.id === selectedTicketId);
   const sessionActive = Boolean(startTime) && !endTime;
+  const isRemoteJob =
+    (selectedTicket?.service_method ?? "").trim().toLowerCase() === "remote" ||
+    serviceMethod.trim().toLowerCase() === "remote";
 
   const stockCreditById = useMemo(() => {
     const map = new Map<string, number>();
@@ -258,15 +261,21 @@ export function WorkEntryModal({
     mode === "edit"
       ? "Update logged time, notes, or ticket status for this entry."
       : phase === "timer"
-        ? "Mark On the way before arrival, Start when on site, Pause if you leave, then End when complete."
+        ? isRemoteJob
+          ? "Start the timer when you begin remote work, Pause if you step away, then End when complete."
+          : "Mark On the way before arrival, Start when on site, Pause if you leave, then End when complete."
         : "Review times and finish the work notes before saving.";
 
   const statusLabel = endTime
     ? "Session ended"
     : sessionPaused
-      ? "Paused — away from job"
+      ? isRemoteJob
+        ? "Paused"
+        : "Paused — away from job"
       : sessionActive
-        ? "On site"
+        ? isRemoteJob
+          ? "Timer running"
+          : "On site"
         : sessionEnRoute
           ? "On the way"
           : "Ready to start";
@@ -393,26 +402,38 @@ export function WorkEntryModal({
             </div>
 
             {!sessionActive && !endTime ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              isRemoteJob ? (
                 <button
                   type="button"
-                  className="btn h-12 border-0 bg-teal-400 text-[#0B1220] hover:bg-sky-400"
-                  disabled={!selectedTicketId || sessionEnRoute || isPending}
-                  onClick={onEnRoute}
-                >
-                  <Navigation className="size-5" />
-                  On the way
-                </button>
-                <button
-                  type="button"
-                  className="btn h-12 border-0 bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+                  className="btn h-12 w-full border-0 bg-emerald-500 text-slate-950 hover:bg-emerald-400"
                   disabled={!selectedTicketId}
                   onClick={onStartOnSite}
                 >
                   <CirclePlay className="size-5" />
-                  Start — on site
+                  Start timer
                 </button>
-              </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    className="btn h-12 border-0 bg-teal-400 text-[#0B1220] hover:bg-sky-400"
+                    disabled={!selectedTicketId || sessionEnRoute || isPending}
+                    onClick={onEnRoute}
+                  >
+                    <Navigation className="size-5" />
+                    On the way
+                  </button>
+                  <button
+                    type="button"
+                    className="btn h-12 border-0 bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+                    disabled={!selectedTicketId}
+                    onClick={onStartOnSite}
+                  >
+                    <CirclePlay className="size-5" />
+                    Start — on site
+                  </button>
+                </div>
+              )
             ) : null}
 
             {sessionActive ? (
@@ -424,7 +445,7 @@ export function WorkEntryModal({
                     onClick={onResumeJob}
                   >
                     <CirclePlay className="size-5" />
-                    Resume — back on site
+                    {isRemoteJob ? "Resume timer" : "Resume — back on site"}
                   </button>
                 ) : (
                   <button
@@ -433,7 +454,7 @@ export function WorkEntryModal({
                     onClick={onPauseJob}
                   >
                     <Pause className="size-5" />
-                    Pause — leaving site
+                    {isRemoteJob ? "Pause timer" : "Pause — leaving site"}
                   </button>
                 )}
                 <button

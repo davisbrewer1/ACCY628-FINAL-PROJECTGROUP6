@@ -425,17 +425,10 @@ export default function EndUserSupportPage() {
               {kind === "open" &&
               ticket.customer_rescheduled &&
               ticket.locked_service_date ? (
-                <div
-                  className="border-t border-warning/40 bg-warning/15 px-4 py-2.5 text-sm"
-                  role="status"
-                >
-                  <span className="font-semibold uppercase tracking-wide text-warning-content">
-                    Reschedule tag
-                  </span>
-                  <span className="mt-0.5 block font-medium text-base-content">
-                    Requested new day:{" "}
-                    {formatLockedServiceDateLabel(ticket.locked_service_date)}.
-                    Technician notified — awaiting new time placement.
+                <div className="border-t border-base-300 px-4 py-2" role="status">
+                  <span className="badge badge-warning badge-sm">
+                    Rescheduled ·{" "}
+                    {formatLockedServiceDateLabel(ticket.locked_service_date)}
                   </span>
                 </div>
               ) : null}
@@ -685,8 +678,8 @@ export default function EndUserSupportPage() {
                     {rescheduleOpen ? (
                       <form action={handleReschedule} className="mt-3 space-y-3">
                         <p className="text-sm text-base-content/70">
-                          Pick a new available day. We add a reschedule tag with
-                          that date and notify your technician.
+                          Pick a new available day. Your technician will be
+                          notified to place a new time.
                         </p>
                         <ServiceDatePicker allowAsap={false} />
                         <button
@@ -724,9 +717,6 @@ export default function EndUserSupportPage() {
                           </span>
                           . An arrival window appears once your technician places
                           this visit
-                          {selectedTicket.customer_rescheduled
-                            ? " (reschedule tag active — awaiting new placement)"
-                            : ""}
                           .
                         </p>
                         <button
@@ -742,8 +732,8 @@ export default function EndUserSupportPage() {
                         {rescheduleOpen ? (
                           <form action={handleReschedule} className="space-y-3">
                             <p className="text-sm text-base-content/70">
-                              Pick a new day. We tag the request and notify your
-                              technician to place a new time.
+                              Pick a new day. Your technician will be notified to
+                              place a new time.
                             </p>
                             <ServiceDatePicker allowAsap={false} />
                             <button
@@ -961,23 +951,13 @@ export default function EndUserSupportPage() {
 
               {selectedTicket.customer_rescheduled &&
               selectedTicket.locked_service_date ? (
-                <div
-                  className="rounded-box border border-warning/50 bg-warning/15 px-4 py-3"
-                  role="status"
-                >
-                  <p className="text-xs font-semibold uppercase tracking-wide text-warning-content">
-                    Reschedule tag
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-base-content">
-                    Requested day:{" "}
+                <div role="status">
+                  <span className="badge badge-warning">
+                    Rescheduled ·{" "}
                     {formatLockedServiceDateLabel(
                       selectedTicket.locked_service_date,
                     )}
-                  </p>
-                  <p className="mt-1 text-sm text-base-content/75">
-                    Your technician was notified. The old calendar time is
-                    cleared until they place a new window on this day.
-                  </p>
+                  </span>
                 </div>
               ) : null}
 
