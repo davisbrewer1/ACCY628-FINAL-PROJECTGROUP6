@@ -78,6 +78,93 @@ export function getSlaAtRiskTickets(tickets: ServiceTicket[]): ServiceTicket[] {
   });
 }
 
+/** Open tickets already past the SLA resolution target. */
+export function getLateTickets(tickets: ServiceTicket[]): ServiceTicket[] {
+  return getOpenTickets(tickets).filter((t) => {
+    const sla = calcSlaStatus({
+      status: t.status,
+      targetResolutionAt: t.target_resolution_at,
+      completedAt: t.completed_at,
+    });
+    return sla === "Overdue";
+  });
+}
+
+export interface TechnicianLoadRow {
+  technicianId: string;
+  technicianName: string;
+  openTickets: number;
+  criticalTickets: number;
+}
+
+/** Open ticket load per active technician, heaviest first. */
+export function computeTechnicianLoads(
+  technicians: Array<{
+    id: string;
+    technician_name: string;
+    active: boolean;
+  }>,
+  tickets: ServiceTicket[],
+): TechnicianLoadRow[] {
+  const open = getOpenTickets(tickets);
+  return technicians
+    .filter((tech) => tech.active)
+    .map((tech) => {
+      const assigned = open.filter((t) => t.assigned_technician_id === tech.id);
+      return {
+        technicianId: tech.id,
+        technicianName: tech.technician_name,
+        openTickets: assigned.length,
+        criticalTickets: assigned.filter((t) => t.priority === "Critical").length,
+      };
+    })
+    .sort((a, b) => {
+      if (b.openTickets !== a.openTickets) return b.openTickets - a.openTickets;
+      return b.criticalTickets - a.criticalTickets;
+    });
+}
+
+export interface UnprofitableContractRow {
+  contractId: string;
+  customerId: string;
+  contractName: string;
+  mrr: number;
+  monthDirectCost: number;
+  shortfall: number;
+}
+
+/**
+ * Active contracts whose attributed month direct costs exceed monthly recurring fee.
+ * Simple delivery profitability signal for managers — not full GAAP P&L.
+ */
+export function getUnprofitableContracts(
+  contracts: Contract[],
+  workEntries: WorkEntry[],
+): UnprofitableContractRow[] {
+  return contracts
+    .filter((c) => c.contract_status === "Active")
+    .map((contract) => {
+      const monthDirectCost = workEntriesAttributedToContract(
+        contract,
+        contracts,
+        workEntries,
+      )
+        .filter((e) => isThisMonth(e.work_date))
+        .reduce((sum, e) => sum + Number(e.total_direct_cost ?? 0), 0);
+      const mrr = Number(contract.monthly_recurring_fee ?? 0);
+      return {
+        contractId: contract.id,
+        customerId: contract.customer_id,
+        contractName: contract.contract_name,
+        mrr,
+        monthDirectCost,
+        shortfall: Math.max(0, monthDirectCost - mrr),
+      };
+    })
+    .filter((row) => row.mrr > 0 && row.monthDirectCost > row.mrr)
+    .sort((a, b) => b.shortfall - a.shortfall);
+}
+
 export function getUnassignedTickets(tickets: ServiceTicket[]): ServiceTicket[] {
   return getOpenTickets(tickets).filter((t) => !t.assigned_technician_id);
 }
