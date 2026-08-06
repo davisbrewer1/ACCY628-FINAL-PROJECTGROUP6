@@ -41,6 +41,7 @@ import type {
   SecurityAlert,
   SecurityScore,
   ServiceTicket,
+  TicketExpense,
   WorkEntry,
 } from "@/lib/types";
 
@@ -59,6 +60,7 @@ export default function ExecutiveDashboardPage() {
   const [aiPlatforms, setAiPlatforms] = useState<AiPlatform[]>([]);
   const [aiRisks, setAiRisks] = useState<AiRisk[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [ticketExpenses, setTicketExpenses] = useState<TicketExpense[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -76,6 +78,7 @@ export default function ExecutiveDashboardPage() {
         ai,
         risks,
         recs,
+        ex,
       ] = await Promise.all([
         supabase.from("customers").select("*"),
         supabase.from("contracts").select("*"),
@@ -89,6 +92,7 @@ export default function ExecutiveDashboardPage() {
         supabase.from("ai_platforms").select("*"),
         supabase.from("ai_risks").select("*").eq("status", "Open"),
         supabase.from("recommendations").select("*").in("status", ["New", "Reviewed"]),
+        supabase.from("ticket_expenses").select("*"),
       ]);
       setCustomers(c.data ?? []);
       setContracts(co.data ?? []);
@@ -102,14 +106,23 @@ export default function ExecutiveDashboardPage() {
       setAiPlatforms(ai.data ?? []);
       setAiRisks(risks.data ?? []);
       setRecommendations(recs.data ?? []);
+      setTicketExpenses((ex.data as TicketExpense[]) ?? []);
       setLoading(false);
     }
     load();
   }, []);
 
   const stats = useMemo(
-    () => computeDashboardStats(customers, contracts, tickets, workEntries, invoices),
-    [customers, contracts, tickets, workEntries, invoices],
+    () =>
+      computeDashboardStats(
+        customers,
+        contracts,
+        tickets,
+        workEntries,
+        invoices,
+        ticketExpenses,
+      ),
+    [customers, contracts, tickets, workEntries, invoices, ticketExpenses],
   );
 
   const inventoryValue = useMemo(
@@ -170,8 +183,15 @@ export default function ExecutiveDashboardPage() {
     securityAlerts.filter((a) => a.severity === "Critical").length;
 
   const profitData = useMemo(
-    () => profitabilityByCustomer(customers, contracts, workEntries),
-    [customers, contracts, workEntries],
+    () =>
+      profitabilityByCustomer(
+        customers,
+        contracts,
+        workEntries,
+        ticketExpenses,
+        tickets,
+      ),
+    [customers, contracts, workEntries, ticketExpenses, tickets],
   );
 
   const serviceFamilyPlaceholder = useMemo(() => {

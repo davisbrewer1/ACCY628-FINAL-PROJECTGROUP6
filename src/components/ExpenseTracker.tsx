@@ -15,6 +15,7 @@ import {
   deleteTicketExpense,
   fetchTicketExpenses,
   getExpenseReceiptUrl,
+  getTechnicianExpenseBudgetStatus,
   updateTicketExpense,
 } from "@/app/actions/ticket-expenses";
 import { useToast } from "@/components/Toast";
@@ -91,6 +92,11 @@ export function ExpenseTracker({
   const [expenses, setExpenses] = useState<TicketExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [budgetStatus, setBudgetStatus] = useState<{
+    monthlyLimit: number;
+    mtdSpend: number;
+    remaining: number;
+  } | null>(null);
 
   const [type, setType] = useState<ExpenseType>("Travel");
   const [expenseTag, setExpenseTag] =
@@ -137,9 +143,22 @@ export function ExpenseTracker({
     setLoading(false);
   }, [ticketId]);
 
+  const loadBudget = useCallback(async () => {
+    if (!technicianId) {
+      setBudgetStatus(null);
+      return;
+    }
+    const status = await getTechnicianExpenseBudgetStatus(technicianId);
+    setBudgetStatus(status);
+  }, [technicianId]);
+
   useEffect(() => {
     void loadExpenses();
   }, [loadExpenses]);
+
+  useEffect(() => {
+    void loadBudget();
+  }, [loadBudget]);
 
   function clearReceipts() {
     setReceipts((current) => {
@@ -238,6 +257,7 @@ export function ExpenseTracker({
     } else {
       await loadExpenses();
     }
+    await loadBudget();
     resetForm();
   }
 
@@ -284,6 +304,7 @@ export function ExpenseTracker({
     } else {
       await loadExpenses();
     }
+    await loadBudget();
   }
 
   async function handleDelete(expenseId: string) {
@@ -301,6 +322,7 @@ export function ExpenseTracker({
       return;
     }
     showToast(result.message);
+    await loadBudget();
   }
 
   async function openReceipts(receiptUrl: string) {
@@ -346,6 +368,16 @@ export function ExpenseTracker({
                 {ticketLabel ?? "this ticket"}
               </span>
             </p>
+            {budgetStatus ? (
+              <p className="mt-1 text-xs text-base-content/60">
+                Internal budget remaining this month:{" "}
+                <span className="font-medium text-base-content">
+                  {formatCurrency(budgetStatus.remaining)}
+                </span>{" "}
+                of {formatCurrency(budgetStatus.monthlyLimit)} (MTD{" "}
+                {formatCurrency(budgetStatus.mtdSpend)})
+              </p>
+            ) : null}
           </div>
           <p className="text-sm">
             Total:{" "}

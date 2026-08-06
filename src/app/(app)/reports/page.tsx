@@ -42,6 +42,7 @@ import type {
   ServiceCatalogItem,
   ServiceTicket,
   Technician,
+  TicketExpense,
   WorkEntry,
 } from "@/lib/types";
 
@@ -51,6 +52,7 @@ function emptyDataset(): ReportDataset {
     contracts: [],
     tickets: [],
     workEntries: [],
+    ticketExpenses: [],
     invoices: [],
     payments: [],
     hardware: [],
@@ -102,6 +104,7 @@ export default function ReportsPage() {
         supabase.from("service_catalog_items").select("*"),
         supabase.from("inventory_parts").select("*"),
         supabase.from("asset_repairs").select("*"),
+        supabase.from("ticket_expenses").select("*"),
       ]);
 
       if (cancelled) return;
@@ -124,6 +127,7 @@ export default function ReportsPage() {
         catalogItems: (results[14].data ?? []) as ServiceCatalogItem[],
         inventoryParts: (results[15].data ?? []) as InventoryPart[],
         assetRepairs: (results[16].data ?? []) as AssetRepair[],
+        ticketExpenses: (results[17].data ?? []) as TicketExpense[],
       });
       setLoading(false);
     }
