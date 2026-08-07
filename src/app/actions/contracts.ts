@@ -9,6 +9,7 @@ import {
 } from "@/lib/plan-pricing";
 import { createClient } from "@/lib/supabase/server";
 import type { ServicePlan } from "@/lib/types";
+import { ensureFirstPlanInvoiceForContract } from "@/app/actions/billing";
 
 function parseBool(value: FormDataEntryValue | null): boolean {
   return value === "true" || value === "on" || value === "1";
@@ -182,26 +183,43 @@ export async function createContract(formData: FormData): Promise<ActionResult> 
   );
   if (!snapshot.ok) return { success: false, message: snapshot.message };
 
-  const { error } = await supabase.from("contracts").insert({
-    customer_id: parsed.customerId,
-    contract_name: parsed.contractName,
-    contract_status: parsed.contractStatus,
-    start_date: parsed.startDate,
-    end_date: parsed.endDate,
-    renewal_date: parsed.renewalDate,
-    automatic_renewal: parsed.automaticRenewal,
-    pass_through_charges_allowed: true,
-    approval_status: parsed.approvalStatus,
-    notes: parsed.notes,
-    ...snapshot.fields,
-  });
+  const { data: created, error } = await supabase
+    .from("contracts")
+    .insert({
+      customer_id: parsed.customerId,
+      contract_name: parsed.contractName,
+      contract_status: parsed.contractStatus,
+      start_date: parsed.startDate,
+      end_date: parsed.endDate,
+      renewal_date: parsed.renewalDate,
+      automatic_renewal: parsed.automaticRenewal,
+      pass_through_charges_allowed: true,
+      approval_status: parsed.approvalStatus,
+      notes: parsed.notes,
+      ...snapshot.fields,
+    })
+    .select("id, contract_status")
+    .single();
 
   if (error) {
     return { success: false, message: error.message };
   }
 
+  let invoiceNote = "";
+  if (created?.contract_status === "Active" && created.id) {
+    const invoiceResult = await ensureFirstPlanInvoiceForContract(created.id);
+    if (invoiceResult.success && invoiceResult.created) {
+      invoiceNote = " First plan invoice issued to Invoice.";
+    } else if (!invoiceResult.success) {
+      invoiceNote = ` Contract saved, but first plan invoice failed: ${invoiceResult.message}`;
+    }
+  }
+
   revalidateContractPaths();
-  return { success: true, message: "Contract created from plan successfully." };
+  return {
+    success: true,
+    message: `Contract created from plan successfully.${invoiceNote}`,
+  };
 }
 
 /**
@@ -223,7 +241,7 @@ export async function updateContract(formData: FormData): Promise<ActionResult> 
 
   const { data: existing } = await supabase
     .from("contracts")
-    .select("id, plan_id")
+    .select("id, plan_id, contract_status")
     .eq("id", contractId)
     .maybeSingle();
 
@@ -262,11 +280,26 @@ export async function updateContract(formData: FormData): Promise<ActionResult> 
     return { success: false, message: error.message };
   }
 
+  let invoiceNote = "";
+  const becameActive =
+    parsed.contractStatus === "Active" &&
+    existing.contract_status !== "Active";
+  if (parsed.contractStatus === "Active") {
+    const invoiceResult = await ensureFirstPlanInvoiceForContract(contractId);
+    if (invoiceResult.success && invoiceResult.created) {
+      invoiceNote = becameActive
+        ? " First plan invoice issued to Invoice."
+        : " Missing first plan invoice was issued to Invoice.";
+    } else if (!invoiceResult.success) {
+      invoiceNote = ` Updated, but plan invoice sync failed: ${invoiceResult.message}`;
+    }
+  }
+
   revalidateContractPaths();
   return {
     success: true,
     message:
-      "Contract updated. Recognized MRR and future plan invoices use the new terms; already-issued invoices are unchanged.",
+      `Contract updated. Recognized MRR and future plan invoices use the new terms; already-issued invoices are unchanged.${invoiceNote}`,
   };
 }
 

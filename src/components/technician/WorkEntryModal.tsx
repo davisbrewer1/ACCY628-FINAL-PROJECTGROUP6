@@ -73,6 +73,15 @@ function formatElapsed(totalSeconds: number): string {
     .join(":");
 }
 
+/** Light readable controls on technician fulfilled-ticket / work-entry forms. */
+const FIELD =
+  "border-slate-300 bg-white text-[#0B1220] placeholder:text-slate-500";
+const INPUT = `input input-bordered w-full ${FIELD}`;
+const SELECT = `select select-bordered w-full ${FIELD}`;
+const TEXTAREA = `textarea textarea-bordered w-full ${FIELD}`;
+const INPUT_SM = `input input-bordered input-sm ${FIELD}`;
+const SELECT_SM = `select select-bordered select-sm ${FIELD}`;
+
 export function WorkEntryModal({
   open,
   onClose,
@@ -292,18 +301,18 @@ export function WorkEntryModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="work-entry-title"
-        className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-blue-500/30 bg-slate-900 p-5 shadow-2xl shadow-blue-950/40"
+        className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-300 bg-[#e8eef5] p-5 text-[#0B1220] shadow-2xl [&_.label-text]:text-[#0B1220] [&_.label-text-alt]:text-slate-600"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 id="work-entry-title" className="text-lg font-semibold text-white">
+            <h2 id="work-entry-title" className="text-lg font-semibold text-[#0B1220]">
               {heading}
             </h2>
-            <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
+            <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
           </div>
           <button
             type="button"
-            className="btn btn-ghost btn-sm btn-square text-slate-300"
+            className="btn btn-ghost btn-sm btn-square text-slate-700"
             onClick={onClose}
             aria-label="Close"
           >
@@ -320,19 +329,19 @@ export function WorkEntryModal({
         {phase === "timer" && mode === "create" ? (
           <div className="space-y-5">
             {selectedTicket ? (
-              <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+              <div className="rounded-xl border border-slate-300 bg-white p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-mono text-sm text-teal-300">
+                  <p className="font-mono text-sm text-teal-700">
                     {selectedTicket.ticket_number}
                   </p>
                   <PriorityBadge priority={selectedTicket.priority ?? "Medium"} />
                   <StatusBadge status={selectedTicket.status ?? "New"} />
                 </div>
-                <p className="mt-2 text-base font-medium text-white">
+                <p className="mt-2 text-base font-medium text-[#0B1220]">
                   {selectedTicket.title}
                 </p>
                 {selectedTicket.description ? (
-                  <p className="mt-2 line-clamp-3 text-sm text-slate-400">
+                  <p className="mt-2 line-clamp-3 text-sm text-slate-600">
                     {selectedTicket.description}
                   </p>
                 ) : null}
@@ -341,7 +350,7 @@ export function WorkEntryModal({
               <FormField label="Ticket" htmlFor="timer_ticket_id" required>
                 <select
                   id="timer_ticket_id"
-                  className="select select-bordered w-full border-slate-600 bg-slate-950"
+                  className={SELECT}
                   required
                   value={selectedTicketId}
                   onChange={(e) => onSelectedTicketChange(e.target.value)}
@@ -361,31 +370,31 @@ export function WorkEntryModal({
             <div
               className={`rounded-xl border p-5 text-center ${
                 sessionPaused
-                  ? "border-amber-400/35 bg-gradient-to-br from-slate-950 to-amber-950/40"
+                  ? "border-amber-300 bg-amber-50"
                   : sessionEnRoute && !sessionActive
-                    ? "border-sky-400/35 bg-gradient-to-br from-slate-950 to-sky-950/40"
-                    : "border-blue-500/25 bg-gradient-to-br from-slate-950 to-[#1E3A5F]/40"
+                    ? "border-sky-300 bg-sky-50"
+                    : "border-slate-300 bg-white"
               }`}
             >
               <p
                 className={`text-xs font-semibold uppercase tracking-[0.16em] ${
                   sessionPaused
-                    ? "text-amber-200/90"
+                    ? "text-amber-800"
                     : sessionEnRoute && !sessionActive
-                      ? "text-sky-200/90"
-                      : "text-teal-200/80"
+                      ? "text-sky-800"
+                      : "text-teal-800"
                 }`}
               >
                 {statusLabel}
               </p>
-              <p className="mt-3 font-mono text-4xl tracking-tight text-white">
+              <p className="mt-3 font-mono text-4xl tracking-tight text-[#0B1220]">
                 {sessionActive || (startTime && endTime)
                   ? formatElapsed(elapsedSeconds)
                   : sessionEnRoute
                     ? "En route"
                     : "00:00:00"}
               </p>
-              <div className="mt-3 space-y-1 text-sm text-slate-400">
+              <div className="mt-3 space-y-1 text-sm text-slate-600">
                 <p>Date: {workDate || "—"}</p>
                 <p>
                   Start: {startTime || "—"}
@@ -481,12 +490,12 @@ export function WorkEntryModal({
             <div className="flex flex-wrap justify-between gap-2 pt-1">
               <button
                 type="button"
-                className="btn btn-ghost btn-sm text-slate-400"
+                className="btn btn-ghost btn-sm text-slate-700"
                 onClick={() => onPhaseChange("form")}
               >
                 Enter details manually
               </button>
-              <button type="button" className="btn btn-ghost text-slate-300" onClick={onClose}>
+              <button type="button" className="btn btn-ghost text-slate-700" onClick={onClose}>
                 Close
               </button>
             </div>
@@ -494,7 +503,7 @@ export function WorkEntryModal({
         ) : (
           <form onSubmit={handleSubmit} className="form-grid grid gap-4">
             {mode === "create" && startTime && endTime ? (
-              <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+              <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
                 Session recorded {startTime} – {endTime}
                 {hoursWorked ? ` (${hoursWorked} hrs active)` : ""}
                 {pauseCount > 0
@@ -507,7 +516,7 @@ export function WorkEntryModal({
             <FormField label="Ticket" htmlFor="ticket_id" required>
               <select
                 id="ticket_id"
-                className="select select-bordered w-full border-slate-600 bg-slate-950"
+                className={SELECT}
                 required
                 value={selectedTicketId}
                 onChange={(e) => onSelectedTicketChange(e.target.value)}
@@ -527,7 +536,7 @@ export function WorkEntryModal({
                 id="work_date"
                 name="work_date"
                 type="date"
-                className="input input-bordered w-full border-slate-600 bg-slate-950"
+                className={INPUT}
                 value={workDate}
                 onChange={(e) => onWorkDateChange(e.target.value)}
               />
@@ -538,7 +547,7 @@ export function WorkEntryModal({
                   id="start_time"
                   name="start_time"
                   type="time"
-                  className="input input-bordered w-full border-slate-600 bg-slate-950"
+                  className={INPUT}
                   value={startTime}
                   onChange={(e) => onStartTimeChange(e.target.value)}
                 />
@@ -548,7 +557,7 @@ export function WorkEntryModal({
                   id="end_time"
                   name="end_time"
                   type="time"
-                  className="input input-bordered w-full border-slate-600 bg-slate-950"
+                  className={INPUT}
                   value={endTime}
                   onChange={(e) => onEndTimeChange(e.target.value)}
                 />
@@ -565,7 +574,7 @@ export function WorkEntryModal({
                 type="number"
                 min="0"
                 step="0.25"
-                className="input input-bordered w-full border-slate-600 bg-slate-950"
+                className={INPUT}
                 value={hoursWorked}
                 onChange={(e) => onHoursWorkedChange(e.target.value)}
               />
@@ -574,7 +583,7 @@ export function WorkEntryModal({
               <textarea
                 id="work_performed"
                 name="work_performed"
-                className="textarea textarea-bordered w-full border-slate-600 bg-slate-950"
+                className={TEXTAREA}
                 rows={2}
                 value={workPerformed}
                 onChange={(e) => onWorkPerformedChange(e.target.value)}
@@ -584,7 +593,7 @@ export function WorkEntryModal({
               <select
                 id="service_method"
                 name="service_method"
-                className="select select-bordered w-full border-slate-600 bg-slate-950"
+                className={SELECT}
                 value={serviceMethod}
                 onChange={(e) => onServiceMethodChange(e.target.value)}
               >
@@ -594,14 +603,14 @@ export function WorkEntryModal({
                 <option value="Email">Email</option>
               </select>
             </FormField>
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-              <p className="text-sm font-medium text-slate-200">Parts used</p>
-              <p className="mt-1 text-xs text-slate-400">
+            <div className="rounded-xl border border-slate-300 bg-white p-3">
+              <p className="text-sm font-medium text-[#0B1220]">Parts used</p>
+              <p className="mt-1 text-xs text-slate-600">
                 Selecting parts deducts stock from Hardware Assets when you save.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <select
-                  className="select select-bordered select-sm min-w-40 flex-1 border-slate-600 bg-slate-950"
+                  className={`${SELECT_SM} min-w-40 flex-1`}
                   value={selectedPartId}
                   onChange={(e) => setSelectedPartId(e.target.value)}
                   disabled={availableParts.length === 0}
@@ -630,7 +639,7 @@ export function WorkEntryModal({
                 <input
                   type="number"
                   min="1"
-                  className="input input-bordered input-sm w-20 border-slate-600 bg-slate-950"
+                  className={`${INPUT_SM} w-20`}
                   value={partQty}
                   onChange={(e) => setPartQty(e.target.value)}
                   aria-label="Part quantity"
@@ -650,7 +659,7 @@ export function WorkEntryModal({
                   {partsUsed.map((part) => (
                     <li
                       key={part.partId}
-                      className="flex items-center justify-between gap-2 text-sm text-slate-200"
+                      className="flex items-center justify-between gap-2 text-sm text-[#0B1220]"
                     >
                       <span>
                         {part.partName ?? "Part"} × {part.quantity}
@@ -659,7 +668,7 @@ export function WorkEntryModal({
                         {formatCurrency(part.unitCost * part.quantity)}
                         <button
                           type="button"
-                          className="btn btn-ghost btn-xs btn-square text-slate-400 hover:text-rose-300"
+                          className="btn btn-ghost btn-xs btn-square text-slate-600 hover:text-rose-600"
                           aria-label={`Remove ${part.partName ?? "part"}`}
                           onClick={() =>
                             onPartsUsedChange(
@@ -674,7 +683,7 @@ export function WorkEntryModal({
                       </span>
                     </li>
                   ))}
-                  <li className="flex justify-between border-t border-slate-700 pt-2 text-sm font-medium text-teal-200">
+                  <li className="flex justify-between border-t border-slate-300 pt-2 text-sm font-medium text-teal-800">
                     <span>Parts total</span>
                     <span>{formatCurrency(partsCostTotal)}</span>
                   </li>
@@ -687,7 +696,7 @@ export function WorkEntryModal({
               <select
                 id="ticket_status"
                 name="ticket_status"
-                className="select select-bordered w-full border-slate-600 bg-slate-950"
+                className={SELECT}
                 value={ticketStatus}
                 onChange={(e) => onTicketStatusChange(e.target.value)}
               >
@@ -701,13 +710,13 @@ export function WorkEntryModal({
               {mode === "create" ? (
                 <button
                   type="button"
-                  className="btn btn-ghost text-slate-300"
+                  className="btn btn-ghost text-slate-700"
                   onClick={() => onPhaseChange("timer")}
                 >
                   Back to timer
                 </button>
               ) : null}
-              <button type="button" className="btn btn-ghost text-slate-300" onClick={onClose}>
+              <button type="button" className="btn btn-ghost text-slate-700" onClick={onClose}>
                 Cancel
               </button>
               <button

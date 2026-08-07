@@ -74,7 +74,8 @@ export default function TechniciansPage() {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const canManage = MANAGER_ROLES.has(activeRole);
-  const canViewTechPortal = canViewTechnicianPortalAs(realRole);
+  const canViewTechPortal =
+    activeRole === "administrator" && canViewTechnicianPortalAs(realRole);
 
   async function loadData() {
     const supabase = createClient();

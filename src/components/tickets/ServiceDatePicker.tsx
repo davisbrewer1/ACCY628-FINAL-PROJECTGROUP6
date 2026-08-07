@@ -11,12 +11,8 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
-import {
-  getCustomerSelectableServiceDates,
-  parseLocalDateKey,
-} from "@/lib/technician-schedule";
-import { createClient } from "@/lib/supabase/client";
-import type { ServiceTicket, Technician } from "@/lib/types";
+import { loadCustomerSelectableServiceDates } from "@/app/actions/service-availability";
+import { parseLocalDateKey } from "@/lib/technician-schedule";
 
 function dayKey(day: Date): string {
   return format(day, "yyyy-MM-dd");
@@ -56,23 +52,12 @@ export function ServiceDatePicker({
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const supabase = createClient();
-      const [techRes, ticketRes] = await Promise.all([
-        supabase.from("technicians").select("*").eq("active", true),
-        supabase
-          .from("service_tickets")
-          .select(
-            "id, status, assigned_technician_id, scheduled_start, scheduled_window, max_hours",
-          ),
-      ]);
+      const result = await loadCustomerSelectableServiceDates({
+        weekCount: 8,
+        durationHours: 1,
+      });
       if (cancelled) return;
-
-      const dates = getCustomerSelectableServiceDates(
-        (techRes.data ?? []) as Technician[],
-        (ticketRes.data ?? []) as ServiceTicket[],
-        { from: new Date(), weekCount: 8, durationHours: 1 },
-      );
-      setAvailableDates(new Set(dates));
+      setAvailableDates(new Set(result.dates));
       setLoading(false);
     }
     void load();

@@ -429,4 +429,4 @@ export const REVENUE_RECOGNITION_GUIDANCE =
   "Plan prices are recognized monthly over the service period (ASC 606-style): Monthly fees as billed, Yearly fees ÷ 12, and Up-front fees ÷ contract months. Cash may be collected on a different cadence than recognition.";
 
 export const PLAN_CASH_BILLING_GUIDANCE =
-  "Plan invoices are generated on cash cadence when Billing loads (monthly / yearly / up-front). Recognized MRR on reports stays monthly. Support hours and hardware within contract pools are not double-billed; overages and pass-through expenses (travel, meals, parts) still invoice.";
+  "Plan invoices are generated on cash cadence when Invoice loads (monthly / yearly / up-front), and the first plan payment is issued as soon as a contract is set Active. Recognized MRR on reports stays monthly. Support hours and hardware within contract pools are not double-billed; overages and pass-through expenses (travel, meals, parts) still invoice automatically when accepted.";

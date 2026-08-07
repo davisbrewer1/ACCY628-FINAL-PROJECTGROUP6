@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionResult } from "@/app/actions/customers";
+import {
+  createInvoicesFromApprovedExpenses,
+  createInvoicesFromWorkEntries,
+} from "@/app/actions/billing";
 import { insertNotification } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/server";
 import { isInternalOverLimitApproval } from "@/lib/ticket-expense-budgets";
@@ -274,7 +278,7 @@ export async function decideApproval(input: {
         subject = "billable expense";
         expenseNote =
           approvalStatus === "Approved"
-            ? " It can be included on the customer invoice."
+            ? " An issued invoice was created on Invoice."
             : approvalStatus === "Denied"
               ? " It will remain an internal company expense."
               : "";
@@ -300,6 +304,38 @@ export async function decideApproval(input: {
     }
   }
 
+  let invoiceNote = "";
+  if (approvalStatus === "Approved") {
+    if (approval.ticket_expense_id && !overLimitInternal) {
+      const expenseInvoice = await createInvoicesFromApprovedExpenses(
+        [approval.ticket_expense_id],
+        { status: "Issued" },
+      );
+      if (expenseInvoice.success && (expenseInvoice.created ?? 0) > 0) {
+        invoiceNote = " Invoice issued automatically.";
+      } else if (!expenseInvoice.success) {
+        invoiceNote = ` Expense approved, but auto-invoice failed: ${expenseInvoice.message}`;
+      }
+    }
+    if (approval.work_entry_id) {
+      const workInvoice = await createInvoicesFromWorkEntries(
+        [approval.work_entry_id],
+        { status: "Issued" },
+      );
+      if (workInvoice.success) {
+        if (!workInvoice.message.includes("No billable")) {
+          invoiceNote =
+            `${invoiceNote} ${workInvoice.message}`.trim();
+        }
+      } else if (
+        !workInvoice.message.includes("must be Approved") &&
+        !workInvoice.message.includes("already billed")
+      ) {
+        invoiceNote = `${invoiceNote} Work auto-invoice: ${workInvoice.message}`.trim();
+      }
+    }
+  }
+
   revalidateApprovalPaths();
   return {
     success: true,
@@ -308,8 +344,8 @@ export async function decideApproval(input: {
         ? expenseOnly
           ? overLimitInternal
             ? "Over-limit internal expense approved as company cost. Technician notified."
-            : "Expense approved for customer invoice. Technician notified."
-          : "Approval granted. Technician notified."
+            : `Expense approved for customer invoice. Technician notified.${invoiceNote}`
+          : `Approval granted. Technician notified.${invoiceNote}`
         : expenseOnly
           ? overLimitInternal
             ? "Over-limit internal expense denied. Technician notified."

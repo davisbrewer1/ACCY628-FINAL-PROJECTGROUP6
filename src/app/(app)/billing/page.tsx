@@ -53,6 +53,7 @@ export default function BillingPage() {
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [assets, setAssets] = useState<HardwareAsset[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [customerFilter, setCustomerFilter] = useState("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [selectedContractId, setSelectedContractId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -160,24 +161,26 @@ export default function BillingPage() {
   }, [invoices, customers, contracts]);
 
   const filteredRows = useMemo(() => {
+    let next = rows;
     if (filter === "past-due") {
       const ids = new Set(pastDue.map((i) => i.id));
-      return rows.filter((r) => ids.has(r.id));
-    }
-    if (filter === "action") {
-      return rows.filter(
+      next = next.filter((r) => ids.has(r.id));
+    } else if (filter === "action") {
+      next = next.filter(
         (r) =>
           r.status === "Draft" ||
           r.status === "Pending Approval" ||
           ((r.remaining_balance ?? 0) > 0 &&
             (r.status === "Past Due" || r.aging !== "current")),
       );
+    } else if (filter === "cash") {
+      next = next.filter((r) => (r.amount_paid ?? 0) > 0);
     }
-    if (filter === "cash") {
-      return rows.filter((r) => (r.amount_paid ?? 0) > 0);
+    if (customerFilter) {
+      next = next.filter((r) => r.customer_id === customerFilter);
     }
-    return rows;
-  }, [rows, filter, pastDue]);
+    return next;
+  }, [rows, filter, pastDue, customerFilter]);
 
   const selectedInvoice = invoices.find((i) => i.id === selectedInvoiceId);
 
@@ -222,7 +225,7 @@ export default function BillingPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Billing & AR"
+        title="Invoice & AR"
         description="Plan cadence invoices, pool-aware work charges, aging, and cash."
         action={
           <div className="flex flex-wrap gap-2">
@@ -310,7 +313,7 @@ export default function BillingPage() {
             <h2 className="card-title text-base">Asset budget overages</h2>
             <p className="text-sm text-base-content/70">
               Hardware under the contract asset budget is not billed separately. Overage
-              invoices are created automatically when Billing loads.
+              invoices are created automatically when Invoice loads.
             </p>
             <ul className="text-sm">
               {assetBurns.map((b) => {
@@ -364,10 +367,44 @@ export default function BillingPage() {
         </div>
       ) : null}
 
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <label className="form-control w-full max-w-xs">
+          <span className="label-text mb-1 text-sm font-medium">
+            Filter by customer
+          </span>
+          <select
+            className="select select-bordered select-sm w-full"
+            value={customerFilter}
+            onChange={(event) => setCustomerFilter(event.target.value)}
+            aria-label="Filter invoices by customer"
+          >
+            <option value="">All customers</option>
+            {customers.map((customer) => (
+              <option key={customer.id} value={customer.id}>
+                {customer.customer_name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {customerFilter ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setCustomerFilter("")}
+          >
+            Clear customer filter
+          </button>
+        ) : null}
+      </div>
+
       {filteredRows.length === 0 ? (
         <EmptyState
           title="No invoices in this view"
-          description="Plan cadence invoices appear automatically for active contracts. You can also create a manual invoice."
+          description={
+            customerFilter
+              ? "No invoices match this customer filter."
+              : "Plan cadence invoices appear automatically for active contracts. You can also create a manual invoice."
+          }
           action={
             <button
               type="button"

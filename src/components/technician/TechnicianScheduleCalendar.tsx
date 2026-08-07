@@ -581,21 +581,21 @@ export function TechnicianScheduleCalendar({
                 >
                   Moving {pendingWarning.priority} ticket later
                 </h4>
-                <p className="mt-2 text-sm text-slate-600">
+                <p className="mt-2 text-sm text-slate-200">
                   {pendingWarning.message}
                 </p>
-                <div className="mt-3 space-y-1 text-sm text-slate-400">
+                <div className="mt-3 space-y-1 text-sm text-slate-300">
                   <p>
-                    <span className="text-slate-500">Ticket:</span>{" "}
+                    <span className="text-slate-400">Ticket:</span>{" "}
                     {pendingWarning.ticket.ticket_number} —{" "}
                     {pendingWarning.ticket.title}
                   </p>
                   <p>
-                    <span className="text-slate-500">From:</span>{" "}
+                    <span className="text-slate-400">From:</span>{" "}
                     {pendingWarning.fromLabel}
                   </p>
                   <p>
-                    <span className="text-slate-500">To:</span>{" "}
+                    <span className="text-slate-400">To:</span>{" "}
                     {pendingWarning.toLabel}
                   </p>
                 </div>
@@ -911,7 +911,7 @@ function UnscheduledTray({
                         <label className="min-w-[10rem] flex-1">
                           <span className="sr-only">Reason</span>
                           <input
-                            className="input input-bordered input-xs w-full border-slate-600 bg-slate-950"
+                            className="input input-bordered input-xs w-full border-slate-300 bg-white text-[#0B1220]"
                             placeholder="Why more hours?"
                             value={extendReason}
                             onChange={(e) => setExtendReason(e.target.value)}

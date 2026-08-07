@@ -36,7 +36,6 @@ import { TechnicianHeaderTools } from "@/components/technician/TechnicianHeaderT
 import { canViewTechnicianPortalAs } from "@/lib/admin-technician-view";
 import {
   getNavForRole,
-  NAV_ITEMS,
   ROLE_LABELS,
   type NavItem,
 } from "@/lib/auth/roles";
@@ -305,26 +304,12 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const navItems = useMemo(() => {
-    const base = getNavForRole(activeRole);
-    // Managers and admins always keep My Work in the sidebar.
-    if (!canViewTechnicianPortalAs(realRole)) return base;
-    if (base.some((item) => item.href === "/technician")) return base;
-    const myWork = NAV_ITEMS.find((item) => item.href === "/technician");
-    if (!myWork) return base;
-    const techIdx = base.findIndex((item) => item.href === "/technicians");
-    if (techIdx >= 0) {
-      const next = [...base];
-      next.splice(techIdx + 1, 0, myWork);
-      return next;
-    }
-    return [...base, myWork];
-  }, [activeRole, realRole]);
+  const navItems = useMemo(() => getNavForRole(activeRole), [activeRole]);
   const onTechnicianPortal =
     pathname === "/technician" || pathname.startsWith("/technician/");
   const showTechnicianTools =
     activeRole === "technician" ||
-    (canViewTechnicianPortalAs(realRole) && onTechnicianPortal);
+    (canViewTechnicianPortalAs(activeRole) && onTechnicianPortal);
   const headerNavIndex = activeNavIndex(navItems, pathname);
   const headerBarColor = shadeAtIndex(
     HEADER_BAR_SHADES,
@@ -388,7 +373,7 @@ export function AppShell({
             </h1>
           </div>
           <div className="flex flex-none items-center gap-1 text-white [&_.btn-ghost]:text-white">
-            {canViewTechnicianPortalAs(realRole) && onTechnicianPortal ? (
+            {canViewTechnicianPortalAs(activeRole) && onTechnicianPortal ? (
               <AdminTechnicianPortalSwitcher variant="header" />
             ) : null}
             {showTechnicianTools ? (

@@ -1,15 +1,9 @@
 export const ADMIN_VIEW_TECH_STORAGE_KEY = "nexus-admin-view-technician-id";
 export const ADMIN_VIEW_TECH_EVENT = "nexus-admin-view-technician";
 
-const PORTAL_VIEWER_ROLES = new Set([
-  "administrator",
-  "service_manager",
-  "account_manager",
-]);
-
-/** Managers/admins can open any technician My Work board without re-login. */
+/** Administrators can open any technician My Work board without re-login. */
 export function canViewTechnicianPortalAs(role: string | null | undefined) {
-  return Boolean(role && PORTAL_VIEWER_ROLES.has(role));
+  return role === "administrator";
 }
 
 export function readAdminViewTechnicianId(): string | null {

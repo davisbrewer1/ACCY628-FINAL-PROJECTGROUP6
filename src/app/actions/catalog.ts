@@ -45,5 +45,6 @@ export async function createCatalogItem(
   }
 
   revalidatePath("/service-catalog");
+  revalidatePath("/ui-configuration");
   return { success: true, message: "Service catalog item added." };
 }

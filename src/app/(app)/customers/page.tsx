@@ -254,7 +254,7 @@ export default function CustomersPage() {
               Password: <span className="font-mono">{createdCreds.password}</span>
             </p>
             <p className="mt-1 opacity-80">
-              Share these with the customer contact. They can sign in at Portal sign-in as Client Admin.
+              Share these with the customer contact. They can sign in at Portal sign-in as Client User.
             </p>
           </div>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreatedCreds(null)}>
@@ -367,7 +367,7 @@ export default function CustomersPage() {
         <div className="modal-box max-w-2xl">
           <h3 className="text-lg font-bold">Approve &amp; add customer</h3>
           <p className="mt-1 text-sm text-base-content/70">
-            Creates the customer record and a Client Admin portal login (password{" "}
+            Creates the customer record and a Client User portal login (password{" "}
             <span className="font-mono">DemoPass123!</span>). The portal stays
             locked until you add an Active service contract on the Contracts page.
           </p>

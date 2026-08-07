@@ -131,7 +131,7 @@ export default function TechnicianWorkspacePage() {
   const { showToast } = useToast();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const isPortalViewer = canViewTechnicianPortalAs(realRole);
+  const isPortalViewer = canViewTechnicianPortalAs(activeRole);
   const needsSchedulingFocus = searchParams.get("needsScheduling") === "1";
   const didFocusNeedsScheduling = useRef(false);
   const [loading, setLoading] = useState(true);
@@ -1139,7 +1139,7 @@ export default function TechnicianWorkspacePage() {
               </p>
             </div>
           ) : (
-            <div className="rounded-xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-slate-500">
+            <div className="rounded-xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-slate-300">
               No entries currently returned.
             </div>
           )}
@@ -1192,7 +1192,7 @@ export default function TechnicianWorkspacePage() {
                           id={`rs-date-${entry.id}`}
                           name="work_date"
                           type="date"
-                          className="input input-bordered w-full border-slate-600 bg-slate-950"
+                          className="input input-bordered w-full border-slate-300 bg-white text-[#0B1220]"
                           defaultValue={entry.work_date ?? ""}
                         />
                       </FormField>
@@ -1203,7 +1203,7 @@ export default function TechnicianWorkspacePage() {
                           type="number"
                           min="0"
                           step="0.25"
-                          className="input input-bordered w-full border-slate-600 bg-slate-950"
+                          className="input input-bordered w-full border-slate-300 bg-white text-[#0B1220]"
                           defaultValue={entry.hours_worked ?? ""}
                           required
                         />
@@ -1216,7 +1216,7 @@ export default function TechnicianWorkspacePage() {
                         <textarea
                           id={`rs-work-${entry.id}`}
                           name="work_performed"
-                          className="textarea textarea-bordered w-full border-slate-600 bg-slate-950"
+                          className="textarea textarea-bordered w-full border-slate-300 bg-white text-[#0B1220]"
                           rows={2}
                           defaultValue={entry.work_performed ?? ""}
                           required
@@ -1226,7 +1226,7 @@ export default function TechnicianWorkspacePage() {
                         <select
                           id={`rs-inc-${entry.id}`}
                           name="included_in_contract"
-                          className="select select-bordered w-full border-slate-600 bg-slate-950"
+                          className="select select-bordered w-full border-slate-300 bg-white text-[#0B1220]"
                           defaultValue={entry.included_in_contract ? "true" : "false"}
                         >
                           <option value="true">Included / block hours</option>
@@ -1237,7 +1237,7 @@ export default function TechnicianWorkspacePage() {
                         <select
                           id={`rs-method-${entry.id}`}
                           name="service_method"
-                          className="select select-bordered w-full border-slate-600 bg-slate-950"
+                          className="select select-bordered w-full border-slate-300 bg-white text-[#0B1220]"
                           defaultValue={entry.service_method ?? "Remote"}
                         >
                           <option value="Remote">Remote</option>
@@ -1254,7 +1254,7 @@ export default function TechnicianWorkspacePage() {
                         </button>
                         <button
                           type="button"
-                          className="btn btn-ghost btn-sm text-slate-300"
+                          className="btn btn-ghost btn-sm text-slate-700"
                           onClick={() => setResubmitId(null)}
                         >
                           Cancel

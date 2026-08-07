@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAnonAuthClient } from "@/lib/supabase/anon";
 import { createClient } from "@/lib/supabase/server";
 
 export interface ActionResult {
@@ -82,46 +81,25 @@ export async function createCustomer(formData: FormData): Promise<ActionResult> 
     return { success: false, message: error?.message ?? "Could not create customer." };
   }
 
-  const authClient = createAnonAuthClient();
-  const { data: signUpData, error: signUpError } = await authClient.auth.signUp({
-    email,
-    password: PORTAL_PASSWORD,
-    options: {
-      data: {
-        full_name: contactName,
-        role: "client_admin",
-        customer_id: customer.id,
-      },
+  // DB RPC creates confirmed Auth user + profile without sending emails
+  // (avoids Supabase Auth email rate limits that previously left customers without logins).
+  const { data: portalUserId, error: provisionError } = await supabase.rpc(
+    "provision_customer_portal_login",
+    {
+      p_customer_id: customer.id,
+      p_email: email,
+      p_full_name: contactName,
+      p_password: PORTAL_PASSWORD,
     },
-  });
+  );
 
-  if (signUpError) {
+  if (provisionError || !portalUserId) {
     await supabase.from("customers").delete().eq("id", customer.id);
     return {
       success: false,
-      message: `Customer was not saved because the portal login could not be created: ${signUpError.message}`,
-    };
-  }
-
-  if (!signUpData.user) {
-    await supabase.from("customers").delete().eq("id", customer.id);
-    return {
-      success: false,
-      message:
-        "Portal account requires email confirmation before it can be used. Enable auto-confirm in Supabase Auth for local demos, then try again.",
-    };
-  }
-
-  const { error: confirmError } = await supabase.rpc("confirm_portal_user", {
-    p_user_id: signUpData.user.id,
-    p_customer_id: customer.id,
-  });
-
-  if (confirmError) {
-    await supabase.from("customers").delete().eq("id", customer.id);
-    return {
-      success: false,
-      message: `Portal login could not be activated: ${confirmError.message}`,
+      message: `Customer was not saved because the portal login could not be created: ${
+        provisionError?.message ?? "Unknown provisioning error."
+      }`,
     };
   }
 
@@ -130,6 +108,87 @@ export async function createCustomer(formData: FormData): Promise<ActionResult> 
   return {
     success: true,
     message: `Customer approved and portal account created. Login: ${email} / ${PORTAL_PASSWORD}`,
+    portalEmail: email,
+    portalPassword: PORTAL_PASSWORD,
+  };
+}
+
+/** Repair a customer that was saved without an Auth portal login. */
+export async function provisionCustomerPortalLogin(
+  customerId: string,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, message: "You must be signed in." };
+  }
+
+  const { data: actor } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!isManagerRole(actor?.role)) {
+    return {
+      success: false,
+      message: "Only managers can provision portal logins.",
+    };
+  }
+
+  const { data: customer, error: customerError } = await supabase
+    .from("customers")
+    .select("id, contact_email, primary_contact_name, customer_name")
+    .eq("id", customerId)
+    .maybeSingle();
+
+  if (customerError || !customer) {
+    return {
+      success: false,
+      message: customerError?.message ?? "Customer not found.",
+    };
+  }
+
+  const email = String(customer.contact_email ?? "").trim().toLowerCase();
+  if (!email) {
+    return {
+      success: false,
+      message: "Customer needs a contact email before a portal login can be created.",
+    };
+  }
+
+  const fullName =
+    String(customer.primary_contact_name ?? "").trim() ||
+    String(customer.customer_name ?? "").trim() ||
+    email;
+
+  const { data: portalUserId, error: provisionError } = await supabase.rpc(
+    "provision_customer_portal_login",
+    {
+      p_customer_id: customer.id,
+      p_email: email,
+      p_full_name: fullName,
+      p_password: PORTAL_PASSWORD,
+    },
+  );
+
+  if (provisionError || !portalUserId) {
+    return {
+      success: false,
+      message:
+        provisionError?.message ??
+        "Could not create the portal login for this customer.",
+    };
+  }
+
+  revalidatePath("/customers");
+  revalidatePath("/operations");
+  return {
+    success: true,
+    message: `Portal login ready. Login: ${email} / ${PORTAL_PASSWORD}`,
     portalEmail: email,
     portalPassword: PORTAL_PASSWORD,
   };

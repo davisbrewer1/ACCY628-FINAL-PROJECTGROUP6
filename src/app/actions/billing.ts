@@ -303,6 +303,152 @@ export async function syncPlanInvoices(): Promise<
 }
 
 /**
+ * Immediately issue the first recurring plan invoice for an Active contract.
+ * Used when a contract is first set Active so AR / Invoice tab updates without
+ * waiting for a later Billing page sync. Idempotent via billing_period.
+ */
+export async function ensureFirstPlanInvoiceForContract(
+  contractId: string,
+): Promise<ActionResult & { created?: boolean }> {
+  const supabase = await createClient();
+  const id = String(contractId ?? "").trim();
+  if (!id) {
+    return { success: false, message: "Contract id is required." };
+  }
+
+  const { data: contract, error: contractError } = await supabase
+    .from("contracts")
+    .select(
+      "id, customer_id, contract_status, approval_status, start_date, end_date, monthly_recurring_fee, setup_fee, billing_frequency, invoice_due_days, plan_id",
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (contractError) {
+    return { success: false, message: contractError.message };
+  }
+  if (!contract) {
+    return { success: false, message: "Contract not found." };
+  }
+  if (contract.contract_status !== "Active") {
+    return {
+      success: true,
+      message: "Contract is not Active — no plan invoice issued yet.",
+      created: false,
+    };
+  }
+  if (contract.approval_status && contract.approval_status !== "Approved") {
+    return {
+      success: true,
+      message: "Contract is not approved — no plan invoice issued yet.",
+      created: false,
+    };
+  }
+  if (!contract.start_date) {
+    return {
+      success: false,
+      message: "Contract needs a start date before invoicing.",
+    };
+  }
+
+  let plan: ServicePlan | null = null;
+  if (contract.plan_id) {
+    const { data: planRow } = await supabase
+      .from("service_plans")
+      .select("id, pricing_model, base_price")
+      .eq("id", contract.plan_id)
+      .maybeSingle();
+    plan = (planRow as ServicePlan | null) ?? null;
+  }
+
+  const start = new Date(contract.start_date);
+  const now = new Date();
+  const asOf =
+    !Number.isNaN(start.getTime()) && start > now ? start : now;
+
+  const periods = expectedPlanPeriods(
+    contract as Contract,
+    asOf,
+    plan,
+  )
+    .filter((period) => period.period !== "setup" && period.amount > 0)
+    .sort((a, b) => a.invoiceDate.localeCompare(b.invoiceDate));
+
+  const first = periods[0];
+  if (!first) {
+    return {
+      success: true,
+      message: "No billable plan amount for the first period.",
+      created: false,
+    };
+  }
+
+  const { data: existing } = await supabase
+    .from("invoices")
+    .select("id")
+    .eq("contract_id", contract.id)
+    .eq("invoice_source", "plan_recurring")
+    .eq("billing_period", first.period)
+    .maybeSingle();
+
+  if (existing) {
+    return {
+      success: true,
+      message: "First plan invoice already exists.",
+      created: false,
+    };
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const stamp = Date.now().toString(36).toUpperCase();
+  const suffix = Math.floor(Math.random() * 900 + 100);
+  const invoiceNumber = `INV-PLAN-${first.period}-${stamp}-${suffix}`.slice(
+    0,
+    64,
+  );
+
+  const due = new Date(first.dueDate);
+  let status = "Issued";
+  if (due < now) status = "Past Due";
+
+  const amount = roundMoney(first.amount);
+  const { error: insertError } = await supabase.from("invoices").insert({
+    invoice_number: invoiceNumber,
+    customer_id: contract.customer_id,
+    contract_id: contract.id,
+    invoice_date: first.invoiceDate,
+    due_date: first.dueDate,
+    recurring_service_fee: amount,
+    additional_support_charges: 0,
+    software_charges: 0,
+    equipment_charges: 0,
+    other_charges: 0,
+    late_fee_amount: 0,
+    total_amount: amount,
+    amount_paid: 0,
+    remaining_balance: amount,
+    status,
+    invoice_source: "plan_recurring",
+    billing_period: first.period,
+    created_by: user?.id ?? null,
+  });
+
+  if (insertError) {
+    return { success: false, message: insertError.message };
+  }
+
+  revalidateBillingPaths();
+  return {
+    success: true,
+    message: "First plan invoice issued.",
+    created: true,
+  };
+}
+
+/**
  * Ensure one open asset-overage invoice per Active contract that is over budget.
  * Updates the open invoice in place when the overage estimate changes.
  */
@@ -716,16 +862,18 @@ export async function recordPayment(formData: FormData): Promise<ActionResult> {
 }
 
 /**
- * Create Draft invoices from selected work entries (pool-based hours).
+ * Create invoices from selected work entries (pool-based hours).
  * In-pool support hours are $0; overage hours × rate + pass-through expenses bill.
  */
 export async function createInvoicesFromWorkEntries(
   entryIds: string[],
+  options?: { status?: "Draft" | "Issued" },
 ): Promise<ActionResult> {
   if (entryIds.length === 0) {
     return { success: false, message: "Select at least one work entry." };
   }
 
+  const invoiceStatus = options?.status ?? "Draft";
   const supabase = await createClient();
   const {
     data: { user },
@@ -923,7 +1071,7 @@ export async function createInvoicesFromWorkEntries(
         total_amount: roundMoney(total),
         amount_paid: 0,
         remaining_balance: roundMoney(total),
-        status: "Draft",
+        status: invoiceStatus,
         invoice_source: "work_entries",
         billing_period: null,
         created_by: user?.id ?? null,
@@ -957,10 +1105,11 @@ export async function createInvoicesFromWorkEntries(
   revalidateBillingPaths();
   revalidatePath("/technician");
 
+  const statusLabel = invoiceStatus === "Issued" ? "issued" : "draft";
   const parts: string[] = [];
   if (created > 0) {
     parts.push(
-      `Created ${created} draft invoice${created === 1 ? "" : "s"} from work entries (pool hours excluded; expenses and overages billed)`,
+      `Created ${created} ${statusLabel} invoice${created === 1 ? "" : "s"} from work entries (pool hours excluded; expenses and overages billed)`,
     );
   }
   if (coveredOnly > 0) {
@@ -979,12 +1128,14 @@ export async function createInvoicesFromWorkEntries(
 }
 
 /**
- * Draft invoices from Expense Tracker rows that are Billable to Customer,
+ * Invoices from Expense Tracker rows that are Billable to Customer,
  * manager-Approved, and not yet linked to an invoice.
  */
 export async function createInvoicesFromApprovedExpenses(
   expenseIds?: string[],
+  options?: { status?: "Draft" | "Issued" },
 ): Promise<ActionResult & { created?: number; billedExpenseCount?: number }> {
+  const invoiceStatus = options?.status ?? "Draft";
   const supabase = await createClient();
   const {
     data: { user },
@@ -1137,7 +1288,7 @@ export async function createInvoicesFromApprovedExpenses(
         total_amount: amount,
         amount_paid: 0,
         remaining_balance: amount,
-        status: "Draft",
+        status: invoiceStatus,
         invoice_source: "ticket_expenses",
         billing_period: null,
         created_by: user?.id ?? null,
@@ -1174,11 +1325,12 @@ export async function createInvoicesFromApprovedExpenses(
       ? ` Skipped ${skipped.length} without a customer-linked ticket.`
       : "";
 
+  const statusLabel = invoiceStatus === "Issued" ? "issued" : "draft";
   return {
     success: true,
     message:
       created > 0
-        ? `Created ${created} draft invoice${created === 1 ? "" : "s"} from ${billedExpenseCount} approved billable expense${billedExpenseCount === 1 ? "" : "s"}.${skipNote}`
+        ? `Created ${created} ${statusLabel} invoice${created === 1 ? "" : "s"} from ${billedExpenseCount} approved billable expense${billedExpenseCount === 1 ? "" : "s"}.${skipNote}`
         : `No expense invoices created.${skipNote}`,
     created,
     billedExpenseCount,

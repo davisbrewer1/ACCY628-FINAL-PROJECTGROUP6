@@ -1,6 +1,7 @@
 ﻿"use server";
 
 import { revalidatePath } from "next/cache";
+import { createInvoicesFromWorkEntries } from "@/app/actions/billing";
 import {
   calcLaborCost,
   calcTotalDirectCost,
@@ -520,13 +521,33 @@ export async function updateWorkEntryApproval(
     return { success: false, message: error.message };
   }
 
+  let invoiceNote = "";
+  if (approvalStatus === "Approved") {
+    const invoiceResult = await createInvoicesFromWorkEntries([entryId], {
+      status: "Issued",
+    });
+    if (invoiceResult.success) {
+      if (
+        invoiceResult.message.includes("Created") ||
+        invoiceResult.message.includes("marked")
+      ) {
+        invoiceNote = ` ${invoiceResult.message}`;
+      }
+    } else if (
+      !invoiceResult.message.includes("already billed") &&
+      !invoiceResult.message.includes("must be Approved")
+    ) {
+      invoiceNote = ` Approved, but auto-invoice failed: ${invoiceResult.message}`;
+    }
+  }
+
   revalidateWorkPaths();
   return {
     success: true,
     message:
       approvalStatus === "Disputed"
         ? "Returned to technician with notes."
-        : `Work entry marked ${approvalStatus}.`,
+        : `Work entry marked ${approvalStatus}.${invoiceNote}`.trim(),
   };
 }
 

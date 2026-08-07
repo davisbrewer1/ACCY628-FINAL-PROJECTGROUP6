@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Plus } from "lucide-react";
+import { createCatalogItem } from "@/app/actions/catalog";
+import { saveLandingServicesEnabled } from "@/app/actions/ui-config";
 import { AlertBanner } from "@/components/AlertBanner";
+import { FormField } from "@/components/FormField";
 import { PageHeader } from "@/components/PageHeader";
+import { StatusBadge } from "@/components/StatusBadge";
 import { useDemoRole } from "@/components/providers/DemoRoleProvider";
 import { useToast } from "@/components/Toast";
-import { saveLandingServicesEnabled } from "@/app/actions/ui-config";
+import { formatCurrency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import {
   DEFAULT_ENABLED_LANDING_SERVICES,
@@ -16,13 +21,19 @@ import {
   getEnabledSupportSubcategories,
   parseEnabledLandingServices,
 } from "@/lib/ui-config";
-import type { ServiceFamily, SupportIssueCategory } from "@/lib/types";
+import {
+  SERVICE_FAMILIES,
+  type ServiceCatalogItem,
+  type ServiceFamily,
+  type SupportIssueCategory,
+} from "@/lib/types";
 
 const MANAGER_ROLES = new Set(["administrator", "service_manager"]);
 
 export default function UiConfigurationPage() {
   const { activeRole } = useDemoRole();
   const { showToast } = useToast();
+  const catalogDialogRef = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState<ServiceFamily[]>([
     ...DEFAULT_ENABLED_LANDING_SERVICES,
@@ -30,20 +41,39 @@ export default function UiConfigurationPage() {
   const [savedEnabled, setSavedEnabled] = useState<ServiceFamily[]>([
     ...DEFAULT_ENABLED_LANDING_SERVICES,
   ]);
+  const [catalogItems, setCatalogItems] = useState<ServiceCatalogItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isCatalogPending, startCatalogTransition] = useTransition();
+
+  async function loadCatalog() {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("service_catalog_items")
+      .select("*")
+      .order("created_at", { ascending: false });
+    setCatalogItems((data as ServiceCatalogItem[]) ?? []);
+  }
 
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", LANDING_SERVICES_SETTING_KEY)
-        .maybeSingle();
+      const [{ data }, catalog] = await Promise.all([
+        supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", LANDING_SERVICES_SETTING_KEY)
+          .maybeSingle(),
+        supabase
+          .from("service_catalog_items")
+          .select("*")
+          .order("created_at", { ascending: false }),
+      ]);
       const next = parseEnabledLandingServices(data?.value);
       setEnabled(next);
       setSavedEnabled(next);
+      setCatalogItems((catalog.data as ServiceCatalogItem[]) ?? []);
       setLoading(false);
     }
     void load();
@@ -109,13 +139,42 @@ export default function UiConfigurationPage() {
     });
   }
 
+  function handleCreateCustomService(formData: FormData) {
+    setCatalogError(null);
+    startCatalogTransition(async () => {
+      const result = await createCatalogItem(formData);
+      if (!result.success) {
+        setCatalogError(result.message);
+        showToast(result.message);
+        return;
+      }
+      catalogDialogRef.current?.close();
+      setCatalogError(null);
+      showToast(result.message);
+      await loadCatalog();
+    });
+  }
+
   const visibleCount = filterLandingCatalog(enabled).length;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="UI Configuration"
-        description="Control which services appear on the public landing page. Disabled services are also removed from client ticket category options."
+        description="Control landing-page services, client ticket options, and custom service catalog offerings."
+        action={
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setCatalogError(null);
+              catalogDialogRef.current?.showModal();
+            }}
+          >
+            <Plus className="size-4" />
+            Add Custom Service
+          </button>
+        }
       />
 
       {error ? (
@@ -232,6 +291,192 @@ export default function UiConfigurationPage() {
           )}
         </div>
       </section>
+
+      <section className="rounded-box border border-base-300 bg-base-100 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-base-300 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold">Custom services</h2>
+            <p className="mt-1 text-sm text-base-content/70">
+              Add billable offerings to the service catalog used for quoting and
+              delivery.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => {
+              setCatalogError(null);
+              catalogDialogRef.current?.showModal();
+            }}
+          >
+            <Plus className="size-4" />
+            Add Custom Service
+          </button>
+        </div>
+        {catalogItems.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-base-content/60">
+            No catalog services yet. Add a custom service to get started.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Family</th>
+                  <th>Pricing</th>
+                  <th>Base price</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {catalogItems.slice(0, 12).map((item) => (
+                  <tr key={item.id}>
+                    <td className="font-medium">{item.service_name}</td>
+                    <td className="text-sm">{item.service_family || "—"}</td>
+                    <td className="text-sm">{item.pricing_model || "—"}</td>
+                    <td>{formatCurrency(item.base_price)}</td>
+                    <td>
+                      <StatusBadge status={item.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <dialog ref={catalogDialogRef} className="modal">
+        <div className="modal-box max-h-[90vh] max-w-2xl overflow-y-auto">
+          <h3 className="text-lg font-bold">Add Custom Service</h3>
+          <p className="mt-1 text-sm text-base-content/70">
+            Creates a new service catalog item available across plans and quoting.
+          </p>
+          {catalogError ? (
+            <div className="alert alert-error mt-4 text-sm">
+              <span>{catalogError}</span>
+            </div>
+          ) : null}
+          <form
+            action={handleCreateCustomService}
+            className="form-grid mt-4 grid gap-4 sm:grid-cols-2"
+          >
+            <FormField
+              label="Service name"
+              htmlFor="ui_service_name"
+              required
+              className="sm:col-span-2"
+            >
+              <input
+                id="ui_service_name"
+                name="service_name"
+                className="input input-bordered w-full"
+                required
+              />
+            </FormField>
+            <FormField label="Service family" htmlFor="ui_service_family" required>
+              <select
+                id="ui_service_family"
+                name="service_family"
+                className="select select-bordered w-full"
+                required
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  Select family
+                </option>
+                {SERVICE_FAMILIES.map((family) => (
+                  <option key={family} value={family}>
+                    {family}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Status" htmlFor="ui_status">
+              <select
+                id="ui_status"
+                name="status"
+                className="select select-bordered w-full"
+                defaultValue="Active"
+              >
+                <option value="Active">Active</option>
+                <option value="Draft">Draft</option>
+                <option value="Retired">Retired</option>
+              </select>
+            </FormField>
+            <FormField
+              label="Business problem"
+              htmlFor="ui_business_problem"
+              className="sm:col-span-2"
+            >
+              <textarea
+                id="ui_business_problem"
+                name="business_problem"
+                className="textarea textarea-bordered w-full"
+                rows={2}
+              />
+            </FormField>
+            <FormField
+              label="What&apos;s included"
+              htmlFor="ui_whats_included"
+              className="sm:col-span-2"
+            >
+              <textarea
+                id="ui_whats_included"
+                name="whats_included"
+                className="textarea textarea-bordered w-full"
+                rows={2}
+              />
+            </FormField>
+            <FormField label="Pricing model" htmlFor="ui_pricing_model">
+              <input
+                id="ui_pricing_model"
+                name="pricing_model"
+                className="input input-bordered w-full"
+                placeholder="Per device, per user, fixed fee..."
+              />
+            </FormField>
+            <FormField label="Base price" htmlFor="ui_base_price">
+              <input
+                id="ui_base_price"
+                name="base_price"
+                type="number"
+                min="0"
+                step="0.01"
+                className="input input-bordered w-full"
+              />
+            </FormField>
+            <input type="hidden" name="includes_labor" value="true" />
+            <input type="hidden" name="includes_support" value="true" />
+            <input type="hidden" name="includes_hardware" value="false" />
+            <input type="hidden" name="includes_software" value="false" />
+            <div className="modal-action sm:col-span-2">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => catalogDialogRef.current?.close()}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isCatalogPending}
+              >
+                {isCatalogPending ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Save Service"
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit">close</button>
+        </form>
+      </dialog>
     </div>
   );
 }

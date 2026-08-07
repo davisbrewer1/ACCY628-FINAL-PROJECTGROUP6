@@ -24,6 +24,8 @@ const DEMO_TECHNICIANS = [
   { name: "Dana Desktop", email: "tech4@serviceflow.demo" },
   { name: "Evan Endpoint", email: "tech5@serviceflow.demo" },
   { name: "Fran Firewall", email: "tech6@serviceflow.demo" },
+  { name: "Kai Cipher", email: "kai@nexus.demo" },
+  { name: "Quinn Volt", email: "quinn@nexus.demo" },
 ] as const;
 
 export default function LoginPage() {
@@ -86,8 +88,9 @@ export default function LoginPage() {
     setError(null);
 
     const supabase = createClient();
+    const loginEmail = email.trim();
     const { error: authError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: loginEmail,
       password,
     });
 

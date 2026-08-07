@@ -300,7 +300,7 @@ export default function RevenueExpensesPage() {
           <>
             Recognized invoice totals. Open a row to inspect it in{" "}
             <Link href="/billing" className="link">
-              Billing
+              Invoice
             </Link>
             .
           </>
@@ -468,7 +468,7 @@ export default function RevenueExpensesPage() {
           <li>
             Expand Revenue or Ticket fulfillment below for source rows that open{" "}
             <Link href="/billing" className="link">
-              Billing
+              Invoice
             </Link>{" "}
             and{" "}
             <Link href="/time-costs" className="link">

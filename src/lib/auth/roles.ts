@@ -87,7 +87,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/billing",
-    label: "Billing",
+    label: "Invoice",
     icon: "Receipt",
     roles: ["administrator", "billing", "account_manager", "service_manager"],
   },

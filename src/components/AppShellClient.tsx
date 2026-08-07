@@ -19,7 +19,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/time-costs": "Work & Billing",
   "/revenue-expenses": "Revenue & Expenses",
   "/ui-configuration": "UI Configuration",
-  "/billing": "Billing",
+  "/billing": "Invoice",
   "/reports": "Reports",
   "/technician": "My Work",
   "/cybersecurity": "Cybersecurity",
