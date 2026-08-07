@@ -1,0 +1,1133 @@
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000e6', 'TKT-2026-0230', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Endpoint AV quarantine investigation — PixelCraft',
+  'Cybersecurity request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Cybersecurity', 'Critical', 'Remote',
+  '33333333-3333-3333-3333-333333333308', '2026-03-16T08:05:00-05:00', '2026-03-16T11:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-03-16T08:00:00-05:00', 'h08x3',
+  4, 4, false, false, false, true,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000e7', 'TKT-2026-0231', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Printer mapping and driver cleanup — PixelCraft',
+  'Hardware Support request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Hardware Support', 'Low', 'On-site',
+  '33333333-3333-3333-3333-333333333301', '2026-04-08T15:05:00-05:00', '2026-04-08T17:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-04-08T15:00:00-05:00', 'h15',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000e8', 'TKT-2026-0232', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Shared drive permissions update — PixelCraft',
+  'Software Support request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Software Support', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333302', '2026-04-13T09:05:00-05:00', '2026-04-13T10:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-04-13T09:00:00-05:00', 'h09',
+  2, 2, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000e9', 'TKT-2026-0233', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Wi-Fi dead spot survey — PixelCraft',
+  'Network request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Network', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333303', '2026-04-16T11:05:00-05:00', '2026-04-16T15:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-04-16T11:00:00-05:00', 'h11x3',
+  5, 5, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000ea', 'TKT-2026-0234', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Backup job failure triage — PixelCraft',
+  'Cloud request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Cloud', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333305', '2026-05-08T10:05:00-05:00', '2026-05-08T13:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-05-08T10:00:00-05:00', 'h10',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000eb', 'TKT-2026-0235', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'New hire workstation setup — PixelCraft',
+  'Hardware Deployment request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Hardware Deployment', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333306', '2026-05-12T12:05:00-05:00', '2026-05-12T14:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-05-12T12:00:00-05:00', 'h12',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000ec', 'TKT-2026-0236', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Phishing report triage — PixelCraft',
+  'Cybersecurity request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Cybersecurity', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333308', '2026-05-18T14:05:00-05:00', '2026-05-18T16:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-05-18T14:00:00-05:00', 'h14',
+  3, 3, false, false, false, true,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000ed', 'TKT-2026-0237', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Server disk capacity expansion — PixelCraft',
+  'Cloud request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Cloud', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333301', '2026-06-08T13:05:00-05:00', '2026-06-08T16:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-06-08T13:00:00-05:00', 'h13x3',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000ee', 'TKT-2026-0238', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'QoS tuning for VoIP quality — PixelCraft',
+  'Network request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Network', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333302', '2026-06-12T15:05:00-05:00', '2026-06-12T17:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-06-12T15:00:00-05:00', 'h15',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000ef', 'TKT-2026-0239', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Application licensing renewal assist — PixelCraft',
+  'Software Support request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Software Support', 'Low', 'Remote',
+  '33333333-3333-3333-3333-333333333303', '2026-06-16T09:05:00-05:00', '2026-06-16T10:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-06-16T09:00:00-05:00', 'h09',
+  2, 2, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000f0', 'TKT-2026-0240', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'VPN dropouts for remote staff — PixelCraft',
+  'Network request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Network', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333305', '2026-07-08T08:05:00-05:00', '2026-07-08T11:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-07-08T08:00:00-05:00', 'h08',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000f1', 'TKT-2026-0241', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Laptop imaging and join to Entra ID — PixelCraft',
+  'Hardware Deployment request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Hardware Deployment', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333306', '2026-07-13T10:05:00-05:00', '2026-07-13T13:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-07-13T10:00:00-05:00', 'h10x3',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000f2', 'TKT-2026-0242', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'M365 mailbox restore request — PixelCraft',
+  'Microsoft 365 request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Microsoft 365', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333308', '2026-07-16T12:05:00-05:00', '2026-07-16T14:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-07-16T12:00:00-05:00', 'h12',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000f3', 'TKT-2026-0243', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Patch cycle review and reboot window — PixelCraft',
+  'Software Support request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Software Support', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333301', '2026-08-10T11:05:00-05:00', null,
+  'Assigned', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-08-10T11:00:00-05:00', 'h11',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000f4', 'TKT-2026-0244', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Firewall rule change for vendor access — PixelCraft',
+  'Network request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Network', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333302', '2026-08-12T13:05:00-05:00', null,
+  'In Progress', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-08-12T13:00:00-05:00', 'h13',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000f5', 'TKT-2026-0245', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Endpoint AV quarantine investigation — PixelCraft',
+  'Cybersecurity request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Cybersecurity', 'Critical', 'Remote',
+  '33333333-3333-3333-3333-333333333303', '2026-08-17T15:05:00-05:00', null,
+  'New', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-08-17T15:00:00-05:00', 'h15x3',
+  4, 4, false, false, false, true,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000f6', 'TKT-2026-0246', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Printer mapping and driver cleanup — PixelCraft',
+  'Hardware Support request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Hardware Support', 'Low', 'On-site',
+  '33333333-3333-3333-3333-333333333305', '2026-09-08T14:05:00-05:00', null,
+  'Assigned', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-09-08T14:00:00-05:00', 'h14',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000f7', 'TKT-2026-0247', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Shared drive permissions update — PixelCraft',
+  'Software Support request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Software Support', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333306', '2026-09-14T08:05:00-05:00', null,
+  'In Progress', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-09-14T08:00:00-05:00', 'h08',
+  2, 2, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000f8', 'TKT-2026-0248', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Wi-Fi dead spot survey — PixelCraft',
+  'Network request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Network', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333308', '2026-09-16T10:05:00-05:00', null,
+  'New', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-09-16T10:00:00-05:00', 'h10x3',
+  5, 5, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000f9', 'TKT-2026-0249', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Backup job failure triage — PixelCraft',
+  'Cloud request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Cloud', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333301', '2026-10-08T09:05:00-05:00', null,
+  'Assigned', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-10-08T09:00:00-05:00', 'h09',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000fa', 'TKT-2026-0250', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'New hire workstation setup — PixelCraft',
+  'Hardware Deployment request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Hardware Deployment', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333302', '2026-10-12T11:05:00-05:00', null,
+  'In Progress', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-10-12T11:00:00-05:00', 'h11',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000fb', 'TKT-2026-0251', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Phishing report triage — PixelCraft',
+  'Cybersecurity request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Cybersecurity', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333303', '2026-10-16T13:05:00-05:00', null,
+  'New', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-10-16T13:00:00-05:00', 'h13',
+  3, 3, false, false, false, true,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000fc', 'TKT-2026-0252', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Server disk capacity expansion — PixelCraft',
+  'Cloud request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Cloud', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333305', '2026-11-09T12:05:00-05:00', null,
+  'Assigned', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-11-09T12:00:00-05:00', 'h12x3',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000fd', 'TKT-2026-0253', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'QoS tuning for VoIP quality — PixelCraft',
+  'Network request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Network', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333306', '2026-11-12T14:05:00-05:00', null,
+  'In Progress', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-11-12T14:00:00-05:00', 'h14',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000fe', 'TKT-2026-0254', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Application licensing renewal assist — PixelCraft',
+  'Software Support request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Software Support', 'Low', 'Remote',
+  '33333333-3333-3333-3333-333333333308', '2026-11-16T08:05:00-05:00', null,
+  'New', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-11-16T08:00:00-05:00', 'h08',
+  2, 2, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000ff', 'TKT-2026-0255', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'VPN dropouts for remote staff — PixelCraft',
+  'Network request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Network', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333301', '2026-12-08T15:05:00-05:00', null,
+  'Assigned', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-12-08T15:00:00-05:00', 'h15',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000100', 'TKT-2026-0256', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Laptop imaging and join to Entra ID — PixelCraft',
+  'Hardware Deployment request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Hardware Deployment', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333302', '2026-12-14T09:05:00-05:00', null,
+  'In Progress', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-12-14T09:00:00-05:00', 'h09x3',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000101', 'TKT-2026-0257', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'M365 mailbox restore request — PixelCraft',
+  'Microsoft 365 request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Microsoft 365', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333303', '2026-12-16T11:05:00-05:00', null,
+  'New', 'Alex Pixel', 'hello@pixelcraft.demo',
+  null, '2026-12-16T11:00:00-05:00', 'h11',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000102', 'TKT-2026-0258', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Printer mapping and driver cleanup — Lakeside',
+  'Hardware Support request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Hardware Support', 'Low', 'On-site',
+  '33333333-3333-3333-3333-333333333302', '2026-01-09T10:05:00-05:00', '2026-01-09T12:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-01-09T10:00:00-05:00', 'h10',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000103', 'TKT-2026-0259', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Shared drive permissions update — Lakeside',
+  'Software Support request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Software Support', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333303', '2026-01-13T12:05:00-05:00', '2026-01-13T13:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-01-13T12:00:00-05:00', 'h12',
+  2, 2, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000104', 'TKT-2026-0260', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Wi-Fi dead spot survey — Lakeside',
+  'Network request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Network', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333304', '2026-01-19T14:05:00-05:00', '2026-01-19T17:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-01-19T14:00:00-05:00', 'h14x3',
+  5, 5, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000105', 'TKT-2026-0261', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Backup job failure triage — Lakeside',
+  'Cloud request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Cloud', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333306', '2026-02-09T13:05:00-05:00', '2026-02-09T16:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-02-09T13:00:00-05:00', 'h13',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000106', 'TKT-2026-0262', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'New hire workstation setup — Lakeside',
+  'Hardware Deployment request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Hardware Deployment', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333308', '2026-02-13T15:05:00-05:00', '2026-02-13T17:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-02-13T15:00:00-05:00', 'h15',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000107', 'TKT-2026-0263', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Phishing report triage — Lakeside',
+  'Cybersecurity request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Cybersecurity', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333309', '2026-02-17T09:05:00-05:00', '2026-02-17T11:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-02-17T09:00:00-05:00', 'h09',
+  3, 3, false, false, false, true,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000108', 'TKT-2026-0264', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Server disk capacity expansion — Lakeside',
+  'Cloud request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Cloud', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333302', '2026-03-09T08:05:00-05:00', '2026-03-09T11:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-03-09T08:00:00-05:00', 'h08x3',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000109', 'TKT-2026-0265', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'QoS tuning for VoIP quality — Lakeside',
+  'Network request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Network', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333303', '2026-03-13T10:05:00-05:00', '2026-03-13T12:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-03-13T10:00:00-05:00', 'h10',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000010a', 'TKT-2026-0266', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Application licensing renewal assist — Lakeside',
+  'Software Support request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Software Support', 'Low', 'Remote',
+  '33333333-3333-3333-3333-333333333304', '2026-03-17T12:05:00-05:00', '2026-03-17T13:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-03-17T12:00:00-05:00', 'h12',
+  2, 2, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000010b', 'TKT-2026-0267', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'VPN dropouts for remote staff — Lakeside',
+  'Network request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Network', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333306', '2026-04-09T11:05:00-05:00', '2026-04-09T14:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-04-09T11:00:00-05:00', 'h11',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000010c', 'TKT-2026-0268', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Laptop imaging and join to Entra ID — Lakeside',
+  'Hardware Deployment request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Hardware Deployment', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333308', '2026-04-13T13:05:00-05:00', '2026-04-13T16:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-04-13T13:00:00-05:00', 'h13x3',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000010d', 'TKT-2026-0269', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'M365 mailbox restore request — Lakeside',
+  'Microsoft 365 request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Microsoft 365', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333309', '2026-04-17T15:05:00-05:00', '2026-04-17T17:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-04-17T15:00:00-05:00', 'h15',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000010e', 'TKT-2026-0270', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Patch cycle review and reboot window — Lakeside',
+  'Software Support request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Software Support', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333302', '2026-05-11T14:05:00-05:00', '2026-05-11T16:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-05-11T14:00:00-05:00', 'h14',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000010f', 'TKT-2026-0271', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Firewall rule change for vendor access — Lakeside',
+  'Network request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Network', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333303', '2026-05-13T08:05:00-05:00', '2026-05-13T10:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-05-13T08:00:00-05:00', 'h08',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000110', 'TKT-2026-0272', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Endpoint AV quarantine investigation — Lakeside',
+  'Cybersecurity request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Cybersecurity', 'Critical', 'Remote',
+  '33333333-3333-3333-3333-333333333304', '2026-05-18T10:05:00-05:00', '2026-05-18T13:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-05-18T10:00:00-05:00', 'h10x3',
+  4, 4, false, false, false, true,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000111', 'TKT-2026-0273', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Printer mapping and driver cleanup — Lakeside',
+  'Hardware Support request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Hardware Support', 'Low', 'On-site',
+  '33333333-3333-3333-3333-333333333306', '2026-06-09T09:05:00-05:00', '2026-06-09T11:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-06-09T09:00:00-05:00', 'h09',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000112', 'TKT-2026-0274', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Shared drive permissions update — Lakeside',
+  'Software Support request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Software Support', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333308', '2026-06-15T11:05:00-05:00', '2026-06-15T12:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-06-15T11:00:00-05:00', 'h11',
+  2, 2, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000113', 'TKT-2026-0275', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Wi-Fi dead spot survey — Lakeside',
+  'Network request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Network', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333309', '2026-06-17T13:05:00-05:00', '2026-06-17T17:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-06-17T13:00:00-05:00', 'h13x3',
+  5, 5, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000114', 'TKT-2026-0276', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Backup job failure triage — Lakeside',
+  'Cloud request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Cloud', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333302', '2026-07-09T12:05:00-05:00', '2026-07-09T15:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-07-09T12:00:00-05:00', 'h12',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000115', 'TKT-2026-0277', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'New hire workstation setup — Lakeside',
+  'Hardware Deployment request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Hardware Deployment', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333303', '2026-07-13T14:05:00-05:00', '2026-07-13T16:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-07-13T14:00:00-05:00', 'h14',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000116', 'TKT-2026-0278', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Phishing report triage — Lakeside',
+  'Cybersecurity request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Cybersecurity', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333304', '2026-07-17T08:05:00-05:00', '2026-07-17T10:20:00-05:00',
+  'Completed', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  'Resolved for Morgan Lake. Changes documented and validated with end users.', '2026-07-17T08:00:00-05:00', 'h08',
+  3, 3, false, false, false, true,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000117', 'TKT-2026-0279', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Server disk capacity expansion — Lakeside',
+  'Cloud request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Cloud', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333306', '2026-08-10T15:05:00-05:00', null,
+  'Assigned', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-08-10T15:00:00-05:00', 'h15x3',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000118', 'TKT-2026-0280', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'QoS tuning for VoIP quality — Lakeside',
+  'Network request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Network', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333308', '2026-08-13T09:05:00-05:00', null,
+  'In Progress', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-08-13T09:00:00-05:00', 'h09',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000119', 'TKT-2026-0281', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Application licensing renewal assist — Lakeside',
+  'Software Support request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Software Support', 'Low', 'Remote',
+  '33333333-3333-3333-3333-333333333309', '2026-08-17T11:05:00-05:00', null,
+  'New', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-08-17T11:00:00-05:00', 'h11',
+  2, 2, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000011a', 'TKT-2026-0282', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'VPN dropouts for remote staff — Lakeside',
+  'Network request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Network', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333301', '2026-08-21T13:05:00-05:00', null,
+  'Assigned', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-08-21T13:00:00-05:00', 'h13',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000011b', 'TKT-2026-0283', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Laptop imaging and join to Entra ID — Lakeside',
+  'Hardware Deployment request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Hardware Deployment', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333303', '2026-09-09T11:05:00-05:00', null,
+  'In Progress', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-09-09T11:00:00-05:00', 'h11x3',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000011c', 'TKT-2026-0284', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'M365 mailbox restore request — Lakeside',
+  'Microsoft 365 request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Microsoft 365', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333304', '2026-09-14T13:05:00-05:00', null,
+  'New', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-09-14T13:00:00-05:00', 'h13',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000011d', 'TKT-2026-0285', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Patch cycle review and reboot window — Lakeside',
+  'Software Support request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Software Support', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333305', '2026-09-17T15:05:00-05:00', null,
+  'Assigned', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-09-17T15:00:00-05:00', 'h15',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000011e', 'TKT-2026-0286', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Firewall rule change for vendor access — Lakeside',
+  'Network request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Network', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333308', '2026-10-09T14:05:00-05:00', null,
+  'In Progress', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-10-09T14:00:00-05:00', 'h14',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-00000000011f', 'TKT-2026-0287', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Endpoint AV quarantine investigation — Lakeside',
+  'Cybersecurity request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Cybersecurity', 'Critical', 'Remote',
+  '33333333-3333-3333-3333-333333333309', '2026-10-13T08:05:00-05:00', null,
+  'New', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-10-13T08:00:00-05:00', 'h08x3',
+  4, 4, false, false, false, true,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000120', 'TKT-2026-0288', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Printer mapping and driver cleanup — Lakeside',
+  'Hardware Support request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Hardware Support', 'Low', 'On-site',
+  '33333333-3333-3333-3333-333333333301', '2026-10-19T10:05:00-05:00', null,
+  'Assigned', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-10-19T10:00:00-05:00', 'h10',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000121', 'TKT-2026-0289', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Shared drive permissions update — Lakeside',
+  'Software Support request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Software Support', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333303', '2026-11-09T09:05:00-05:00', null,
+  'In Progress', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-11-09T09:00:00-05:00', 'h09',
+  2, 2, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000122', 'TKT-2026-0290', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Wi-Fi dead spot survey — Lakeside',
+  'Network request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Network', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333304', '2026-11-13T11:05:00-05:00', null,
+  'New', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-11-13T11:00:00-05:00', 'h11x3',
+  5, 5, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000123', 'TKT-2026-0291', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'Backup job failure triage — Lakeside',
+  'Cloud request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Cloud', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333305', '2026-11-17T13:05:00-05:00', null,
+  'Assigned', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-11-17T13:00:00-05:00', 'h13',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-000000000124', 'TKT-2026-0292', '11111111-1111-1111-1111-111111111107', 'a6267700-0000-4000-8000-000000000007', 'New hire workstation setup — Lakeside',
+  'Hardware Deployment request logged for Lakeside Logistics. Handled under Silver included hours where possible.', 'Hardware Deployment', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333308', '2026-12-09T12:05:00-05:00', null,
+  'In Progress', 'Morgan Lake', 'dispatch@lakesidelogistics.demo',
+  null, '2026-12-09T12:00:00-05:00', 'h12',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);

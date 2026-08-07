@@ -1,0 +1,1259 @@
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000023', 'a6267100-0000-4000-8000-000000000023', '11111111-1111-1111-1111-111111111101', 'a6267700-0000-4000-8000-000000000001', '33333333-3333-3333-3333-333333333302',
+  '2026-06-19', '15:00', '17:00', 3,
+  'Completed endpoint av quarantine investigation for Northwind Manufacturing.', 'Closed with customer confirmation from Casey Plant.', 'Remote',
+  0, 0, 0, 0, 0, 165, 165, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000024', 'a6267100-0000-4000-8000-000000000024', '11111111-1111-1111-1111-111111111101', 'a6267700-0000-4000-8000-000000000001', '33333333-3333-3333-3333-333333333303',
+  '2026-06-03', '09:00', '11:00', 1.5,
+  'Completed printer mapping and driver cleanup for Northwind Manufacturing.', 'Closed with customer confirmation from Casey Plant.', 'On-site',
+  0, 0, 0, 35, 0, 87, 122, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000025', 'a6267100-0000-4000-8000-000000000025', '11111111-1111-1111-1111-111111111101', 'a6267700-0000-4000-8000-000000000001', '33333333-3333-3333-3333-333333333305',
+  '2026-07-03', '13:00', '14:00', 1,
+  'Completed shared drive permissions update for Northwind Manufacturing.', 'Closed with customer confirmation from Casey Plant.', 'Remote',
+  0, 0, 0, 0, 0, 60, 60, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000026', 'a6267100-0000-4000-8000-000000000026', '11111111-1111-1111-1111-111111111101', 'a6267700-0000-4000-8000-000000000001', '33333333-3333-3333-3333-333333333306',
+  '2026-07-07', '15:00', '17:00', 3.5,
+  'Completed wi-fi dead spot survey for Northwind Manufacturing.', 'Closed with customer confirmation from Casey Plant.', 'On-site',
+  0, 0, 0, 35, 0, 217, 252, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000027', 'a6267100-0000-4000-8000-000000000027', '11111111-1111-1111-1111-111111111101', 'a6267700-0000-4000-8000-000000000001', '33333333-3333-3333-3333-333333333308',
+  '2026-07-13', '09:00', '12:00', 2.5,
+  'Completed backup job failure triage for Northwind Manufacturing.', 'Closed with customer confirmation from Casey Plant.', 'Remote',
+  0, 0, 0, 0, 0, 160, 160, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000028', 'a6267100-0000-4000-8000-000000000028', '11111111-1111-1111-1111-111111111101', 'a6267700-0000-4000-8000-000000000001', '33333333-3333-3333-3333-333333333309',
+  '2026-07-15', '11:00', '13:00', 2,
+  'Completed new hire workstation setup for Northwind Manufacturing.', 'Closed with customer confirmation from Casey Plant.', 'On-site',
+  0, 0, 0, 35, 0, 112, 147, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000029', 'a6267100-0000-4000-8000-000000000029', '11111111-1111-1111-1111-111111111101', 'a6267700-0000-4000-8000-000000000001', '33333333-3333-3333-3333-333333333301',
+  '2026-07-20', '13:00', '15:00', 1.5,
+  'Completed phishing report triage for Northwind Manufacturing.', 'Closed with customer confirmation from Casey Plant.', 'Remote',
+  0, 0, 0, 0, 0, 72, 72, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000002a', 'a6267100-0000-4000-8000-00000000002a', '11111111-1111-1111-1111-111111111101', 'a6267700-0000-4000-8000-000000000001', '33333333-3333-3333-3333-333333333302',
+  '2026-07-03', '15:00', '17:00', 3,
+  'Completed server disk capacity expansion for Northwind Manufacturing.', 'Closed with customer confirmation from Casey Plant.', 'Remote',
+  0, 0, 0, 0, 0, 165, 165, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000002b', 'a6267100-0000-4000-8000-000000000030', '11111111-1111-1111-1111-111111111101', 'a6267700-0000-4000-8000-000000000001', '33333333-3333-3333-3333-333333333301',
+  '2026-08-03', '13:00', '15:00', 1.5,
+  'Completed patch cycle review and reboot window for Northwind Manufacturing.', 'Closed with customer confirmation from Casey Plant.', 'Remote',
+  0, 0, 0, 0, 0, 72, 72, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000002c', 'a6267100-0000-4000-8000-00000000004a', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333305',
+  '2026-01-05', '10:00', '12:00', 2,
+  'Completed m365 mailbox restore request for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 120, 120, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000002d', 'a6267100-0000-4000-8000-00000000004b', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333306',
+  '2026-01-08', '12:00', '14:00', 1.5,
+  'Completed patch cycle review and reboot window for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 93, 93, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000002e', 'a6267100-0000-4000-8000-00000000004c', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333308',
+  '2026-01-12', '14:00', '16:00', 2,
+  'Completed firewall rule change for vendor access for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 128, 128, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000002f', 'a6267100-0000-4000-8000-00000000004d', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333301',
+  '2026-02-04', '13:00', '16:00', 3,
+  'Completed endpoint av quarantine investigation for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 144, 144, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000030', 'a6267100-0000-4000-8000-00000000004e', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333302',
+  '2026-02-09', '15:00', '17:00', 1.5,
+  'Completed printer mapping and driver cleanup for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'On-site',
+  0, 0, 0, 35, 0, 82.5, 117.5, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000031', 'a6267100-0000-4000-8000-00000000004f', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333303',
+  '2026-02-12', '09:00', '10:00', 1,
+  'Completed shared drive permissions update for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 58, 58, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000032', 'a6267100-0000-4000-8000-000000000050', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333305',
+  '2026-03-04', '08:00', '13:00', 5,
+  'Completed wi-fi dead spot survey for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'On-site',
+  0, 0, 0, 35, 0, 300, 335, false,
+  false, 'Approved', 'Billed',
+  'a6267300-0000-4000-8000-000000000061', '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000033', 'a6267100-0000-4000-8000-000000000051', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333306',
+  '2026-03-09', '10:00', '13:00', 2.5,
+  'Completed backup job failure triage for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 155, 155, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000034', 'a6267100-0000-4000-8000-000000000052', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333308',
+  '2026-03-12', '12:00', '14:00', 2,
+  'Completed new hire workstation setup for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'On-site',
+  0, 0, 0, 35, 0, 128, 163, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000035', 'a6267100-0000-4000-8000-000000000053', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333301',
+  '2026-04-06', '11:00', '13:00', 1.5,
+  'Completed phishing report triage for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 72, 72, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000036', 'a6267100-0000-4000-8000-000000000054', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333302',
+  '2026-04-08', '13:00', '16:00', 3,
+  'Completed server disk capacity expansion for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 165, 165, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000037', 'a6267100-0000-4000-8000-000000000055', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333303',
+  '2026-04-13', '15:00', '17:00', 2,
+  'Completed qos tuning for voip quality for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 116, 116, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000038', 'a6267100-0000-4000-8000-000000000056', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333305',
+  '2026-05-04', '14:00', '15:00', 1,
+  'Completed application licensing renewal assist for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 60, 60, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000039', 'a6267100-0000-4000-8000-000000000057', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333306',
+  '2026-05-08', '08:00', '11:00', 2.5,
+  'Completed vpn dropouts for remote staff for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 155, 155, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000003a', 'a6267100-0000-4000-8000-000000000058', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333308',
+  '2026-05-12', '10:00', '13:00', 3,
+  'Completed laptop imaging and join to entra id for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'On-site',
+  0, 0, 0, 35, 0, 192, 227, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000003b', 'a6267100-0000-4000-8000-000000000059', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333301',
+  '2026-06-04', '09:00', '11:00', 2,
+  'Completed m365 mailbox restore request for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 96, 96, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000003c', 'a6267100-0000-4000-8000-00000000005a', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333302',
+  '2026-06-08', '11:00', '13:00', 1.5,
+  'Completed patch cycle review and reboot window for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 82.5, 82.5, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000003d', 'a6267100-0000-4000-8000-00000000005b', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333303',
+  '2026-06-12', '13:00', '15:00', 2,
+  'Completed firewall rule change for vendor access for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 116, 116, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000003e', 'a6267100-0000-4000-8000-00000000005c', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333305',
+  '2026-07-06', '12:00', '15:00', 3,
+  'Completed endpoint av quarantine investigation for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 180, 180, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000003f', 'a6267100-0000-4000-8000-00000000005d', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333306',
+  '2026-07-08', '14:00', '16:00', 1.5,
+  'Completed printer mapping and driver cleanup for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'On-site',
+  0, 0, 0, 35, 0, 93, 128, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000040', 'a6267100-0000-4000-8000-00000000005e', '11111111-1111-1111-1111-111111111102', 'a6267700-0000-4000-8000-000000000002', '33333333-3333-3333-3333-333333333308',
+  '2026-07-13', '08:00', '09:00', 1,
+  'Completed shared drive permissions update for Beacon Legal Group.', 'Closed with customer confirmation from Pat Rivera.', 'Remote',
+  0, 0, 0, 0, 0, 64, 64, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000041', 'a6267100-0000-4000-8000-00000000006f', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333303',
+  '2026-01-05', '15:00', '17:00', 3,
+  'Completed server disk capacity expansion for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 174, 174, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000042', 'a6267100-0000-4000-8000-000000000070', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333304',
+  '2026-01-09', '09:00', '11:00', 2,
+  'Completed qos tuning for voip quality for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 84, 84, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000043', 'a6267100-0000-4000-8000-000000000071', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333305',
+  '2026-01-13', '11:00', '12:00', 1,
+  'Completed application licensing renewal assist for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 60, 60, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000044', 'a6267100-0000-4000-8000-000000000072', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333308',
+  '2026-02-05', '10:00', '13:00', 2.5,
+  'Completed vpn dropouts for remote staff for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 160, 160, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000045', 'a6267100-0000-4000-8000-000000000073', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333309',
+  '2026-02-09', '12:00', '15:00', 3,
+  'Completed laptop imaging and join to entra id for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'On-site',
+  0, 0, 0, 35, 0, 168, 203, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000046', 'a6267100-0000-4000-8000-000000000074', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333301',
+  '2026-02-13', '14:00', '16:00', 2,
+  'Completed m365 mailbox restore request for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 96, 96, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000047', 'a6267100-0000-4000-8000-000000000075', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333303',
+  '2026-03-05', '13:00', '15:00', 1.5,
+  'Completed patch cycle review and reboot window for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 87, 87, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000048', 'a6267100-0000-4000-8000-000000000076', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333304',
+  '2026-03-09', '15:00', '17:00', 2,
+  'Completed firewall rule change for vendor access for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 84, 84, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000049', 'a6267100-0000-4000-8000-000000000077', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333305',
+  '2026-03-13', '09:00', '12:00', 3,
+  'Completed endpoint av quarantine investigation for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 180, 180, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000004a', 'a6267100-0000-4000-8000-000000000078', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333308',
+  '2026-04-06', '08:00', '10:00', 1.5,
+  'Completed printer mapping and driver cleanup for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'On-site',
+  89.5, 0, 0, 35, 0, 96, 220.5, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000004b', 'a6267100-0000-4000-8000-000000000079', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333309',
+  '2026-04-09', '10:00', '11:00', 1,
+  'Completed shared drive permissions update for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 56, 56, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000004c', 'a6267100-0000-4000-8000-00000000007a', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333301',
+  '2026-04-13', '12:00', '16:00', 3.5,
+  'Completed wi-fi dead spot survey for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'On-site',
+  0, 0, 0, 35, 0, 168, 203, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000004d', 'a6267100-0000-4000-8000-00000000007b', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333303',
+  '2026-05-05', '11:00', '14:00', 2.5,
+  'Completed backup job failure triage for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 145, 145, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000004e', 'a6267100-0000-4000-8000-00000000007c', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333304',
+  '2026-05-11', '13:00', '15:00', 2,
+  'Completed new hire workstation setup for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'On-site',
+  0, 0, 0, 35, 0, 84, 119, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000004f', 'a6267100-0000-4000-8000-00000000007d', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333305',
+  '2026-05-13', '15:00', '17:00', 1.5,
+  'Completed phishing report triage for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 90, 90, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000050', 'a6267100-0000-4000-8000-00000000007e', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333308',
+  '2026-06-05', '14:00', '17:00', 4.5,
+  'Completed server disk capacity expansion for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 288, 288, false,
+  false, 'Approved', 'Billed',
+  'a6267300-0000-4000-8000-000000000062', '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000051', 'a6267100-0000-4000-8000-00000000007f', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333309',
+  '2026-06-09', '08:00', '10:00', 2,
+  'Completed qos tuning for voip quality for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 112, 112, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000052', 'a6267100-0000-4000-8000-000000000080', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333301',
+  '2026-06-15', '10:00', '11:00', 1,
+  'Completed application licensing renewal assist for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 48, 48, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000053', 'a6267100-0000-4000-8000-000000000081', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333303',
+  '2026-07-06', '09:00', '12:00', 2.5,
+  'Completed vpn dropouts for remote staff for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 145, 145, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000054', 'a6267100-0000-4000-8000-000000000082', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333304',
+  '2026-07-09', '11:00', '14:00', 3,
+  'Completed laptop imaging and join to entra id for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'On-site',
+  0, 0, 0, 35, 0, 126, 161, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000055', 'a6267100-0000-4000-8000-000000000083', '11111111-1111-1111-1111-111111111103', 'a6267700-0000-4000-8000-000000000003', '33333333-3333-3333-3333-333333333305',
+  '2026-07-13', '13:00', '15:00', 2,
+  'Completed m365 mailbox restore request for Harbor Retail Collective.', 'Closed with customer confirmation from Sam Harbor.', 'Remote',
+  0, 0, 0, 0, 0, 120, 120, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000056', 'a6267100-0000-4000-8000-000000000094', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333301',
+  '2026-01-06', '12:00', '13:00', 1,
+  'Completed shared drive permissions update for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 48, 48, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000057', 'a6267100-0000-4000-8000-000000000095', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333302',
+  '2026-01-12', '14:00', '17:00', 3.5,
+  'Completed wi-fi dead spot survey for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'On-site',
+  0, 0, 0, 35, 0, 192.5, 227.5, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000058', 'a6267100-0000-4000-8000-000000000096', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333303',
+  '2026-01-14', '08:00', '11:00', 2.5,
+  'Completed backup job failure triage for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 145, 145, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000059', 'a6267100-0000-4000-8000-000000000097', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333305',
+  '2026-02-06', '15:00', '17:00', 2,
+  'Completed new hire workstation setup for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'On-site',
+  89.5, 0, 0, 35, 0, 120, 244.5, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000005a', 'a6267100-0000-4000-8000-000000000098', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333306',
+  '2026-02-10', '09:00', '11:00', 1.5,
+  'Completed phishing report triage for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 93, 93, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000005b', 'a6267100-0000-4000-8000-000000000099', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333308',
+  '2026-02-16', '11:00', '14:00', 3,
+  'Completed server disk capacity expansion for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 192, 192, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000005c', 'a6267100-0000-4000-8000-00000000009a', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333301',
+  '2026-03-06', '10:00', '12:00', 2,
+  'Completed qos tuning for voip quality for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 96, 96, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000005d', 'a6267100-0000-4000-8000-00000000009b', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333302',
+  '2026-03-10', '12:00', '13:00', 1,
+  'Completed application licensing renewal assist for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 55, 55, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000005e', 'a6267100-0000-4000-8000-00000000009c', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333303',
+  '2026-03-16', '14:00', '17:00', 2.5,
+  'Completed vpn dropouts for remote staff for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 145, 145, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000005f', 'a6267100-0000-4000-8000-00000000009d', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333305',
+  '2026-04-06', '13:00', '16:00', 3,
+  'Completed laptop imaging and join to entra id for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'On-site',
+  89.5, 0, 0, 35, 0, 180, 304.5, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000060', 'a6267100-0000-4000-8000-00000000009e', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333306',
+  '2026-04-10', '15:00', '17:00', 2,
+  'Completed m365 mailbox restore request for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 124, 124, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000061', 'a6267100-0000-4000-8000-00000000009f', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333308',
+  '2026-04-14', '09:00', '11:00', 1.5,
+  'Completed patch cycle review and reboot window for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 96, 96, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000062', 'a6267100-0000-4000-8000-0000000000a0', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333301',
+  '2026-05-06', '08:00', '10:00', 2,
+  'Completed firewall rule change for vendor access for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 96, 96, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000063', 'a6267100-0000-4000-8000-0000000000a1', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333302',
+  '2026-05-11', '10:00', '13:00', 3,
+  'Completed endpoint av quarantine investigation for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 165, 165, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000064', 'a6267100-0000-4000-8000-0000000000a2', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333303',
+  '2026-05-14', '12:00', '14:00', 1.5,
+  'Completed printer mapping and driver cleanup for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'On-site',
+  0, 0, 0, 35, 0, 87, 122, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000065', 'a6267100-0000-4000-8000-0000000000a3', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333305',
+  '2026-06-08', '11:00', '12:00', 1,
+  'Completed shared drive permissions update for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 60, 60, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000066', 'a6267100-0000-4000-8000-0000000000a4', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333306',
+  '2026-06-10', '13:00', '17:00', 3.5,
+  'Completed wi-fi dead spot survey for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'On-site',
+  0, 0, 0, 35, 0, 217, 252, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000067', 'a6267100-0000-4000-8000-0000000000a5', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333308',
+  '2026-06-15', '15:00', '17:00', 2.5,
+  'Completed backup job failure triage for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 160, 160, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000068', 'a6267100-0000-4000-8000-0000000000a6', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333301',
+  '2026-07-06', '14:00', '16:00', 2,
+  'Completed new hire workstation setup for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'On-site',
+  89.5, 0, 0, 35, 0, 96, 220.5, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000069', 'a6267100-0000-4000-8000-0000000000a7', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333302',
+  '2026-07-10', '08:00', '10:00', 1.5,
+  'Completed phishing report triage for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 82.5, 82.5, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000006a', 'a6267100-0000-4000-8000-0000000000a8', '11111111-1111-1111-1111-111111111104', 'a6267700-0000-4000-8000-000000000004', '33333333-3333-3333-3333-333333333303',
+  '2026-07-14', '10:00', '13:00', 3,
+  'Completed server disk capacity expansion for Summit Family Clinics.', 'Closed with customer confirmation from Dr. Riley Summit.', 'Remote',
+  0, 0, 0, 0, 0, 174, 174, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000006b', 'a6267100-0000-4000-8000-0000000000b9', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333308',
+  '2026-01-07', '09:00', '11:00', 2,
+  'Completed m365 mailbox restore request for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 128, 128, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000006c', 'a6267100-0000-4000-8000-0000000000ba', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333309',
+  '2026-01-12', '11:00', '13:00', 1.5,
+  'Completed patch cycle review and reboot window for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 84, 84, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000006d', 'a6267100-0000-4000-8000-0000000000bb', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333301',
+  '2026-01-15', '13:00', '15:00', 2,
+  'Completed firewall rule change for vendor access for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 96, 96, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000006e', 'a6267100-0000-4000-8000-0000000000bc', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333303',
+  '2026-02-09', '12:00', '15:00', 3,
+  'Completed endpoint av quarantine investigation for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 174, 174, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000006f', 'a6267100-0000-4000-8000-0000000000bd', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333304',
+  '2026-02-11', '14:00', '16:00', 1.5,
+  'Completed printer mapping and driver cleanup for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'On-site',
+  0, 0, 0, 35, 0, 63, 98, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000070', 'a6267100-0000-4000-8000-0000000000be', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333305',
+  '2026-02-16', '08:00', '09:00', 1,
+  'Completed shared drive permissions update for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 60, 60, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000071', 'a6267100-0000-4000-8000-0000000000bf', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333308',
+  '2026-03-09', '15:00', '17:00', 5,
+  'Completed wi-fi dead spot survey for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'On-site',
+  0, 0, 0, 35, 0, 320, 355, false,
+  false, 'Approved', 'Billed',
+  'a6267300-0000-4000-8000-000000000063', '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000072', 'a6267100-0000-4000-8000-0000000000c0', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333309',
+  '2026-03-11', '09:00', '12:00', 2.5,
+  'Completed backup job failure triage for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 140, 140, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000073', 'a6267100-0000-4000-8000-0000000000c1', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333301',
+  '2026-03-16', '11:00', '13:00', 2,
+  'Completed new hire workstation setup for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'On-site',
+  0, 0, 0, 35, 0, 96, 131, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000074', 'a6267100-0000-4000-8000-0000000000c2', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333303',
+  '2026-04-07', '10:00', '12:00', 1.5,
+  'Completed phishing report triage for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 87, 87, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000075', 'a6267100-0000-4000-8000-0000000000c3', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333304',
+  '2026-04-13', '12:00', '15:00', 3,
+  'Completed server disk capacity expansion for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 126, 126, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000076', 'a6267100-0000-4000-8000-0000000000c4', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333305',
+  '2026-04-15', '14:00', '16:00', 2,
+  'Completed qos tuning for voip quality for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 120, 120, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000077', 'a6267100-0000-4000-8000-0000000000c5', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333308',
+  '2026-05-07', '13:00', '14:00', 1,
+  'Completed application licensing renewal assist for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 64, 64, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000078', 'a6267100-0000-4000-8000-0000000000c6', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333309',
+  '2026-05-11', '15:00', '17:00', 2.5,
+  'Completed vpn dropouts for remote staff for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 140, 140, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-000000000079', 'a6267100-0000-4000-8000-0000000000c7', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333301',
+  '2026-05-15', '09:00', '12:00', 3,
+  'Completed laptop imaging and join to entra id for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'On-site',
+  0, 0, 0, 35, 0, 144, 179, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000007a', 'a6267100-0000-4000-8000-0000000000c8', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333303',
+  '2026-06-08', '08:00', '10:00', 2,
+  'Completed m365 mailbox restore request for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 116, 116, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000007b', 'a6267100-0000-4000-8000-0000000000c9', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333304',
+  '2026-06-11', '10:00', '12:00', 1.5,
+  'Completed patch cycle review and reboot window for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 63, 63, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);
+
+insert into public.work_entries (
+  id, ticket_id, customer_id, contract_id, technician_id, work_date, start_time, end_time,
+  hours_worked, work_performed, resolution_notes, service_method, parts_cost, software_cost,
+  equipment_cost, travel_cost, other_cost, labor_cost, total_direct_cost, included_in_contract,
+  additional_approval_required, approval_status, billing_status, invoice_id, parts_used
+) values (
+  'a6267200-0000-4000-8000-00000000007c', 'a6267100-0000-4000-8000-0000000000ca', '11111111-1111-1111-1111-111111111105', 'a6267700-0000-4000-8000-000000000005', '33333333-3333-3333-3333-333333333305',
+  '2026-06-15', '12:00', '14:00', 2,
+  'Completed firewall rule change for vendor access for Cedar County Schools.', 'Closed with customer confirmation from Jordan Cedar.', 'Remote',
+  0, 0, 0, 0, 0, 120, 120, true,
+  false, 'Approved', 'Not Billable',
+  null, '[]'::jsonb
+);

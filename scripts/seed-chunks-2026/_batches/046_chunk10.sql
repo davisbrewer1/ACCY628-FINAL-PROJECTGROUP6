@@ -1,0 +1,300 @@
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000037', 'AST-2026-0055', '11111111-1111-1111-1111-111111111106', 'Clinic Floor', 'server',
+  'Lenovo', 'ThinkPad T14', 'SN26000055', '2024-08-12',
+  '2027-08-12', 'Ops Desk', 'Windows Server 2022', 'Active', 'In Use',
+  2499, 1800, true, false, false, false, false, false, 1,
+  71, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000038', 'AST-2026-0056', '11111111-1111-1111-1111-111111111106', 'Branch Office', 'switch',
+  'Apple', 'MacBook Pro 14', 'SN26000056', '2025-09-12',
+  '2027-09-12', 'Executive', 'Windows 11 Pro', 'Active', 'In Use',
+  1899, 1400, true, false, false, false, false, false, 1,
+  78, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000039', 'AST-2026-0057', '11111111-1111-1111-1111-111111111106', 'Remote', 'mobile',
+  'Cisco', 'Catalyst 9200', 'SN26000057', '2024-10-12',
+  '2027-10-12', 'Alex Pixel', 'macOS Sonoma', 'Active', 'In Use',
+  650, 420, true, false, false, false, false, false, 1,
+  85, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-00000000003a', 'AST-2026-0058', '11111111-1111-1111-1111-111111111107', 'HQ', 'desktop',
+  'HP', 'Latitude 5440', 'SN26000058', '2024-07-12',
+  '2027-07-12', 'Morgan Lake', 'Windows 11 Pro', 'Active', 'In Use',
+  1299, 900, true, false, false, false, false, false, 1,
+  88, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-00000000003b', 'AST-2026-0059', '11111111-1111-1111-1111-111111111107', 'Warehouse', 'server',
+  'Lenovo', 'EliteBook 840', 'SN26000059', '2025-08-12',
+  '2027-08-12', 'Shared Pool', 'Windows Server 2022', 'Active', 'In Use',
+  899, 650, true, false, false, false, false, false, 1,
+  95, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-00000000003c', 'AST-2026-0060', '11111111-1111-1111-1111-111111111107', 'Clinic Floor', 'switch',
+  'Apple', 'ThinkPad T14', 'SN26000060', '2024-09-12',
+  '2027-09-12', 'Ops Desk', 'ChromeOS', 'Active', 'In Use',
+  2499, 1800, true, false, false, false, false, false, 1,
+  74, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-00000000003d', 'AST-2026-0061', '11111111-1111-1111-1111-111111111107', 'Branch Office', 'mobile',
+  'Cisco', 'MacBook Pro 14', 'SN26000061', '2025-10-12',
+  '2027-10-12', 'Executive', 'Windows 11 Pro', 'Active', 'In Use',
+  1899, 1400, true, false, false, false, false, false, 1,
+  81, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-00000000003e', 'AST-2026-0062', '11111111-1111-1111-1111-111111111107', 'Remote', 'laptop',
+  'Dell', 'Catalyst 9200', 'SN26000062', '2024-11-12',
+  '2027-11-12', 'Morgan Lake', 'macOS Sonoma', 'Active', 'In Use',
+  650, 420, true, false, false, false, false, false, 1,
+  88, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-00000000003f', 'AST-2026-0063', '11111111-1111-1111-1111-111111111107', 'HQ', 'desktop',
+  'HP', 'Latitude 5440', 'SN26000063', '2025-01-12',
+  '2027-01-12', 'Shared Pool', 'ChromeOS', 'Active', 'In Use',
+  1299, 900, true, false, false, false, false, false, 1,
+  95, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000040', 'AST-2026-0064', '11111111-1111-1111-1111-111111111107', 'Warehouse', 'server',
+  'Lenovo', 'EliteBook 840', 'SN26000064', '2024-02-12',
+  '2027-02-12', 'Ops Desk', 'Windows Server 2022', 'Active', 'In Use',
+  899, 650, true, false, false, false, false, false, 1,
+  74, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000041', 'AST-2026-0065', '11111111-1111-1111-1111-111111111107', 'Clinic Floor', 'switch',
+  'Apple', 'ThinkPad T14', 'SN26000065', '2025-03-12',
+  '2027-03-12', 'Executive', 'macOS Sonoma', 'Active', 'In Use',
+  2499, 1800, true, false, false, false, false, false, 1,
+  81, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000042', 'AST-2026-0066', '11111111-1111-1111-1111-111111111108', 'HQ', 'server',
+  'Lenovo', 'Latitude 5440', 'SN26000066', '2024-08-12',
+  '2027-08-12', 'Taylor Green', 'Windows Server 2022', 'Active', 'In Use',
+  1299, 900, true, false, false, false, false, false, 1,
+  91, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000043', 'AST-2026-0067', '11111111-1111-1111-1111-111111111108', 'Warehouse', 'switch',
+  'Apple', 'EliteBook 840', 'SN26000067', '2025-09-12',
+  '2027-09-12', 'Shared Pool', 'macOS Sonoma', 'Active', 'In Use',
+  899, 650, true, false, false, false, false, false, 1,
+  70, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000044', 'AST-2026-0068', '11111111-1111-1111-1111-111111111108', 'Clinic Floor', 'mobile',
+  'Cisco', 'ThinkPad T14', 'SN26000068', '2024-10-12',
+  '2027-10-12', 'Ops Desk', 'ChromeOS', 'Active', 'In Use',
+  2499, 1800, true, false, false, false, false, false, 1,
+  77, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000045', 'AST-2026-0069', '11111111-1111-1111-1111-111111111108', 'Branch Office', 'laptop',
+  'Dell', 'MacBook Pro 14', 'SN26000069', '2025-11-12',
+  '2027-11-12', 'Executive', 'Windows 11 Pro', 'Active', 'In Use',
+  1899, 1400, true, false, false, false, false, false, 1,
+  84, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000046', 'AST-2026-0070', '11111111-1111-1111-1111-111111111108', 'Remote', 'desktop',
+  'HP', 'Catalyst 9200', 'SN26000070', '2024-01-12',
+  '2027-01-12', 'Taylor Green', 'macOS Sonoma', 'Active', 'In Use',
+  650, 420, true, false, false, false, false, false, 1,
+  91, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000047', 'AST-2026-0071', '11111111-1111-1111-1111-111111111108', 'HQ', 'server',
+  'Lenovo', 'Latitude 5440', 'SN26000071', '2025-02-12',
+  '2027-02-12', 'Shared Pool', 'Windows Server 2022', 'Active', 'In Use',
+  1299, 900, true, false, false, false, false, false, 1,
+  70, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000048', 'AST-2026-0072', '11111111-1111-1111-1111-111111111108', 'Warehouse', 'switch',
+  'Apple', 'EliteBook 840', 'SN26000072', '2024-03-12',
+  '2027-03-12', 'Ops Desk', 'Windows 11 Pro', 'Active', 'In Use',
+  899, 650, true, false, false, false, false, false, 1,
+  77, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-000000000049', 'AST-2026-0073', '11111111-1111-1111-1111-111111111108', 'Clinic Floor', 'mobile',
+  'Cisco', 'ThinkPad T14', 'SN26000073', '2025-04-12',
+  '2027-04-12', 'Executive', 'macOS Sonoma', 'Active', 'In Use',
+  2499, 1800, true, false, false, false, false, false, 1,
+  84, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+
+insert into public.hardware_assets (
+  id, asset_number, customer_id, location, category, manufacturer, model, serial_number,
+  purchase_date, warranty_expiration, assigned_employee, operating_system, device_status,
+  lifecycle_stage, purchase_cost, current_value, managed_coverage, warranty_expiring_soon,
+  nearing_eol, needs_replacement, unsupported_os, missing_security_updates, quantity,
+  health_score, online_status, patch_status, antivirus_status, notes
+) values (
+  'a6267500-0000-4000-8000-00000000004a', 'AST-2026-0074', '11111111-1111-1111-1111-111111111108', 'Branch Office', 'laptop',
+  'Dell', 'MacBook Pro 14', 'SN26000074', '2024-05-12',
+  '2027-05-12', 'Taylor Green', 'ChromeOS', 'Active', 'In Use',
+  1899, 1400, true, false, false, false, false, false, 1,
+  91, 'Online', 'Up to date', 'Protected',
+  'Managed endpoint under Nexus RMM coverage.'
+);
+

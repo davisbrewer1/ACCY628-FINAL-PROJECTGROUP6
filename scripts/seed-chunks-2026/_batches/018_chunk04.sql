@@ -1,0 +1,125 @@
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000df', 'TKT-2026-0223', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'QoS tuning for VoIP quality — PixelCraft',
+  'Network request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Network', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333306', '2026-01-12T08:05:00-05:00', '2026-01-12T10:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-01-12T08:00:00-05:00', 'h08',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000e0', 'TKT-2026-0224', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Application licensing renewal assist — PixelCraft',
+  'Software Support request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Software Support', 'Low', 'Remote',
+  '33333333-3333-3333-3333-333333333308', '2026-01-16T10:05:00-05:00', '2026-01-16T11:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-01-16T10:00:00-05:00', 'h10',
+  2, 2, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000e1', 'TKT-2026-0225', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'VPN dropouts for remote staff — PixelCraft',
+  'Network request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Network', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333301', '2026-02-09T09:05:00-05:00', '2026-02-09T12:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-02-09T09:00:00-05:00', 'h09',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000e2', 'TKT-2026-0226', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Laptop imaging and join to Entra ID — PixelCraft',
+  'Hardware Deployment request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Hardware Deployment', 'Medium', 'On-site',
+  '33333333-3333-3333-3333-333333333302', '2026-02-12T11:05:00-05:00', '2026-02-12T14:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-02-12T11:00:00-05:00', 'h11x3',
+  4, 4, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000e3', 'TKT-2026-0227', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'M365 mailbox restore request — PixelCraft',
+  'Microsoft 365 request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Microsoft 365', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333303', '2026-02-16T13:05:00-05:00', '2026-02-16T15:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-02-16T13:00:00-05:00', 'h13',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000e4', 'TKT-2026-0228', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Patch cycle review and reboot window — PixelCraft',
+  'Software Support request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Software Support', 'Medium', 'Remote',
+  '33333333-3333-3333-3333-333333333305', '2026-03-09T12:05:00-05:00', '2026-03-09T14:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-03-09T12:00:00-05:00', 'h12',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
+
+insert into public.service_tickets (
+  id, ticket_number, customer_id, contract_id, title, description, category, priority, service_method,
+  assigned_technician_id, opened_at, completed_at, status, requester_name, requester_email,
+  resolution_notes, scheduled_start, scheduled_window, max_hours, allocated_hours,
+  customer_approval_required, additional_work_suspected, ai_involved, cybersecurity_incident,
+  additional_billable_work, is_asap, scheduled_off_requested_day, customer_rescheduled, en_route,
+  live_timer_banked_seconds, live_timer_paused, notes
+) values (
+  'a6267100-0000-4000-8000-0000000000e5', 'TKT-2026-0229', '11111111-1111-1111-1111-111111111106', 'a6267700-0000-4000-8000-000000000006', 'Firewall rule change for vendor access — PixelCraft',
+  'Network request logged for PixelCraft Studio. Handled under Essentials included hours where possible.', 'Network', 'High', 'Remote',
+  '33333333-3333-3333-3333-333333333306', '2026-03-12T14:05:00-05:00', '2026-03-12T16:20:00-05:00',
+  'Completed', 'Alex Pixel', 'hello@pixelcraft.demo',
+  'Resolved for Alex Pixel. Changes documented and validated with end users.', '2026-03-12T14:00:00-05:00', 'h14',
+  3, 3, false, false, false, false,
+  false, false, false, false, false, 0, false,
+  'Seeded 2026 MSP operations history.'
+);
